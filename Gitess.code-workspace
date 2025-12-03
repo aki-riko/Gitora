@@ -1,0 +1,13 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../QFluentWidget"
+		}
+	],
+	"settings": {
+		"python.languageServer": "None"
+	}
+}
