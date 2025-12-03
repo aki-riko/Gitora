@@ -2,6 +2,8 @@
 """
 Gitess - Git可视化工具
 对新人友好的Git操作界面，支持一键暂存+提交+推送
+
+Author: Apyrenia
 """
 import os
 import sys

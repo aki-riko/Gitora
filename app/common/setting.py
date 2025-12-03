@@ -9,7 +9,7 @@ DEBUG = "__compiled__" not in globals()
 
 
 YEAR = 2025
-AUTHOR = "Gitess"
+AUTHOR = "Apyrenia"
 VERSION = "v1.0.0"
 APP_NAME = "Gitess"
 HELP_URL = "https://github.com/Gitess/Gitess"
