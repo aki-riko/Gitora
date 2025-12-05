@@ -3,7 +3,8 @@ from qfluentwidgets import (SwitchSettingCard, FolderListSettingCard,
                             OptionsSettingCard, PushSettingCard,
                             HyperlinkCard, PrimaryPushSettingCard, ScrollArea,
                             ComboBoxSettingCard, ExpandLayout, Theme, CustomColorSettingCard,
-                            setTheme, setThemeColor, isDarkTheme, setFont, MessageBox)
+                            setTheme, setThemeColor, isDarkTheme, setFont, MessageBox,
+                            InfoBarPosition)
 from qfluentwidgets import FluentIcon as FIF
 from qfluentwidgets import SettingCardGroup as CardGroup
 from qfluentwidgets import InfoBar
@@ -199,7 +200,8 @@ class SettingInterface(ScrollArea):
             self.tr('Updated successfully'),
             self.tr('Configuration takes effect after restart'),
             duration=1500,
-            parent=self
+            parent=self,
+            position=InfoBarPosition.BOTTOM_RIGHT
         )
 
     def _connectSignalToSlot(self):
@@ -222,7 +224,8 @@ class SettingInterface(ScrollArea):
                 self.tr('提示'),
                 self.tr('请先打开一个Git仓库'),
                 duration=2000,
-                parent=self
+                parent=self,
+                position=InfoBarPosition.BOTTOM_RIGHT
             )
             return
         
@@ -258,7 +261,8 @@ class SettingInterface(ScrollArea):
                 self.tr('提示'),
                 self.tr('请先打开一个Git仓库'),
                 duration=2000,
-                parent=self
+                parent=self,
+                position=InfoBarPosition.BOTTOM_RIGHT
             )
             return
         
@@ -272,14 +276,16 @@ class SettingInterface(ScrollArea):
                     self.tr('成功'),
                     msg,
                     duration=2000,
-                    parent=self
+                    parent=self,
+                    position=InfoBarPosition.BOTTOM_RIGHT
                 )
             else:
                 InfoBar.error(
                     self.tr('失败'),
                     msg,
                     duration=3000,
-                    parent=self
+                    parent=self,
+                    position=InfoBarPosition.BOTTOM_RIGHT
                 )
     
     def _on_gc(self):
@@ -289,7 +295,8 @@ class SettingInterface(ScrollArea):
                 self.tr('提示'),
                 self.tr('请先打开一个Git仓库'),
                 duration=2000,
-                parent=self
+                parent=self,
+                position=InfoBarPosition.BOTTOM_RIGHT
             )
             return
         
@@ -307,7 +314,8 @@ class SettingInterface(ScrollArea):
                 self.tr('提示'),
                 f'Git已安装: {version}',
                 duration=3000,
-                parent=self
+                parent=self,
+                position=InfoBarPosition.BOTTOM_RIGHT
             )
             return
         
