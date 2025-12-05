@@ -49,16 +49,16 @@ class StashItemCard(CardWidget):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
         
-        # Apply按钮（恢复但不删除）
+        # 应用按钮（恢复但不删除）
         apply_btn = TransparentPushButton("应用", self, FluentIcon.COPY)
-        apply_btn.setToolTip("恢复此stash的内容，但保留stash")
+        apply_btn.setToolTip("恢复此保存的内容，但保留记录（可多次使用）")
         apply_btn.installEventFilter(ToolTipFilter(apply_btn, 500, ToolTipPosition.TOP))
         apply_btn.clicked.connect(self._on_apply)
         btn_layout.addWidget(apply_btn)
         
-        # Pop按钮（恢复并删除）
+        # 恢复按钮（恢复并删除）
         pop_btn = PushButton("恢复", self, FluentIcon.DOWNLOAD)
-        pop_btn.setToolTip("恢复此stash的内容，并删除stash")
+        pop_btn.setToolTip("恢复此保存的内容，并删除记录（一次性）")
         pop_btn.installEventFilter(ToolTipFilter(pop_btn, 500, ToolTipPosition.TOP))
         pop_btn.clicked.connect(self._on_pop)
         btn_layout.addWidget(pop_btn)
@@ -71,47 +71,74 @@ class StashItemCard(CardWidget):
         layout.addLayout(btn_layout)
     
     def _on_apply(self):
-        """应用stash"""
-        success, msg = gitService.stash_apply(self.stash_id)
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
+        """应用stash（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        stash_id = self.stash_id
+        
+        def on_success(result):
+            success, msg = result
+            if success:
+                InfoBar.success(
+                    title="成功",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+            else:
+                InfoBar.error(
+                    title="失败",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=3000
+                )
+        
+        AsyncTask.run(
+            func=lambda: gitService.stash_apply(stash_id),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在应用stash: {stash_id}',
+            parent=self.window()
+        )
     
     def _on_pop(self):
-        """恢复stash"""
-        success, msg = gitService.stash_pop(self.stash_id)
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-            # 刷新列表
-            if hasattr(self.parent().parent(), 'refresh_stash_list'):
-                self.parent().parent().refresh_stash_list()
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
+        """恢复stash（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        stash_id = self.stash_id
+        parent_dialog = self.parent().parent()
+        
+        def on_success(result):
+            success, msg = result
+            if success:
+                InfoBar.success(
+                    title="成功",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+                # 刷新列表
+                if hasattr(parent_dialog, 'refresh_stash_list'):
+                    parent_dialog.refresh_stash_list()
+            else:
+                InfoBar.error(
+                    title="失败",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=3000
+                )
+        
+        AsyncTask.run(
+            func=lambda: gitService.stash_pop(stash_id),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在恢复stash: {stash_id}',
+            parent=self.window()
+        )
     
     def _on_delete(self):
         """删除stash"""
@@ -124,33 +151,47 @@ class StashItemCard(CardWidget):
         box.cancelButton.setText("取消")
         
         if box.exec():
-            success, msg = gitService.stash_drop(self.stash_id)
-            if success:
-                InfoBar.success(
-                    title="成功",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=2000
-                )
-                # 刷新列表
-                if hasattr(self.parent().parent(), 'refresh_stash_list'):
-                    self.parent().parent().refresh_stash_list()
-            else:
-                InfoBar.error(
-                    title="失败",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=3000
-                )
+            from app.common.async_helper import AsyncTask
+            
+            stash_id = self.stash_id
+            parent_dialog = self.parent().parent()
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+                    # 刷新列表
+                    if hasattr(parent_dialog, 'refresh_stash_list'):
+                        parent_dialog.refresh_stash_list()
+                else:
+                    InfoBar.error(
+                        title="失败",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=3000
+                    )
+            
+            AsyncTask.run(
+                func=lambda: gitService.stash_drop(stash_id),
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content=f'正在删除stash: {stash_id}',
+                parent=self.window()
+            )
 
 
 class StashDialog(Dialog):
     """Stash管理对话框"""
     
     def __init__(self, parent=None):
-        super().__init__("Stash管理", "暂存和恢复工作区变更", parent)
+        super().__init__("临时保存 (Stash)", "保存当前修改，稍后恢复（类似草稿箱）", parent)
         self._setup_ui()
         self.refresh_stash_list()
     
@@ -161,13 +202,13 @@ class StashDialog(Dialog):
         # 顶部操作栏
         top_layout = QHBoxLayout()
         
-        # 创建新Stash
+        # 创建临时保存
         self.messageEdit = LineEdit(self)
-        self.messageEdit.setPlaceholderText("Stash消息（可选）")
+        self.messageEdit.setPlaceholderText("备注信息（可选）")
         self.messageEdit.setFixedWidth(300)
         top_layout.addWidget(self.messageEdit)
         
-        save_btn = PushButton("保存到Stash", self, FluentIcon.SAVE)
+        save_btn = PushButton("保存当前修改", self, FluentIcon.SAVE)
         save_btn.clicked.connect(self._on_save_stash)
         top_layout.addWidget(save_btn)
         
@@ -185,8 +226,8 @@ class StashDialog(Dialog):
         
         self.textLayout.addLayout(top_layout)
         
-        # Stash列表容器
-        list_label = BodyLabel("Stash列表:", self)
+        # 保存列表容器
+        list_label = BodyLabel("保存列表:", self)
         self.textLayout.addWidget(list_label)
         
         # 滚动区域
@@ -220,7 +261,7 @@ class StashDialog(Dialog):
         
         if not stashes:
             # 显示空状态
-            empty_label = BodyLabel("暂无Stash记录", self)
+            empty_label = BodyLabel("暂无保存记录", self)
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.stashListLayout.insertWidget(0, empty_label)
         else:
@@ -236,25 +277,36 @@ class StashDialog(Dialog):
         """保存到Stash"""
         message = self.messageEdit.text().strip()
         
-        success, msg = gitService.stash_save(message)
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-            self.messageEdit.clear()
-            self.refresh_stash_list()
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            success, msg = result
+            if success:
+                InfoBar.success(
+                    title="成功",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+                self.messageEdit.clear()
+                self.refresh_stash_list()
+            else:
+                InfoBar.error(
+                    title="失败",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=3000
+                )
+        
+        AsyncTask.run(
+            func=lambda: gitService.stash_save(message),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content='正在保存到stash...',
+            parent=self.window()
+        )
     
     def _on_clear_all(self):
         """清空所有Stash"""
@@ -264,35 +316,40 @@ class StashDialog(Dialog):
                 title="提示",
                 content="没有可清空的Stash",
                 parent=self.window(),
-                position=InfoBarPosition.TOP,
+                position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=2000
             )
             return
         
-        box = MessageBox(
-            "确认清空",
-            f"确定要清空所有 {len(stashes)} 个Stash吗？\n\n此操作不可恢复。",
-            self.window()
-        )
-        box.yesButton.setText("确认清空")
-        box.cancelButton.setText("取消")
+        from app.common.danger_dialog import DangerOperationDialog
         
-        if box.exec():
-            success, msg = gitService.stash_clear()
-            if success:
-                InfoBar.success(
-                    title="成功",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=2000
-                )
-                self.refresh_stash_list()
-            else:
-                InfoBar.error(
-                    title="失败",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=3000
-                )
+        if DangerOperationDialog.confirm_stash_clear(len(stashes), self.window()):
+            from app.common.async_helper import AsyncTask
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+                    self.refresh_stash_list()
+                else:
+                    InfoBar.error(
+                        title="失败",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=3000
+                    )
+            
+            AsyncTask.run(
+                func=gitService.stash_clear,
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content='正在清空所有stash...',
+                parent=self.window()
+            )

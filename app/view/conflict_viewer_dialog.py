@@ -60,13 +60,18 @@ class ConflictViewerDialog(Dialog):
     
     def _format_content(self):
         """格式化并高亮冲突标记"""
+        from qfluentwidgets import isDarkTheme
         self.contentEdit.clear()
+        
+        # 主题感知颜色
+        is_dark = isDarkTheme()
+        default_color = QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
         
         lines = self.content.split('\n')
         for line in lines:
             if line.startswith('<<<<<<<'):
                 # 我们的版本标记 - 蓝色
-                self.contentEdit.setTextColor(QColor(33, 150, 243))
+                self.contentEdit.setTextColor(QColor(66, 165, 245) if is_dark else QColor(33, 150, 243))
                 self.contentEdit.append(line)
             elif line.startswith('======='):
                 # 分隔符 - 橙色
@@ -77,6 +82,6 @@ class ConflictViewerDialog(Dialog):
                 self.contentEdit.setTextColor(QColor(76, 175, 80))
                 self.contentEdit.append(line)
             else:
-                # 普通行 - 默认颜色
-                self.contentEdit.setTextColor(QColor(0, 0, 0))
+                # 普通行 - 主题感知颜色
+                self.contentEdit.setTextColor(default_color)
                 self.contentEdit.append(line)

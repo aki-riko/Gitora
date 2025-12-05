@@ -18,7 +18,7 @@ from qfluentwidgets import (
     SearchLineEdit, ToolTipFilter, ToolTipPosition, MessageBox, ComboBox,
     InfoBarIcon, SmoothScrollArea
 )
-from qfluentwidgetspro import TimeLineWidget, TimeLineCard
+from qfluentwidgetspro import TimeLineWidget, TimeLineCard, Splitter
 
 from app.common.git_service import gitService, CommitInfo
 
@@ -97,11 +97,17 @@ from app.common.style_sheet import StyleSheet
 class CommitCard(CardWidget):
     """提交信息卡片"""
     clicked = Signal(CommitInfo)
+    cherryPickClicked = Signal(str)  # commit_hash
+    viewDetailClicked = Signal(str)  # commit_hash
 
     def __init__(self, commit: CommitInfo, parent=None):
         super().__init__(parent)
         self.commit = commit
         self._setup_ui()
+        
+        # 启用右键菜单
+        self.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.customContextMenuRequested.connect(self._show_context_menu)
 
     def _setup_ui(self):
         layout = QVBoxLayout(self)
@@ -153,6 +159,25 @@ class CommitCard(CardWidget):
 
         # 点击事件
         super().clicked.connect(lambda: self.clicked.emit(self.commit))
+    
+    def _show_context_menu(self, pos):
+        """显示右键菜单"""
+        from qfluentwidgets import RoundMenu, Action
+        menu = RoundMenu(parent=self)
+        
+        # 查看详情
+        detail_action = Action(FluentIcon.INFO, "查看详情")
+        detail_action.triggered.connect(lambda: self.viewDetailClicked.emit(self.commit.hash))
+        menu.addAction(detail_action)
+        
+        menu.addSeparator()
+        
+        # Cherry-pick
+        cherry_pick_action = Action(FluentIcon.COPY, "Cherry-pick此提交")
+        cherry_pick_action.triggered.connect(lambda: self.cherryPickClicked.emit(self.commit.hash))
+        menu.addAction(cherry_pick_action)
+        
+        menu.exec(self.mapToGlobal(pos))
 
 
 class CommitDetailPanel(QFrame):
@@ -270,12 +295,25 @@ class CommitDetailPanel(QFrame):
         mode_layout = QHBoxLayout()
         mode_layout.addWidget(CaptionLabel("模式:", self))
         self.resetModeCombo = ComboBox(self)
-        self.resetModeCombo.addItems(["mixed (保留修改)", "soft (保留暂存)", "hard (丢弃所有)"])
+        self.resetModeCombo.addItems([
+            "🟢 混合 (Mixed) - 保留文件修改，清空暂存",
+            "🟡 软 (Soft) - 保留所有修改，可重新提交",
+            "🔴 硬 (Hard) - 完全丢弃，不可恢复！"
+        ])
         self.resetModeCombo.setCurrentIndex(0)
         self.resetModeCombo.setToolTip(
-            "mixed: 保留工作区修改，清空暂存区\n"
-            "soft: 保留工作区和暂存区，可直接重新提交\n"
-            "hard: ⚠️ 丢弃所有修改，不可恢复！"
+            "🟢 混合模式 (Mixed):\n"
+            "  · 保留工作区的文件修改\n"
+            "  · 清空暂存区\n"
+            "  · 适合：重新整理提交\n\n"
+            "🟡 软模式 (Soft):\n"
+            "  · 保留工作区和暂存区\n"
+            "  · 可直接重新提交\n"
+            "  · 适合：修改提交信息\n\n"
+            "🔴 硬模式 (Hard):\n"
+            "  · 完全丢弃所有修改\n"
+            "  · 文件恢复到指定提交状态\n"
+            "  · ⚠️ 不可恢复，极度危险！"
         )
         self.resetModeCombo.installEventFilter(ToolTipFilter(self.resetModeCombo, 500, ToolTipPosition.TOP))
         mode_layout.addWidget(self.resetModeCombo, 1)
@@ -344,20 +382,27 @@ class CommitDetailPanel(QFrame):
                 title="成功",
                 content="已复制Hash到剪贴板",
                 parent=self.window(),
-                position=InfoBarPosition.TOP,
+                position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=2000
             )
 
     def _checkout_commit(self):
-        """检出此提交"""
-        if self._current_commit:
-            success, msg = gitService.checkout_branch(self._current_commit.short_hash)
+        """检出此提交（异步）"""
+        if not self._current_commit:
+            return
+        
+        from app.common.async_helper import AsyncTask
+        
+        commit_hash = self._current_commit.short_hash
+        
+        def on_success(result):
+            success, msg = result
             if success:
                 InfoBar.success(
                     title="成功",
-                    content=f"已检出到 {self._current_commit.short_hash}",
+                    content=f"已检出到 {commit_hash}",
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
             else:
@@ -365,9 +410,17 @@ class CommitDetailPanel(QFrame):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=3000
                 )
+        
+        AsyncTask.run(
+            func=lambda: gitService.checkout_branch(commit_hash),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在检出到 {commit_hash}...',
+            parent=self.window()
+        )
 
     def _revert_commit(self):
         """撤销此提交（创建新的撤销提交，安全操作）"""
@@ -385,34 +438,49 @@ class CommitDetailPanel(QFrame):
         box.cancelButton.setText("取消")
         
         if box.exec():
-            success, msg = gitService.revert_commit(self._current_commit.hash)
-            if success:
-                InfoBar.success(
-                    title="成功",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=3000
-                )
-            else:
-                InfoBar.error(
-                    title="撤销失败",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=4000
-                )
+            from app.common.async_helper import AsyncTask
+            
+            commit_hash = self._current_commit.hash
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=3000
+                    )
+                else:
+                    InfoBar.error(
+                        title="撤销失败",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=4000
+                    )
+            
+            AsyncTask.run(
+                func=lambda: gitService.revert_commit(commit_hash),
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content='正在撤销提交...',
+                parent=self.window()
+            )
 
     def _reset_to_commit(self):
         """回滚到此提交（危险操作，会修改历史）"""
         if not self._current_commit:
             return
         
+        from app.common.danger_dialog import DangerOperationDialog
+        
         # 获取回滚模式
         mode_text = self.resetModeCombo.currentText()
-        if "mixed" in mode_text:
+        if "混合" in mode_text:
             mode = "mixed"
-        elif "soft" in mode_text:
+        elif "软" in mode_text:
             mode = "soft"
         else:
             mode = "hard"
@@ -420,45 +488,40 @@ class CommitDetailPanel(QFrame):
         # 获取将要丢弃的提交数量
         count = gitService.get_commit_count_after(self._current_commit.hash)
         
-        # 最终确认（hard模式额外警告）
-        if mode == "hard":
-            warning = (
-                f"⚠️ 危险操作！\n\n"
-                f"将回滚到 {self._current_commit.short_hash}，"
-                f"丢弃之后的 {count} 个提交。\n\n"
-                f"模式: hard（丢弃所有修改，不可恢复！）\n\n"
-                f"如果这些提交已推送到远程，可能导致严重问题！"
+        # 使用统一的危险操作对话框
+        if DangerOperationDialog.confirm_reset(
+            self._current_commit.hash, mode, count, self.window()
+        ):
+            from app.common.async_helper import AsyncTask
+            
+            commit_hash = self._current_commit.hash
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="回滚成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=3000
+                    )
+                else:
+                    InfoBar.error(
+                        title="回滚失败",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=4000
+                    )
+            
+            AsyncTask.run(
+                func=lambda: gitService.reset_to_commit(commit_hash, mode),
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content=f'正在回滚到 {commit_hash[:7]}...',
+                parent=self.window()
             )
-        else:
-            warning = (
-                f"将回滚到 {self._current_commit.short_hash}，"
-                f"丢弃之后的 {count} 个提交。\n\n"
-                f"模式: {mode}\n\n"
-                f"如果这些提交已推送到远程，可能需要强制推送。"
-            )
-        
-        box = MessageBox("确认回滚", warning, self.window())
-        box.yesButton.setText("确认回滚")
-        box.cancelButton.setText("取消")
-        
-        if box.exec():
-            success, msg = gitService.reset_to_commit(self._current_commit.hash, mode)
-            if success:
-                InfoBar.success(
-                    title="回滚成功",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=3000
-                )
-            else:
-                InfoBar.error(
-                    title="回滚失败",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=4000
-                )
 
 
 class HistoryInterface(QWidget):
@@ -492,9 +555,8 @@ class HistoryInterface(QWidget):
         # 顶部：标题和操作栏
         self._create_header(layout)
 
-        # 主内容区（使用QSplitter分割左右）
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
+        # 主内容区（使用Fluent Splitter分割左右）
+        splitter = Splitter(Qt.Orientation.Horizontal, self)
 
         # 左侧：带独立滚动的时间线
         left_widget = self._create_timeline_panel()
@@ -525,6 +587,13 @@ class HistoryInterface(QWidget):
         header_layout.addWidget(self.titleLabel)
 
         header_layout.addStretch()
+        
+        # Reflog按钮
+        reflog_btn = TransparentPushButton("引用日志 (Reflog)", self, FluentIcon.HISTORY)
+        reflog_btn.setToolTip("查看所有操作记录，恢复丢失的提交")
+        reflog_btn.installEventFilter(ToolTipFilter(reflog_btn, 500, ToolTipPosition.TOP))
+        reflog_btn.clicked.connect(self._on_open_reflog)
+        header_layout.addWidget(reflog_btn)
 
         # 搜索框
         self.searchEdit = SearchLineEdit(self)
@@ -535,12 +604,24 @@ class HistoryInterface(QWidget):
 
         parent_layout.addWidget(header)
 
-        # "有更新"提示按钮（初始隐藏）
+        # "有更新"提示按钮（初始隐藏）- 药丸形状、居中显示
+        hint_layout = QHBoxLayout()
+        hint_layout.addStretch()
+        
         self.updateHintBtn = PrimaryPushButton("↑ 有新提交", self)
-        self.updateHintBtn.setFixedHeight(32)
+        self.updateHintBtn.setFixedSize(120, 32)  # 限制宽度
+        self.updateHintBtn.setStyleSheet("""
+            PrimaryPushButton {
+                border-radius: 16px;  /* 药丸形状 */
+                padding: 4px 16px;
+            }
+        """)
         self.updateHintBtn.clicked.connect(self._on_update_hint_clicked)
         self.updateHintBtn.hide()
-        parent_layout.addWidget(self.updateHintBtn)
+        hint_layout.addWidget(self.updateHintBtn)
+        
+        hint_layout.addStretch()
+        parent_layout.addLayout(hint_layout)
 
     def _create_timeline_panel(self) -> QWidget:
         """创建时间线面板（独立滚动）"""
@@ -607,21 +688,21 @@ class HistoryInterface(QWidget):
             self._load_more()
 
     def _load_more(self):
-        """从Git加载更多提交记录（异步）"""
+        """从Git加载更多提交记录（真正异步）"""
         if self._is_loading or not self._has_more:
             return
 
         self._is_loading = True
         skip = self._loaded_count
+        
+        from app.common.async_helper import SimpleAsyncTask
 
-        # 异步加载，避免UI卡顿
-        def do_load():
-            commits = gitService.get_log(count=self.PAGE_SIZE, skip=skip)
-            # 回到主线程更新UI
-            QTimer.singleShot(0, lambda: self._on_load_complete(commits))
-
-        # 使用QTimer延迟执行，让UI先响应
-        QTimer.singleShot(10, do_load)
+        def fetch_commits():
+            """在子线程执行Git操作"""
+            fast_mode = gitService.is_large_repo()
+            return gitService.get_log(count=self.PAGE_SIZE, skip=skip, fast_mode=fast_mode)
+        
+        SimpleAsyncTask.run(fetch_commits, self._on_load_complete)
 
     def _on_load_complete(self, commits: list):
         """加载完成回调"""
@@ -637,13 +718,15 @@ class HistoryInterface(QWidget):
         self._is_loading = False
 
     def refresh_history(self):
-        """刷新提交历史（重新加载，清空缓存）"""
+        """刷新提交历史（异步，重新加载，清空缓存）"""
         if not gitService.repo_path:
             return
+        
+        from app.common.async_helper import SimpleAsyncTask
 
         # 重置状态
         self._loaded_count = 0
-        self._is_loading = False
+        self._is_loading = True  # 标记正在加载
         self._has_more = True
         
         # 清空缓存（强制刷新）
@@ -653,22 +736,30 @@ class HistoryInterface(QWidget):
 
         # 清空现有内容
         self.timeLine.clear()
+        
+        def fetch_log():
+            return gitService.get_log(count=self.PAGE_SIZE, skip=0)
+        
+        def update_ui(commits):
+            """在主线程更新UI"""
+            self._is_loading = False
+            
+            # 缓存首批数据
+            cache_key = (self.PAGE_SIZE, 0)
+            self._commit_cache[cache_key] = commits
 
-        # 首次加载第一批数据
-        cache_key = (self.PAGE_SIZE, 0)
-        commits = gitService.get_log(count=self.PAGE_SIZE, skip=0)
-        self._commit_cache[cache_key] = commits  # 缓存首批数据
+            if not commits:
+                self.timeLine.addItem(InfoBarIcon.INFORMATION, "暂无提交记录")
+                self._has_more = False
+                return
 
-        if not commits:
-            self.timeLine.addItem(InfoBarIcon.INFORMATION, "暂无提交记录")
-            self._has_more = False
-            return
+            self._append_commits_to_timeline(commits)
+            self._loaded_count = len(commits)
 
-        self._append_commits_to_timeline(commits)
-        self._loaded_count = len(commits)
-
-        if len(commits) < self.PAGE_SIZE:
-            self._has_more = False
+            if len(commits) < self.PAGE_SIZE:
+                self._has_more = False
+        
+        SimpleAsyncTask.run(fetch_log, update_ui)
 
 
     def _append_commits_to_timeline(self, commits: list):
@@ -702,8 +793,33 @@ class HistoryInterface(QWidget):
 
         # 点击事件（使用默认参数捕获当前commit值，避免闭包问题）
         card.clicked.connect(lambda checked=False, c=commit: self.detailPanel.set_commit(c))
+        
+        # 添加右键菜单
+        card.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        card.customContextMenuRequested.connect(
+            lambda pos, h=commit.hash: self._show_card_context_menu(card, pos, h)
+        )
 
         return card
+    
+    def _show_card_context_menu(self, card, pos, commit_hash: str):
+        """显示卡片右键菜单"""
+        from qfluentwidgets import RoundMenu, Action
+        menu = RoundMenu(parent=card)
+        
+        # 查看详情
+        detail_action = Action(FluentIcon.INFO, "查看详情")
+        detail_action.triggered.connect(lambda: self._on_view_detail(commit_hash))
+        menu.addAction(detail_action)
+        
+        menu.addSeparator()
+        
+        # 应用提交
+        cherry_pick_action = Action(FluentIcon.COPY, "应用此提交 (Cherry-pick)")
+        cherry_pick_action.triggered.connect(lambda: self._on_cherry_pick(commit_hash))
+        menu.addAction(cherry_pick_action)
+        
+        menu.exec(card.mapToGlobal(pos))
 
     def _on_search(self, text: str):
         """搜索提交"""
@@ -721,25 +837,69 @@ class HistoryInterface(QWidget):
         self._perform_search(text)
     
     def _perform_search(self, query: str):
-        """执行搜索"""
+        """执行搜索（异步）"""
         if not gitService.repo_path:
             return
+        
+        from app.common.async_helper import AsyncTask
         
         # 清空现有内容
         self.timeLine.clear()
         
-        # 搜索提交（搜索消息和作者）
-        commits = gitService.search_commits(query, search_type="all", count=100)
+        def on_success(commits):
+            if not commits:
+                self.timeLine.addItem(InfoBarIcon.INFORMATION, "未找到匹配的提交记录")
+            else:
+                self._append_commits_to_timeline(commits)
+            self._has_more = False
         
-        if not commits:
-            self.timeLine.addItem(InfoBarIcon.INFORMATION, "未找到匹配的提交记录")
-            return
-        
-        # 显示搜索结果
-        self._append_commits_to_timeline(commits)
-        
-        # 搜索模式下禁用分页加载
-        self._has_more = False
+        # 使用封装的异步工具
+        AsyncTask.run(
+            func=lambda: gitService.search_commits(query, search_type="all", count=100),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在搜索提交: {query}',
+            success_title='搜索完成',
+            success_content=lambda result: f'找到 {len(result)} 个匹配的提交' if result else '未找到匹配的提交',
+            parent=self.window()
+        )
+
+    def _on_cherry_pick(self, commit_hash: str):
+        """处理Cherry-pick操作"""
+        box = MessageBox(
+            "Cherry-pick确认",
+            f"确定要应用提交 {commit_hash[:7]} 到当前分支吗？",
+            self.window()
+        )
+        if box.exec():
+            from app.common.async_helper import AsyncTask
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                else:
+                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+            
+            AsyncTask.run(
+                func=lambda: gitService.cherry_pick(commit_hash),
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content=f'正在应用提交 {commit_hash[:7]}...',
+                parent=self.window()
+            )
+    
+    def _on_view_detail(self, commit_hash: str):
+        """查看提交详情"""
+        from .commit_detail_dialog import CommitDetailDialog
+        dialog = CommitDetailDialog(commit_hash, self.window())
+        dialog.exec()
+    
+    def _on_open_reflog(self):
+        """打开引用日志"""
+        from .reflog_dialog import ReflogDialog
+        dialog = ReflogDialog(self.window())
+        dialog.exec()
 
     def showEvent(self, event):
         """显示事件"""

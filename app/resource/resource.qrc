@@ -4,6 +4,29 @@
         <file>images/icons/SettingsFilled_black.svg</file>
         <file>images/icons/Settings_white.svg</file>
         <file>images/icons/Settings_black.svg</file>
+        
+        <!-- Git专用图标 -->
+        <file>images/icons/git-branch-line_black.svg</file>
+        <file>images/icons/git-branch-line_white.svg</file>
+        <file>images/icons/git-close-pull-request-line_black.svg</file>
+        <file>images/icons/git-close-pull-request-line_white.svg</file>
+        <file>images/icons/git-commit-line_black.svg</file>
+        <file>images/icons/git-commit-line_white.svg</file>
+        <file>images/icons/git-fork-line_black.svg</file>
+        <file>images/icons/git-fork-line_white.svg</file>
+        <file>images/icons/git-merge-line_black.svg</file>
+        <file>images/icons/git-merge-line_white.svg</file>
+        <file>images/icons/git-pr-draft-line_black.svg</file>
+        <file>images/icons/git-pr-draft-line_white.svg</file>
+        <file>images/icons/git-pull-request-line_black.svg</file>
+        <file>images/icons/git-pull-request-line_white.svg</file>
+        <file>images/icons/git-repository-commits-line_black.svg</file>
+        <file>images/icons/git-repository-commits-line_white.svg</file>
+        <file>images/icons/git-repository-line_black.svg</file>
+        <file>images/icons/git-repository-line_white.svg</file>
+        <file>images/icons/git-repository-private-line_black.svg</file>
+        <file>images/icons/git-repository-private-line_white.svg</file>
+        
         <file>images/logo.png</file>
 
         <file>i18n/app.zh_CN.qm</file>

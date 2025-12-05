@@ -19,11 +19,13 @@ from qfluentwidgets import (
     SubtitleLabel, TransparentToolButton, MessageBox
 )
 from qfluentwidgetspro import (
-    StepProgressBar, TimeLineWidget, TimeLineCard
+    StepProgressBar, TimeLineWidget, TimeLineCard, Splitter
 )
 
 from app.common.git_service import gitService, FileChange, FileStatus
 from app.common.style_sheet import StyleSheet
+from app.common.icon import Icon
+from app.view.virtual_file_list import VirtualFileList
 
 
 class FileChangeCard(CardWidget):
@@ -42,7 +44,7 @@ class FileChangeCard(CardWidget):
         self.customContextMenuRequested.connect(self._show_context_menu)
 
     def _setup_ui(self):
-        self.setFixedHeight(60)
+        self.setFixedHeight(64)  # 统一卡片高度
         layout = QHBoxLayout(self)
         layout.setContentsMargins(12, 8, 12, 8)
         layout.setSpacing(12)
@@ -103,15 +105,15 @@ class FileChangeCard(CardWidget):
         # 点击事件
         self.clicked.connect(lambda: self.selected.emit(self.file_change.path))
 
-    def _get_status_icon(self) -> FluentIcon:
+    def _get_status_icon(self):
         """根据状态返回图标"""
         icon_map = {
             FileStatus.MODIFIED: FluentIcon.EDIT,
             FileStatus.ADDED: FluentIcon.ADD_TO,
             FileStatus.DELETED: FluentIcon.DELETE,
             FileStatus.UNTRACKED: FluentIcon.DOCUMENT,
-            FileStatus.RENAMED: FluentIcon.SYNC,
-            FileStatus.UNMERGED: FluentIcon.CANCEL,
+            FileStatus.RENAMED: FluentIcon.SYNC,  # 暂时保持
+            FileStatus.UNMERGED: Icon.GIT_CLOSE_PR,  # 使用Git专用冲突图标
         }
         return icon_map.get(self.file_change.status, FluentIcon.DOCUMENT)
 
@@ -133,9 +135,14 @@ class FileChangeCard(CardWidget):
         menu = RoundMenu(parent=self)
         
         # 查看历史
-        history_action = Action(FluentIcon.HISTORY, "查看文件历史")
+        history_action = Action(FluentIcon.HISTORY, "文件历史 (History)")
         history_action.triggered.connect(self._on_view_history)
         menu.addAction(history_action)
+        
+        # 查看代码作者
+        blame_action = Action(FluentIcon.PEOPLE, "代码作者 (Blame)")
+        blame_action.triggered.connect(self._on_view_blame)
+        menu.addAction(blame_action)
         
         menu.exec(self.mapToGlobal(pos))
     
@@ -144,6 +151,19 @@ class FileChangeCard(CardWidget):
         from .file_history_dialog import FileHistoryDialog
         dialog = FileHistoryDialog(self.file_change.path, self.window())
         dialog.exec()
+    
+    def _on_view_blame(self):
+        """查看代码作者（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        AsyncTask.run(
+            func=lambda: gitService.blame(self.file_change.path),
+            progress_title='请稍候',
+            progress_content=f'正在分析代码作者: {self.file_change.path}',
+            success_title='分析完成',
+            success_content=lambda result: f'共 {len(result)} 行代码' if result else 'Blame信息获取失败',
+            parent=self.window()
+        )
 
 
 class DiffViewPanel(QFrame):
@@ -197,52 +217,67 @@ class DiffViewPanel(QFrame):
         self.emptyLabel.show()
     
     def show_diff(self, file_path: str, is_staged: bool):
-        """显示文件差异"""
+        """显示文件差异（异步）"""
         self._current_file = file_path
         self._is_staged = is_staged
         self.filePathLabel.setText(file_path)
         
-        # 获取diff
-        diff_text = gitService.get_diff(file_path, is_staged)
+        # 显示加载提示
+        self.diffEdit.hide()
+        self.emptyLabel.setText("正在加载diff...")
+        self.emptyLabel.show()
         
-        if not diff_text or not diff_text.strip():
-            # 无差异
-            self.diffEdit.hide()
-            self.emptyLabel.setText(f"无差异: {file_path}")
-            self.emptyLabel.show()
-        else:
-            # 显示diff
-            self.emptyLabel.hide()
-            self.diffEdit.show()
-            self._format_diff(diff_text)
+        # 异步获取diff
+        from app.common.async_helper import SimpleAsyncTask
+        
+        def fetch_diff():
+            return gitService.get_diff(file_path, is_staged)
+        
+        def on_finished(diff_text):
+            if not diff_text or not diff_text.strip():
+                # 无差异
+                self.diffEdit.hide()
+                self.emptyLabel.setText(f"无差异: {file_path}")
+                self.emptyLabel.show()
+            else:
+                # 显示diff
+                self.emptyLabel.hide()
+                self.diffEdit.show()
+                self._format_diff(diff_text)
+        
+        SimpleAsyncTask.run(fetch_diff, on_finished)
     
     def _format_diff(self, diff_text: str):
         """格式化并高亮diff文本"""
         self.diffEdit.clear()
+        
+        # 主题感知颜色
+        is_dark = isDarkTheme()
+        default_color = QColor(255, 255, 255) if is_dark else QColor(0, 0, 0)
         
         # 按行处理
         lines = diff_text.split('\n')
         for line in lines:
             if line.startswith('+') and not line.startswith('+++'):
                 # 新增行 - 绿色
-                self.diffEdit.setTextColor(QColor(34, 139, 34))
+                self.diffEdit.setTextColor(QColor(76, 175, 80) if is_dark else QColor(34, 139, 34))
                 self.diffEdit.append(line)
             elif line.startswith('-') and not line.startswith('---'):
                 # 删除行 - 红色
-                self.diffEdit.setTextColor(QColor(220, 53, 69))
+                self.diffEdit.setTextColor(QColor(244, 67, 54) if is_dark else QColor(220, 53, 69))
                 self.diffEdit.append(line)
             elif line.startswith('@@'):
                 # 位置标记 - 蓝色
-                self.diffEdit.setTextColor(QColor(33, 150, 243))
+                self.diffEdit.setTextColor(QColor(66, 165, 245) if is_dark else QColor(33, 150, 243))
                 self.diffEdit.append(line)
             elif line.startswith('diff') or line.startswith('index') or \
                  line.startswith('---') or line.startswith('+++'):
                 # 文件头 - 灰色
-                self.diffEdit.setTextColor(QColor(128, 128, 128))
+                self.diffEdit.setTextColor(QColor(158, 158, 158))
                 self.diffEdit.append(line)
             else:
-                # 普通行 - 默认颜色
-                self.diffEdit.setTextColor(QColor(0, 0, 0))
+                # 普通行 - 主题感知颜色
+                self.diffEdit.setTextColor(default_color)
                 self.diffEdit.append(line)
     
     def clear_diff(self):
@@ -284,7 +319,7 @@ class CommitPanel(QFrame):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
 
-        self.commitBtn = PrimaryPushButton("提交", self, FluentIcon.ACCEPT)
+        self.commitBtn = PrimaryPushButton("提交", self, Icon.GIT_COMMIT)  # Git专用提交图标
         self.commitBtn.clicked.connect(self._on_commit)
         btn_layout.addWidget(self.commitBtn)
 
@@ -303,7 +338,7 @@ class CommitPanel(QFrame):
                 title="提示",
                 content="请输入提交信息",
                 parent=self.window(),
-                position=InfoBarPosition.TOP,
+                position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=2000
             )
             return
@@ -316,7 +351,7 @@ class CommitPanel(QFrame):
                 title="提示",
                 content="请输入提交信息",
                 parent=self.window(),
-                position=InfoBarPosition.TOP,
+                position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=2000
             )
             return
@@ -328,7 +363,7 @@ class CommitPanel(QFrame):
                 title="成功",
                 content=msg,
                 parent=self.window(),
-                position=InfoBarPosition.TOP,
+                position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=2000
             )
         else:
@@ -336,7 +371,7 @@ class CommitPanel(QFrame):
                 title="失败",
                 content=msg,
                 parent=self.window(),
-                position=InfoBarPosition.TOP,
+                position=InfoBarPosition.BOTTOM_RIGHT,
                 duration=3000
             )
 
@@ -448,8 +483,7 @@ class RepoInterface(ScrollArea):
         self._create_header(layout)
 
         # 主内容区：左右分栏
-        splitter = QSplitter(Qt.Orientation.Horizontal)
-        splitter.setChildrenCollapsible(False)
+        splitter = Splitter(Qt.Orientation.Horizontal, self)
 
         # 左侧：文件变更列表
         left_widget = self._create_file_list_panel()
@@ -491,23 +525,40 @@ class RepoInterface(ScrollArea):
         header_layout.addLayout(repo_info_layout)
         header_layout.addStretch()
 
-        # 打开仓库按钮
-        self.openRepoBtn = PushButton("打开仓库", self, FluentIcon.FOLDER)
-        self.openRepoBtn.clicked.connect(self._open_repo)
-        header_layout.addWidget(self.openRepoBtn)
+        # 仓库按钮（打开/克隆/初始化）
+        self.repoBtn = SplitPushButton("打开仓库", self, FluentIcon.FOLDER)
+        self.repoBtn.clicked.connect(self._open_repo)
+        repoMenu = RoundMenu(parent=self)
+        repoMenu.addAction(Action(FluentIcon.FOLDER, "打开本地仓库", triggered=self._open_repo))
+        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, "克隆远程仓库 (Clone)", triggered=self._on_clone_repo))
+        repoMenu.addAction(Action(FluentIcon.ADD, "初始化新仓库 (Init)", triggered=self._on_init_repo))
+        repoMenu.addSeparator()
+        
+        # 最近仓库子菜单
+        self.recentMenu = RoundMenu("最近仓库", repoMenu)
+        self.recentMenu.setIcon(FluentIcon.HISTORY)
+        repoMenu.addMenu(self.recentMenu)
+        self._update_recent_repos_menu()
+        
+        self.repoBtn.setFlyout(repoMenu)
+        header_layout.addWidget(self.repoBtn)
 
-        # Stash按钮
-        stash_btn = TransparentPushButton("暂存管理", self, FluentIcon.SAVE)
-        stash_btn.setToolTip("Stash管理 - 暂存和恢复工作区变更")
+        # 临时保存按钮 (Stash)
+        stash_btn = PushButton("临时保存", self, Icon.GIT_PR_DRAFT)  # 草稿图标
+        stash_btn.setToolTip("临时保存当前修改，稍后恢复 (Stash)")
         stash_btn.installEventFilter(ToolTipFilter(stash_btn, 500, ToolTipPosition.TOP))
         stash_btn.clicked.connect(self._on_open_stash)
         header_layout.addWidget(stash_btn)
 
         # 同步按钮（拉取/推送）
         self.syncBtn = SplitPushButton("同步", self, FluentIcon.SYNC)
+        self.syncBtn.clicked.connect(self._on_pull)  # 主操作：拉取
         syncMenu = RoundMenu(parent=self)
-        syncMenu.addAction(Action(FluentIcon.DOWNLOAD, "拉取", triggered=self._on_pull))
-        syncMenu.addAction(Action(FluentIcon.SEND, "推送", triggered=self._on_push))
+        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取 (Pull)", triggered=self._on_pull))  # Git专用拉取图标
+        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取并变基 (Rebase)", triggered=self._on_pull_rebase))
+        syncMenu.addSeparator()
+        syncMenu.addAction(Action(FluentIcon.SEND, "推送 (Push)", triggered=self._on_push))
+        syncMenu.addAction(Action(FluentIcon.CANCEL, "强制推送 (Force)", triggered=self._on_force_push))
         self.syncBtn.setFlyout(syncMenu)
         
         header_layout.addWidget(self.syncBtn)
@@ -516,9 +567,8 @@ class RepoInterface(ScrollArea):
 
     def _create_file_list_panel(self) -> QWidget:
         """创建文件变更列表面板（上下分割：文件列表+差异显示）"""
-        # 使用垂直分割器
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        splitter.setChildrenCollapsible(False)
+        # 使用Fluent垂直分割器
+        splitter = Splitter(Qt.Orientation.Vertical, self)
         
         # 上方：文件列表
         file_panel = QFrame()
@@ -543,19 +593,12 @@ class RepoInterface(ScrollArea):
 
         layout.addLayout(title_layout)
 
-        # 文件列表容器
-        self.fileListWidget = QWidget()
-        self.fileListLayout = QVBoxLayout(self.fileListWidget)
-        self.fileListLayout.setContentsMargins(0, 0, 0, 0)
-        self.fileListLayout.setSpacing(8)
-        self.fileListLayout.addStretch()
-
-        # 滚动区域
-        file_scroll = ScrollArea()
-        file_scroll.setWidgetResizable(True)
-        file_scroll.setWidget(self.fileListWidget)
-        file_scroll.setStyleSheet("background: transparent; border: none;")
-        layout.addWidget(file_scroll, 1)
+        # 虚拟滚动文件列表
+        self.fileList = VirtualFileList(self)
+        self.fileList.stageClicked.connect(self._on_stage_file)
+        self.fileList.discardClicked.connect(self._on_discard_file)
+        self.fileList.fileSelected.connect(self._on_file_selected)
+        layout.addWidget(self.fileList, 1)
         
         splitter.addWidget(file_panel)
 
@@ -592,10 +635,141 @@ class RepoInterface(ScrollArea):
     def _connect_signals(self):
         """连接信号"""
         gitService.statusChanged.connect(self.refresh_status)
-        gitService.operationStarted.connect(self._on_operation_started)
-        gitService.operationFinished.connect(self._on_operation_finished)
-        gitService.progressUpdated.connect(self._on_progress_updated)
+        gitService.progressUpdated.connect(self._on_progress_updated)  # 仅用于一键操作进度条
 
+    def _update_recent_repos_menu(self):
+        """更新最近仓库菜单"""
+        from app.common.recent_repos import recentReposManager
+        
+        self.recentMenu.clear()
+        recent_repos = recentReposManager.get_all()
+        
+        if not recent_repos:
+            empty_action = Action(FluentIcon.INFO, "暂无最近仓库")
+            empty_action.setEnabled(False)
+            self.recentMenu.addAction(empty_action)
+        else:
+            for repo_path in recent_repos:
+                import os
+                repo_name = os.path.basename(repo_path)
+                action = Action(FluentIcon.FOLDER, f"{repo_name}")
+                action.triggered.connect(lambda checked=False, p=repo_path: self._open_recent_repo(p))
+                self.recentMenu.addAction(action)
+            
+            self.recentMenu.addSeparator()
+            clear_action = Action(FluentIcon.DELETE, "清空列表")
+            clear_action.triggered.connect(self._clear_recent_repos)
+            self.recentMenu.addAction(clear_action)
+    
+    def _open_recent_repo(self, path: str):
+        """打开最近的仓库"""
+        if gitService.set_repo_path(path):
+            import os
+            repo_name = os.path.basename(path)
+            self.repoNameLabel.setText(repo_name)
+            self.repoPathLabel.setText(path)
+            self.refresh_status()
+            InfoBar.success(
+                title="成功",
+                content=f"已打开仓库: {repo_name}",
+                parent=self.window(),
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=2000
+            )
+        else:
+            InfoBar.error(
+                title="错误",
+                content="仓库不存在或已被删除",
+                parent=self.window(),
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000
+            )
+    
+    def _clear_recent_repos(self):
+        """清空最近仓库列表"""
+        from app.common.recent_repos import recentReposManager
+        recentReposManager.clear()
+        self._update_recent_repos_menu()
+        InfoBar.success(
+            title="成功",
+            content="已清空最近仓库列表",
+            parent=self.window(),
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            duration=2000
+        )
+    
+    def _on_init_repo(self):
+        """初始化新仓库（异步）"""
+        path = QFileDialog.getExistingDirectory(
+            self,
+            "选择要初始化的目录",
+            "",
+            QFileDialog.Option.ShowDirsOnly
+        )
+        if not path:
+            return
+        
+        from app.common.async_helper import SimpleAsyncTask
+        from app.common.recent_repos import recentReposManager
+        from qfluentwidgetspro import ProgressInfoBar
+        import os
+        
+        # 显示进度环
+        progress_bar = ProgressInfoBar.create(
+            title='请稍候',
+            content='正在初始化Git仓库...',
+            orient=Qt.Orientation.Horizontal,
+            isClosable=False,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            parent=self.window()
+        )
+        
+        def on_finished(result):
+            success, msg = result
+            if success:
+                progress_bar.setTitle('成功')
+                progress_bar.setContent(msg)
+                progress_bar.success(duration=2000)
+                
+                # set_repo_path会触发statusChanged信号，自动刷新所有界面
+                if gitService.set_repo_path(path):
+                    repo_name = os.path.basename(path)
+                    self.repoNameLabel.setText(repo_name)
+                    self.repoPathLabel.setText(path)
+                    recentReposManager.add(path)
+                    self._update_recent_repos_menu()
+                    
+                    # 显示引导窗口
+                    self._show_init_guide(path)
+            else:
+                progress_bar.setTitle('失败')
+                progress_bar.setContent(msg)
+                progress_bar.error(duration=3000)
+        
+        SimpleAsyncTask.run(lambda: gitService.init(path), on_finished)
+    
+    def _show_init_guide(self, path: str):
+        """显示初始化仓库引导窗口"""
+        from .init_repo_guide import InitRepoGuide
+        
+        # 延迟显示引导窗口，等待进度条关闭
+        def show_guide():
+            self._guide_window = InitRepoGuide(path)  # GuideWindow不需要parent参数
+            self._guide_window.completed.connect(self._on_init_guide_completed)
+            self._guide_window.show()
+        
+        QTimer.singleShot(2500, show_guide)
+    
+    def _on_init_guide_completed(self, repo_path: str):
+        """引导完成"""
+        InfoBar.success(
+            title="配置完成",
+            content="Git仓库已初始化并完成配置！",
+            parent=self.window(),
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            duration=2000
+        )
+    
     def _open_repo(self):
         """打开仓库"""
         path = QFileDialog.getExistingDirectory(
@@ -607,68 +781,109 @@ class RepoInterface(ScrollArea):
         if path:
             if gitService.set_repo_path(path):
                 import os
+                from PySide6.QtCore import QThread
+                from qfluentwidgetspro import ProgressInfoBar
+                from app.common.recent_repos import recentReposManager
+                
                 repo_name = os.path.basename(path)
                 self.repoNameLabel.setText(repo_name)
                 self.repoPathLabel.setText(path)
-                self.refresh_status()
-                InfoBar.success(
-                    title="成功",
-                    content="已打开仓库",
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=2000
+                # set_repo_path已触发statusChanged信号，自动刷新所有界面
+                
+                # 添加到最近仓库列表
+                recentReposManager.add(path)
+                self._update_recent_repos_menu()
+                
+                # 显示进度条
+                progress_bar = ProgressInfoBar.create(
+                    title='请稍候',
+                    content='正在检测仓库大小...',
+                    orient=Qt.Orientation.Horizontal,
+                    isClosable=False,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    parent=self.window()
                 )
+                
+                # 异步检测大仓库
+                class CheckRepoWorker(QThread):
+                    finished = Signal(bool, dict)
+                    
+                    def run(self):
+                        is_large = gitService.is_large_repo()
+                        repo_info = gitService.get_repo_size() if is_large else {}
+                        self.finished.emit(is_large, repo_info)
+                
+                def on_check_finished(is_large, repo_info):
+                    if is_large:
+                        progress_bar.setTitle('大仓库检测')
+                        progress_bar.setContent(f"检测到大仓库（{repo_info.get('commit_count', 0)}个提交）")
+                        progress_bar.warning(duration=3000)
+                    else:
+                        progress_bar.setTitle('成功')
+                        progress_bar.setContent('已打开仓库')
+                        progress_bar.success(duration=2000)
+                
+                self._check_worker = CheckRepoWorker()  # 保存引用
+                self._check_worker.finished.connect(on_check_finished)
+                self._check_worker.start()
             else:
                 InfoBar.error(
                     title="错误",
                     content="所选目录不是有效的Git仓库",
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=3000
                 )
 
     def refresh_status(self):
-        """刷新状态"""
+        """刷新状态（异步）"""
         if not gitService.repo_path:
             return
-
-        # 更新分支信息
-        branch = gitService.get_current_branch()
-        self.branchLabel.setText(f"分支: {branch}" if branch else "")
-
-        # 获取文件变更
-        changes = gitService.get_status()
-        self.changesLabel.setText(f"文件变更 ({len(changes)})")
-
-        # 清空现有列表
-        while self.fileListLayout.count() > 1:
-            item = self.fileListLayout.takeAt(0)
-            if item.widget():
-                item.widget().deleteLater()
-
-        # 添加文件卡片
-        for change in changes:
-            card = FileChangeCard(change, self)
-            card.stageClicked.connect(self._on_stage_file)
-            card.discardClicked.connect(self._on_discard_file)
-            card.selected.connect(self._on_file_selected)
-            self.fileListLayout.insertWidget(self.fileListLayout.count() - 1, card)
+        
+        from app.common.async_helper import SimpleAsyncTask
+        
+        def fetch_data():
+            """在子线程获取数据"""
+            branch = gitService.get_current_branch()
+            changes = gitService.get_status()
+            return branch, changes
+        
+        def update_ui(result):
+            """在主线程更新UI"""
+            branch, changes = result
+            
+            # 更新分支信息
+            self.branchLabel.setText(f"分支: {branch}" if branch else "")
+            
+            # 更新文件变更计数
+            self.changesLabel.setText(f"文件变更 ({len(changes)})")
+            
+            # 使用虚拟滚动列表显示所有文件
+            self.fileList.setFileChanges(changes)
+        
+        SimpleAsyncTask.run(fetch_data, update_ui)
 
     def _on_stage_file(self, path: str, stage: bool):
-        """暂存/取消暂存文件"""
-        if stage:
-            success = gitService.stage_file(path)
-        else:
-            success = gitService.unstage_file(path)
-
-        if not success:
-            InfoBar.error(
-                title="错误",
-                content=f"操作失败: {path}",
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
+        """暂存/取消暂存文件（异步）"""
+        from app.common.async_helper import SimpleAsyncTask
+        
+        def do_stage():
+            if stage:
+                return gitService.stage_file(path)
+            else:
+                return gitService.unstage_file(path)
+        
+        def on_finished(success):
+            if not success:
+                InfoBar.error(
+                    title="错误",
+                    content=f"操作失败: {path}",
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+        
+        SimpleAsyncTask.run(do_stage, on_finished)
 
     def _on_discard_file(self, path: str):
         """放弃文件修改"""
@@ -678,80 +893,156 @@ class RepoInterface(ScrollArea):
             self.window()
         )
         if box.exec():
-            success = gitService.discard_file(path)
-            if success:
+            from app.common.async_helper import SimpleAsyncTask
+            
+            def on_finished(success):
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content="已放弃修改",
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+                else:
+                    InfoBar.error(
+                        title="错误",
+                        content="放弃修改失败",
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+            
+            SimpleAsyncTask.run(lambda: gitService.discard_file(path), on_finished)
+
+    def _on_file_selected(self, path: str, is_staged: bool = False):
+        """文件被选中 - 显示文件差异"""
+        if path:
+            self.diffViewPanel.show_diff(path, is_staged)
+        else:
+            self.diffViewPanel.clear_diff()
+
+    def _stage_all(self):
+        """暂存所有（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            if result:
                 InfoBar.success(
                     title="成功",
-                    content="已放弃修改",
+                    content="已暂存所有变更",
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
             else:
                 InfoBar.error(
-                    title="错误",
-                    content="放弃修改失败",
+                    title="失败",
+                    content="暂存失败",
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
-
-    def _on_file_selected(self, path: str):
-        """文件被选中 - 显示文件差异"""
-        # 查找文件状态
-        changes = gitService.get_status()
-        file_change = next((c for c in changes if c.path == path), None)
         
-        if file_change:
-            # 显示差异（根据是否暂存选择显示暂存区或工作区差异）
-            self.diffViewPanel.show_diff(path, file_change.staged)
-        else:
-            # 文件未找到
-            self.diffViewPanel.clear_diff()
-
-    def _stage_all(self):
-        """暂存所有"""
-        if gitService.stage_all():
-            InfoBar.success(
-                title="成功",
-                content="已暂存所有变更",
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
+        AsyncTask.run(
+            func=gitService.stage_all,
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content='正在暂存所有文件...',
+            parent=self.window()
+        )
 
     def _unstage_all(self):
-        """取消暂存所有"""
-        if gitService.unstage_all():
-            InfoBar.success(
-                title="成功",
-                content="已取消暂存所有文件",
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-
+        """取消暂存所有（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            if result:
+                InfoBar.success(
+                    title="成功",
+                    content="已取消暂存所有文件",
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+            else:
+                InfoBar.error(
+                    title="失败",
+                    content="取消暂存失败",
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+        
+        AsyncTask.run(
+            func=gitService.unstage_all,
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content='正在取消暂存...',
+            parent=self.window()
+        )
+    
     def _on_commit(self, message: str):
-        """提交"""
-        success, msg = gitService.commit(message)
-        if success:
-            self.commitPanel.clear()
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
-
+        """提交（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            success, msg = result
+            if success:
+                self.commitPanel.clear()
+                InfoBar.success(
+                    title="成功",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+            else:
+                InfoBar.error(
+                    title="失败",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=3000
+                )
+        
+        AsyncTask.run(
+            func=lambda: gitService.commit(message),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content='正在提交...',
+            parent=self.window()
+        )
+    
+    def _on_clone_repo(self):
+        """克隆仓库"""
+        from .clone_dialog import CloneDialog
+        dialog = CloneDialog(self.window())
+        if dialog.exec():
+            url, path = dialog.get_clone_info()
+            if not url or not path:
+                InfoBar.warning(
+                    title="提示",
+                    content="请输入URL和路径",
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+                return
+            
+            # 异步克隆
+            def on_clone_finished(success: bool, msg: str):
+                if success:
+                    # 克隆成功后自动打开仓库
+                    if gitService.set_repo_path(path):
+                        import os
+                        repo_name = os.path.basename(path)
+                        self.repoNameLabel.setText(repo_name)
+                        self.repoPathLabel.setText(path)
+                        self.refresh_status()
+            
+            gitService.clone(url, path, on_clone_finished)
+    
     def _on_open_stash(self):
         """打开Stash管理对话框"""
         from .stash_dialog import StashDialog
@@ -761,10 +1052,21 @@ class RepoInterface(ScrollArea):
     def _on_pull(self):
         """拉取"""
         gitService.pull()
+    
+    def _on_pull_rebase(self):
+        """拉取并Rebase"""
+        gitService.pull(rebase=True)
 
     def _on_push(self):
         """推送"""
         gitService.push()
+    
+    def _on_force_push(self):
+        """强制推送（危险操作）"""
+        from app.common.danger_dialog import DangerOperationDialog
+        
+        if DangerOperationDialog.confirm_force_push(self.window()):
+            gitService.push(force=True)
 
     def _on_quick_commit_push(self, message: str):
         """一键提交推送"""
@@ -776,35 +1078,6 @@ class RepoInterface(ScrollArea):
         self.quickPanel.quickBtn.setEnabled(True)
         if success:
             self.quickPanel.reset()
-
-    def _on_operation_started(self, msg: str):
-        """操作开始"""
-        InfoBar.info(
-            title="进行中",
-            content=msg,
-            parent=self.window(),
-            position=InfoBarPosition.TOP,
-            duration=1500
-        )
-
-    def _on_operation_finished(self, success: bool, msg: str):
-        """操作完成"""
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
 
     def _on_progress_updated(self, percent: int, msg: str):
         """进度更新"""

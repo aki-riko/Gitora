@@ -16,6 +16,7 @@ from qfluentwidgets import (
 )
 
 from ..common.git_service import gitService, ConflictInfo
+from ..common.icon import Icon
 
 
 class ConflictFileCard(CardWidget):
@@ -36,7 +37,7 @@ class ConflictFileCard(CardWidget):
         layout.setSpacing(12)
         
         # 左侧：冲突图标
-        icon = IconWidget(FluentIcon.CANCEL, self)
+        icon = IconWidget(Icon.GIT_CLOSE_PR, self)  # Git专用冲突图标
         icon.setFixedSize(24, 24)
         layout.addWidget(icon)
         
@@ -173,34 +174,41 @@ class ConflictInterface(ScrollArea):
         gitService.statusChanged.connect(self.refresh_conflicts)
     
     def refresh_conflicts(self):
-        """刷新冲突列表"""
-        # 检查是否正在合并
-        if not gitService.is_merging():
-            self.statusIcon.setIcon(FluentIcon.ACCEPT)
-            self.statusTitle.setText("当前没有合并冲突")
-            self.statusDesc.setText("所有文件已解决或没有进行中的合并操作")
-            self.abortBtn.setEnabled(False)
+        """刷新冲突列表（异步）"""
+        from app.common.async_helper import SimpleAsyncTask
+        
+        def fetch_data():
+            """在子线程获取数据"""
+            is_merging = gitService.is_merging()
+            conflicts = gitService.get_conflicts() if is_merging else []
+            return is_merging, conflicts
+        
+        def update_ui(result):
+            """在主线程更新UI"""
+            is_merging, conflicts = result
             
-            # 清空冲突列表
-            self._clear_conflict_list()
-            return
+            if not is_merging:
+                self.statusIcon.setIcon(FluentIcon.ACCEPT)
+                self.statusTitle.setText("当前没有合并冲突")
+                self.statusDesc.setText("所有文件已解决或没有进行中的合并操作")
+                self.abortBtn.setEnabled(False)
+                self._clear_conflict_list()
+                return
+            
+            if not conflicts:
+                self.statusIcon.setIcon(FluentIcon.ACCEPT)
+                self.statusTitle.setText("所有冲突已解决")
+                self.statusDesc.setText("可以继续提交完成合并")
+                self.abortBtn.setEnabled(True)
+            else:
+                self.statusIcon.setIcon(FluentIcon.CANCEL)
+                self.statusTitle.setText(f"发现 {len(conflicts)} 个冲突文件")
+                self.statusDesc.setText("请选择保留哪个版本，或手动编辑解决冲突")
+                self.abortBtn.setEnabled(True)
+            
+            self._update_conflict_list(conflicts)
         
-        # 获取冲突文件
-        conflicts = gitService.get_conflicts()
-        
-        if not conflicts:
-            self.statusIcon.setIcon(FluentIcon.ACCEPT)
-            self.statusTitle.setText("所有冲突已解决")
-            self.statusDesc.setText("可以继续提交完成合并")
-            self.abortBtn.setEnabled(True)
-        else:
-            self.statusIcon.setIcon(FluentIcon.CANCEL)
-            self.statusTitle.setText(f"发现 {len(conflicts)} 个冲突文件")
-            self.statusDesc.setText("请选择保留哪个版本，或手动编辑解决冲突")
-            self.abortBtn.setEnabled(True)
-        
-        # 更新冲突列表
-        self._update_conflict_list(conflicts)
+        SimpleAsyncTask.run(fetch_data, update_ui)
     
     def _clear_conflict_list(self):
         """清空冲突列表"""
@@ -223,89 +231,17 @@ class ConflictInterface(ScrollArea):
             self.conflictListLayout.addWidget(card)
     
     def _on_resolve_ours(self, file_path: str):
-        """使用我们的版本解决冲突"""
-        success, msg = gitService.resolve_conflict_with_ours(file_path)
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-            self.refresh_conflicts()
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
-    
-    def _on_resolve_theirs(self, file_path: str):
-        """使用他们的版本解决冲突"""
-        success, msg = gitService.resolve_conflict_with_theirs(file_path)
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-            self.refresh_conflicts()
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
-    
-    def _on_view_conflict(self, file_path: str):
-        """查看冲突内容"""
-        # 读取文件内容
-        try:
-            import os
-            full_path = os.path.join(gitService.repo_path, file_path)
-            with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                content = f.read()
-            
-            # 创建查看对话框
-            from .conflict_viewer_dialog import ConflictViewerDialog
-            dialog = ConflictViewerDialog(file_path, content, self.window())
-            dialog.exec()
-            
-        except Exception as e:
-            InfoBar.error(
-                title="读取失败",
-                content=f"无法读取文件: {str(e)}",
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
-    
-    def _on_abort_merge(self):
-        """中止合并操作"""
-        box = MessageBox(
-            "确认中止合并",
-            "这将放弃所有未完成的合并操作。\n\n"
-            "已解决的冲突也会被撤销。",
-            self.window()
-        )
-        box.yesButton.setText("确认中止")
-        box.cancelButton.setText("取消")
+        """使用我们的版本解决冲突（异步）"""
+        from app.common.async_helper import AsyncTask
         
-        if box.exec():
-            success, msg = gitService.abort_merge()
+        def on_success(result):
+            success, msg = result
             if success:
                 InfoBar.success(
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
                 self.refresh_conflicts()
@@ -314,9 +250,117 @@ class ConflictInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=3000
                 )
+        
+        AsyncTask.run(
+            func=lambda: gitService.resolve_conflict_with_ours(file_path),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在解决冲突: {file_path}',
+            parent=self.window()
+        )
+    
+    def _on_resolve_theirs(self, file_path: str):
+        """使用他们的版本解决冲突（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            success, msg = result
+            if success:
+                InfoBar.success(
+                    title="成功",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=2000
+                )
+                self.refresh_conflicts()
+            else:
+                InfoBar.error(
+                    title="失败",
+                    content=msg,
+                    parent=self.window(),
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=3000
+                )
+        
+        AsyncTask.run(
+            func=lambda: gitService.resolve_conflict_with_theirs(file_path),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在解决冲突: {file_path}',
+            parent=self.window()
+        )
+    
+    def _on_view_conflict(self, file_path: str):
+        """查看冲突内容（异步）"""
+        from app.common.async_helper import SimpleAsyncTask
+        import os
+        
+        def read_conflict_file():
+            full_path = os.path.join(gitService.repo_path, file_path)
+            real_path = os.path.realpath(full_path)
+            repo_real_path = os.path.realpath(gitService.repo_path)
+            
+            if not real_path.startswith(repo_real_path + os.sep):
+                raise ValueError("路径不在仓库内")
+            
+            with open(real_path, 'r', encoding='utf-8', errors='ignore') as f:
+                return f.read()
+        
+        def on_success(content):
+            from .conflict_viewer_dialog import ConflictViewerDialog
+            dialog = ConflictViewerDialog(file_path, content, self.window())
+            dialog.exec()
+        
+        def on_error(error_msg):
+            InfoBar.error(
+                title="读取失败",
+                content=f"无法读取文件: {error_msg}",
+                parent=self.window(),
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000
+            )
+        
+        # 使用封装的异步工具
+        SimpleAsyncTask.run(read_conflict_file, on_success)
+    
+    def _on_abort_merge(self):
+        """中止合并操作"""
+        from app.common.danger_dialog import DangerOperationDialog
+        
+        if DangerOperationDialog.confirm_abort_merge(self.window()):
+            from app.common.async_helper import AsyncTask
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+                    self.refresh_conflicts()
+                else:
+                    InfoBar.error(
+                        title="失败",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=3000
+                    )
+            
+            AsyncTask.run(
+                func=gitService.abort_merge,
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content='正在中止合并...',
+                parent=self.window()
+            )
     
     def showEvent(self, event):
         """显示时自动刷新"""

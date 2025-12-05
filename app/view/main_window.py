@@ -14,6 +14,7 @@ from .repo_interface import RepoInterface
 from .history_interface import HistoryInterface
 from .branch_interface import BranchInterface
 from .conflict_interface import ConflictInterface
+from .tag_interface import TagInterface
 from .setting_interface import SettingInterface
 from ..common.config import cfg
 from ..common.icon import Icon
@@ -33,6 +34,7 @@ class MainWindow(MSFluentWindow):
         self.historyInterface = HistoryInterface(self)
         self.branchInterface = BranchInterface(self)
         self.conflictInterface = ConflictInterface(self)
+        self.tagInterface = TagInterface(self)
         self.settingInterface = SettingInterface(self)
 
         self.connectSignalToSlot()
@@ -42,35 +44,84 @@ class MainWindow(MSFluentWindow):
 
     def connectSignalToSlot(self):
         signalBus.micaEnableChanged.connect(self.setMicaEffectEnabled)
+        
+        # 统一处理Git操作进度信号
+        from ..common.git_service import gitService
+        gitService.operationStarted.connect(self._on_operation_started)
+        gitService.operationFinished.connect(self._on_operation_finished)
+    
+    def _on_operation_started(self, msg: str):
+        """操作开始 - 显示进度环"""
+        from qfluentwidgetspro import ProgressInfoBar
+        from qfluentwidgets import InfoBarPosition
+        from PySide6.QtCore import Qt
+        
+        # 关闭之前的进度环
+        if hasattr(self, '_progress_bar') and self._progress_bar:
+            try:
+                self._progress_bar.close()
+            except:
+                pass
+        
+        # 显示新的进度环
+        self._progress_bar = ProgressInfoBar.create(
+            title='请勿离开',
+            content=msg,
+            orient=Qt.Orientation.Horizontal,
+            isClosable=False,
+            position=InfoBarPosition.BOTTOM_RIGHT,
+            parent=self
+        )
+    
+    def _on_operation_finished(self, success: bool, msg: str):
+        """操作完成 - 更新进度环状态"""
+        if hasattr(self, '_progress_bar') and self._progress_bar:
+            try:
+                if success:
+                    self._progress_bar.setTitle('成功')
+                    self._progress_bar.setContent(msg)
+                    self._progress_bar.success(duration=2000)
+                else:
+                    self._progress_bar.setTitle('失败')
+                    self._progress_bar.setContent(msg)
+                    self._progress_bar.error(duration=3000)
+            except:
+                pass
 
     def initNavigation(self):
         # 仓库界面（首页）
         self.addSubInterface(
             self.repoInterface,
-            FIF.HOME,
-            self.tr('仓库'),
-            FIF.HOME_FILL
+            Icon.GIT_REPOSITORY,  # Git专用仓库图标
+            self.tr('仓库')
         )
 
         # 历史界面
         self.addSubInterface(
             self.historyInterface,
-            FIF.HISTORY,
+            Icon.GIT_REPOSITORY_COMMITS,  # Git专用提交历史图标
             self.tr('历史')
         )
 
         # 分支界面
         self.addSubInterface(
             self.branchInterface,
-            FIF.DEVELOPER_TOOLS,
+            Icon.GIT_BRANCH,  # Git专用分支图标
             self.tr('分支')
         )
 
         # 冲突界面
         self.addSubInterface(
             self.conflictInterface,
-            FIF.CANCEL,
+            Icon.GIT_FORK,  # 使用Git专用冲突图标
             self.tr('冲突')
+        )
+
+        # Tag界面
+        self.addSubInterface(
+            self.tagInterface,
+            FIF.TAG,
+            self.tr('Tag')
         )
 
         # 设置界面（底部）

@@ -34,9 +34,6 @@ def isWin11():
 class Config(QConfig):
     """ Config of application """
 
-    # TODO: ADD YOUR CONFIG GROUP HERE
-
-
     # main window
     micaEnabled = ConfigItem("MainWindow", "MicaEnabled", isWin11(), BoolValidator())
     dpiScale = OptionsConfigItem(

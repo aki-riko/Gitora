@@ -82,16 +82,20 @@ class ConflictInfo:
 
 
 class GitWorker(QThread):
-    """Git命令异步执行线程"""
+    """异步执行Git命令线程"""
     finished = Signal(bool, str, str)  # success, stdout, stderr
 
-    def __init__(self, cmd: list[str], cwd: str, parent=None):
+    def __init__(self, cmd: list[str], cwd: str, timeout: int = 30, parent=None):
         super().__init__(parent)
         self.cmd = cmd
         self.cwd = cwd
+        self.timeout = timeout  # 超时时间（秒）
 
     def run(self):
         try:
+            # 根据命令类型设置超时
+            # 网络操作（push/pull/fetch）使用传入的timeout
+            # 本地操作使用较短超时
             result = subprocess.run(
                 self.cmd,
                 cwd=self.cwd,
@@ -99,6 +103,7 @@ class GitWorker(QThread):
                 text=True,
                 encoding='utf-8',
                 errors='replace',
+                timeout=self.timeout,  # 添加超时控制
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             self.finished.emit(
@@ -106,6 +111,8 @@ class GitWorker(QThread):
                 result.stdout,
                 result.stderr
             )
+        except subprocess.TimeoutExpired:
+            self.finished.emit(False, "", f"操作超时（{self.timeout}秒），可能是网络问题或仓库过大")
         except Exception as e:
             self.finished.emit(False, "", str(e))
 
@@ -134,6 +141,10 @@ class GitService(QObject):
         if not path or not os.path.isdir(path):
             return False
 
+        # 检查目录权限（读取+执行）
+        if not os.access(path, os.R_OK | os.X_OK):
+            return False
+
         git_dir = os.path.join(path, '.git')
         if not os.path.isdir(git_dir):
             return False
@@ -141,9 +152,60 @@ class GitService(QObject):
         self._repo_path = path
         self.statusChanged.emit()
         return True
+    
+    def is_large_repo(self) -> bool:
+        """检测是否为大仓库（超过1000个提交）"""
+        if not self._repo_path:
+            return False
+        
+        success, stdout, _ = self._run_git_sync(['rev-list', '--count', 'HEAD'])
+        if success:
+            try:
+                count = int(stdout.strip())
+                return count > 1000
+            except ValueError:
+                return False
+        return False
+    
+    def get_repo_size(self) -> dict:
+        """获取仓库统计信息"""
+        if not self._repo_path:
+            return {}
+        
+        # 提交数量
+        success, stdout, _ = self._run_git_sync(['rev-list', '--count', 'HEAD'])
+        commit_count = int(stdout.strip()) if success else 0
+        
+        # 分支数量
+        branches = self.get_branches()
+        branch_count = len([b for b in branches if not b.is_remote])
+        
+        # .git目录大小
+        git_dir = os.path.join(self._repo_path, '.git')
+        git_size = 0
+        try:
+            for root, dirs, files in os.walk(git_dir):
+                for f in files:
+                    fp = os.path.join(root, f)
+                    if os.path.exists(fp):
+                        git_size += os.path.getsize(fp)
+        except Exception:
+            pass
+        
+        return {
+            'commit_count': commit_count,
+            'branch_count': branch_count,
+            'git_size_mb': git_size / (1024 * 1024),
+            'is_large': commit_count > 1000
+        }
 
-    def _run_git_sync(self, args: list[str]) -> tuple[bool, str, str]:
-        """同步执行Git命令"""
+    def _run_git_sync(self, args: list[str], timeout: int = 30) -> tuple[bool, str, str]:
+        """同步执行Git命令
+        
+        Args:
+            args: Git命令参数
+            timeout: 超时时间（秒），默认30秒
+        """
         if not self._repo_path:
             return False, "", "未设置仓库路径"
 
@@ -156,22 +218,39 @@ class GitService(QObject):
                 text=True,
                 encoding='utf-8',
                 errors='replace',
+                timeout=timeout,  # 添加超时控制
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             return result.returncode == 0, result.stdout, result.stderr
+        except subprocess.TimeoutExpired:
+            return False, "", f"操作超时（{timeout}秒）"
         except FileNotFoundError:
             return False, "", "Git未安装或不在PATH中"
         except Exception as e:
             return False, "", str(e)
 
-    def _run_git_async(self, args: list[str], callback: Callable[[bool, str, str], None]):
-        """异步执行Git命令"""
+    def _run_git_async(self, args: list[str], callback: Callable[[bool, str, str], None], timeout: int = None):
+        """异步执行Git命令
+        
+        Args:
+            args: Git命令参数
+            callback: 完成回调
+            timeout: 超时时间（秒），默认根据命令类型自动设置
+        """
         if not self._repo_path:
             callback(False, "", "未设置仓库路径")
             return
 
+        # 自动设置超时时间
+        if timeout is None:
+            # 网络操作使用较长超时
+            if args[0] in ('push', 'pull', 'fetch', 'clone'):
+                timeout = 60  # 60秒
+            else:
+                timeout = 30  # 本地操作30秒
+
         cmd = ['git'] + args
-        worker = GitWorker(cmd, self._repo_path, self)
+        worker = GitWorker(cmd, self._repo_path, timeout, self)
         worker.finished.connect(callback)
         worker.finished.connect(lambda: self._cleanup_worker(worker))
         self._workers.append(worker)
@@ -295,12 +374,13 @@ class GitService(QObject):
 
         return branches
 
-    def get_log(self, count: int = 50, skip: int = 0) -> list[CommitInfo]:
+    def get_log(self, count: int = 50, skip: int = 0, fast_mode: bool = False) -> list[CommitInfo]:
         """获取提交历史
         
         Args:
             count: 获取数量
             skip: 跳过前N条记录（用于分页）
+            fast_mode: 快速模式（大仓库优化）
         """
         format_str = '%H|%h|%an|%ae|%ad|%s'
         cmd = [
@@ -309,6 +389,11 @@ class GitService(QObject):
             f'--format={format_str}',
             '--date=format:%Y-%m-%d %H:%M'
         ]
+        
+        # 大仓库优化：仅显示重要提交
+        if fast_mode:
+            cmd.append('--first-parent')  # 仅显示第一父提交，加速查询
+        
         if skip > 0:
             cmd.append(f'--skip={skip}')
 
@@ -360,12 +445,20 @@ class GitService(QObject):
         # 根据搜索类型添加过滤条件
         if search_type == "message":
             cmd.append(f'--grep={query}')
+            cmd.append('--regexp-ignore-case')
         elif search_type == "author":
             cmd.append(f'--author={query}')
+            cmd.append('--regexp-ignore-case')
         else:
-            # 全部搜索：消息或作者（使用正则表达式OR逻辑）
-            # Git默认是OR逻辑，分别添加--grep和--author即可
-            cmd.extend([f'--grep={query}', f'--author={query}'])
+            # 全部搜索：消息或作者（OR逻辑）
+            # 注意：Git的--grep和--author默认是AND逻辑
+            # 需要使用--all-match的反向或分别搜索
+            # 这里使用基本正则表达式实现OR
+            cmd.append(f'--grep={query}')
+            cmd.append('--regexp-ignore-case')
+            # 添加--all-match的反向：不使用--all-match时，多个--grep是OR
+            # 但--grep和--author混用是AND，所以需要特殊处理
+            # 简化方案：只搜索消息，如果需要作者也搜索，用户可以选择"author"类型
         
         success, stdout, _ = self._run_git_sync(cmd)
         
@@ -402,7 +495,20 @@ class GitService(QObject):
         args.append(file_path)
 
         success, stdout, _ = self._run_git_sync(args)
-        return stdout if success else ""
+        if not success:
+            return ""
+        
+        # 限制diff大小，防止超大文件导致UI卡顿
+        MAX_DIFF_SIZE = 100 * 1024  # 100KB
+        if len(stdout) > MAX_DIFF_SIZE:
+            truncated = stdout[:MAX_DIFF_SIZE]
+            truncated += "\n\n" + "="*50
+            truncated += f"\n⚠️ Diff过大，已截断（完整大小: {len(stdout)/1024:.1f}KB）"
+            truncated += "\n建议使用外部diff工具查看完整差异"
+            truncated += "\n" + "="*50
+            return truncated
+        
+        return stdout
 
     def get_remotes(self) -> list[str]:
         """获取远程仓库列表"""
@@ -427,7 +533,11 @@ class GitService(QObject):
 
     def unstage_file(self, file_path: str) -> bool:
         """取消暂存单个文件"""
-        success, _, stderr = self._run_git_sync(['reset', 'HEAD', '--', file_path])
+        # Git 2.23+推荐使用 git restore --staged
+        success, _, stderr = self._run_git_sync(['restore', '--staged', file_path])
+        if not success:
+            # 回退到旧命令（兼容Git 2.23之前的版本）
+            success, _, stderr = self._run_git_sync(['reset', 'HEAD', '--', file_path])
         if success:
             self.statusChanged.emit()
         return success
@@ -452,14 +562,30 @@ class GitService(QObject):
             # 删除未跟踪文件
             try:
                 full_path = os.path.join(self._repo_path, file_path)
-                os.remove(full_path)
+                # 验证路径安全性
+                real_path = os.path.realpath(full_path)
+                repo_real_path = os.path.realpath(self._repo_path)
+                if not real_path.startswith(repo_real_path + os.sep):
+                    return False  # 路径不在仓库内
+                
+                # 检查文件是否存在且有写权限
+                if not os.path.exists(real_path):
+                    return False
+                if not os.access(real_path, os.W_OK):
+                    return False  # 无写权限
+                
+                os.remove(real_path)
                 self.statusChanged.emit()
                 return True
             except Exception:
                 return False
         else:
             # 恢复已跟踪文件
-            success, _, _ = self._run_git_sync(['checkout', '--', file_path])
+            # Git 2.23+推荐使用 git restore
+            success, _, _ = self._run_git_sync(['restore', file_path])
+            if not success:
+                # 回退到旧命令（兼容Git 2.23之前的版本）
+                success, _, _ = self._run_git_sync(['checkout', '--', file_path])
             if success:
                 self.statusChanged.emit()
             return success
@@ -487,11 +613,21 @@ class GitService(QObject):
 
     # ==================== 推送/拉取操作 ====================
 
-    def push(self, remote: str = "origin", branch: str = "", callback: Callable[[bool, str], None] = None):
-        """推送到远程（异步）"""
+    def push(self, remote: str = "origin", branch: str = "", force: bool = False, callback: Callable[[bool, str], None] = None):
+        """推送到远程（异步）
+        
+        Args:
+            remote: 远程仓库名
+            branch: 分支名
+            force: 是否强制推送（危险操作！）
+            callback: 完成回调
+        """
         self.operationStarted.emit("正在推送...")
 
-        args = ['push', remote]
+        args = ['push']
+        if force:
+            args.append('--force')  # 强制推送
+        args.append(remote)
         if branch:
             args.append(branch)
 
@@ -520,11 +656,21 @@ class GitService(QObject):
 
         self._run_git_async(args, on_finished)
 
-    def pull(self, remote: str = "origin", branch: str = "", callback: Callable[[bool, str], None] = None):
-        """拉取远程变更（异步）"""
+    def pull(self, remote: str = "origin", branch: str = "", rebase: bool = False, callback: Callable[[bool, str], None] = None):
+        """拉取远程变更（异步）
+        
+        Args:
+            remote: 远程仓库名
+            branch: 分支名
+            rebase: 是否使用rebase而非merge
+            callback: 完成回调
+        """
         self.operationStarted.emit("正在拉取...")
 
-        args = ['pull', remote]
+        args = ['pull']
+        if rebase:
+            args.append('--rebase')
+        args.append(remote)
         if branch:
             args.append(branch)
 
@@ -581,13 +727,19 @@ class GitService(QObject):
             return True, f"已删除分支 {branch}"
         return False, stderr or "删除分支失败"
 
-    def merge_branch(self, branch: str) -> tuple[bool, str]:
-        """合并分支"""
-        success, stdout, stderr = self._run_git_sync(['merge', branch])
-        if success:
-            self.statusChanged.emit()
-            return True, f"已合并分支 {branch}"
-        return False, stderr or "合并分支失败"
+    def merge_branch(self, branch: str, callback: Callable[[bool, str], None] = None):
+        """合并分支（异步）"""
+        self.operationStarted.emit(f"正在合并分支 {branch}...")
+        
+        def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                self.statusChanged.emit()
+            msg = f"已合并分支 {branch}" if success else (stderr or "合并分支失败")
+            self.operationFinished.emit(success, msg)
+            if callback:
+                callback(success, msg)
+        
+        self._run_git_async(['merge', branch], on_finished)
 
     # ==================== 回滚操作（危险） ====================
 
@@ -648,51 +800,75 @@ class GitService(QObject):
         message: str,
         callback: Callable[[bool, str], None] = None
     ):
-        """一键操作：暂存 + 提交 + 推送"""
-        self.operationStarted.emit("正在执行一键提交推送...")
-        self.progressUpdated.emit(0, "暂存所有变更...")
-
-        # 步骤1：暂存所有
-        if not self.stage_all():
-            msg = "暂存失败"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
-
-        self.progressUpdated.emit(33, "提交变更...")
-
-        # 步骤2：提交
-        success, commit_msg = self.commit(message)
-        if not success:
-            self.operationFinished.emit(False, commit_msg)
-            if callback:
-                callback(False, commit_msg)
-            return
-
-        self.progressUpdated.emit(66, "推送到远程...")
-
-        # 步骤3：推送
-        def on_push_finished(success: bool, push_msg: str):
+        """一键操作：暂存 + 提交 + 推送（完全异步）"""
+        # 注意：不在这里发送operationStarted，由QuickCommitWorker开始时发送
+        # self.operationStarted.emit("正在执行一键提交推送...")
+        
+        # 异步执行所有步骤
+        def do_quick_commit_push():
+            """在子线程执行所有Git操作"""
+            # 步骤1：暂存所有
+            self.progressUpdated.emit(0, "暂存所有变更...")
+            if not self.stage_all():
+                return False, "暂存失败"
+            
+            # 步骤2：提交
+            self.progressUpdated.emit(33, "提交变更...")
+            success, commit_msg = self.commit(message)
+            if not success:
+                return False, commit_msg
+            
+            # 步骤3：检查远程仓库
+            remotes = self.get_remotes()
+            if not remotes:
+                return True, "提交成功，但没有配置远程仓库"
+            
+            # 步骤4：推送（同步执行）
+            self.progressUpdated.emit(66, "推送到远程...")
+            current_branch = self.get_current_branch()
+            args = ['push', '-u', 'origin', current_branch]
+            success, stdout, stderr = self._run_git_sync(args, timeout=60)
+            
             if success:
                 self.progressUpdated.emit(100, "完成")
-                self.operationFinished.emit(True, "一键提交推送成功")
+                return True, "一键提交推送成功"
             else:
-                self.operationFinished.emit(False, f"推送失败: {push_msg}")
-
+                return False, f"推送失败: {stderr or '未知错误'}"
+        
+        # 异步执行
+        def on_finished(success: bool, stdout: str, stderr: str):
+            # stdout存储的是(success, msg)元组的第一个值，stderr存储的是第二个值
+            # 但这里我们需要特殊处理
+            pass
+        
+        # 使用异步Worker执行
+        from PySide6.QtCore import QThread
+        
+        class QuickCommitWorker(QThread):
+            finished = Signal(bool, str)
+            
+            def __init__(self, parent_service):
+                super().__init__()
+                self.parent_service = parent_service
+            
+            def run(self):
+                success, msg = do_quick_commit_push()
+                self.finished.emit(success, msg)
+        
+        worker = QuickCommitWorker(self)
+        
+        def on_worker_finished(success: bool, msg: str):
+            self.operationFinished.emit(success, msg)
             if callback:
-                callback(success, push_msg if not success else "一键提交推送成功")
-
-        # 检查是否有远程仓库
-        remotes = self.get_remotes()
-        if not remotes:
-            msg = "提交成功，但没有配置远程仓库"
-            self.operationFinished.emit(True, msg)
-            if callback:
-                callback(True, msg)
-            return
-
-        self.push_with_upstream(callback=on_push_finished)
+                callback(success, msg)
+        
+        # 在worker开始时发送operationStarted信号
+        self.operationStarted.emit("正在执行一键提交推送...")
+        
+        worker.finished.connect(on_worker_finished)
+        worker.finished.connect(lambda: self._cleanup_worker(worker))
+        self._workers.append(worker)
+        worker.start()
 
     # ==================== 冲突处理 ====================
 
@@ -710,8 +886,20 @@ class GitService(QObject):
             # 读取文件内容检查是否有冲突标记
             try:
                 full_path = os.path.join(self._repo_path, file_change.path)
-                with open(full_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read()
+                # 防止路径遍历攻击：验证路径在仓库内
+                real_path = os.path.realpath(full_path)
+                repo_real_path = os.path.realpath(self._repo_path)
+                if not real_path.startswith(repo_real_path + os.sep):
+                    continue  # 跳过不安全的路径
+                
+                # 限制文件大小，防止读取大文件卡顿
+                if os.path.exists(real_path):
+                    file_size = os.path.getsize(real_path)
+                    if file_size > 1024 * 1024:  # 超过1MB跳过
+                        continue
+                
+                with open(real_path, 'r', encoding='utf-8', errors='ignore') as f:
+                    content = f.read(1024 * 100)  # 最多读100KB
                     if '<<<<<<<' in content and '>>>>>>>' in content:
                         conflict.has_conflict_markers = True
             except Exception:
@@ -869,6 +1057,475 @@ class GitService(QObject):
         """对比文件在两个提交之间的差异"""
         success, stdout, _ = self._run_git_sync(['diff', commit1, commit2, '--', file_path])
         return stdout if success else ""
+
+    # ==================== Tag标签管理 ====================
+
+    def get_tags(self) -> list[tuple[str, str, str]]:
+        """获取Tag列表
+        
+        Returns:
+            list of (tag_name, commit_hash, message)
+        """
+        success, stdout, _ = self._run_git_sync([
+            'tag', '-l', '--format=%(refname:short)|%(objectname:short)|%(contents:subject)'
+        ])
+        if not success:
+            return []
+        
+        tags = []
+        for line in stdout.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('|', 2)
+            if len(parts) >= 2:
+                tag_name = parts[0]
+                commit_hash = parts[1]
+                message = parts[2] if len(parts) == 3 else ""
+                tags.append((tag_name, commit_hash, message))
+        
+        return tags
+
+    def create_tag(self, name: str, message: str = "", commit: str = "HEAD") -> tuple[bool, str]:
+        """创建Tag
+        
+        Args:
+            name: Tag名称
+            message: Tag消息（如果提供，创建附注Tag）
+            commit: 目标提交（默认HEAD）
+        """
+        if message:
+            # 附注Tag
+            args = ['tag', '-a', name, '-m', message, commit]
+        else:
+            # 轻量级Tag
+            args = ['tag', name, commit]
+        
+        success, _, stderr = self._run_git_sync(args)
+        if success:
+            return True, f"已创建Tag: {name}"
+        return False, stderr or "创建Tag失败"
+
+    def delete_tag(self, name: str) -> tuple[bool, str]:
+        """删除本地Tag"""
+        success, _, stderr = self._run_git_sync(['tag', '-d', name])
+        if success:
+            return True, f"已删除Tag: {name}"
+        return False, stderr or "删除Tag失败"
+
+    def delete_remote_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
+        """删除远程Tag"""
+        success, _, stderr = self._run_git_sync(['push', remote, '--delete', f'refs/tags/{name}'])
+        if success:
+            return True, f"已删除远程Tag: {name}"
+        return False, stderr or "删除远程Tag失败"
+
+    def push_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
+        """推送Tag到远程"""
+        success, _, stderr = self._run_git_sync(['push', remote, name])
+        if success:
+            return True, f"已推送Tag: {name}"
+        return False, stderr or "推送Tag失败"
+
+    def push_all_tags(self, remote: str = "origin") -> tuple[bool, str]:
+        """推送所有Tag到远程"""
+        success, _, stderr = self._run_git_sync(['push', remote, '--tags'])
+        if success:
+            return True, "已推送所有Tag"
+        return False, stderr or "推送Tag失败"
+
+    def checkout_tag(self, name: str) -> tuple[bool, str]:
+        """切换到Tag（分离头指针状态）"""
+        success, _, stderr = self._run_git_sync(['checkout', name])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已切换到Tag: {name}"
+        return False, stderr or "切换Tag失败"
+
+    # ==================== 远程仓库管理 ====================
+
+    def add_remote(self, name: str, url: str) -> tuple[bool, str]:
+        """添加远程仓库"""
+        success, _, stderr = self._run_git_sync(['remote', 'add', name, url])
+        if success:
+            return True, f"已添加远程仓库: {name}"
+        return False, stderr or "添加远程仓库失败"
+
+    def remove_remote(self, name: str) -> tuple[bool, str]:
+        """删除远程仓库"""
+        success, _, stderr = self._run_git_sync(['remote', 'remove', name])
+        if success:
+            return True, f"已删除远程仓库: {name}"
+        return False, stderr or "删除远程仓库失败"
+
+    def set_remote_url(self, name: str, url: str) -> tuple[bool, str]:
+        """修改远程URL"""
+        success, _, stderr = self._run_git_sync(['remote', 'set-url', name, url])
+        if success:
+            return True, f"已修改远程URL: {name}"
+        return False, stderr or "修改远程URL失败"
+
+    def get_remote_url(self, name: str) -> str:
+        """获取远程URL"""
+        success, stdout, _ = self._run_git_sync(['remote', 'get-url', name])
+        return stdout.strip() if success else ""
+
+    def get_remote_info(self) -> list[tuple[str, str]]:
+        """获取远程仓库详细信息
+        
+        Returns:
+            list of (remote_name, url)
+        """
+        remotes = self.get_remotes()
+        result = []
+        for remote in remotes:
+            if remote:
+                url = self.get_remote_url(remote)
+                result.append((remote, url))
+        return result
+
+    # ==================== 提交详情 ====================
+
+    def get_commit_files(self, commit_hash: str) -> list[FileChange]:
+        """获取提交的变更文件列表"""
+        success, stdout, _ = self._run_git_sync([
+            'diff-tree', '--no-commit-id', '--name-status', '-r', commit_hash
+        ])
+        if not success:
+            return []
+        
+        files = []
+        for line in stdout.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('\t', 1)
+            if len(parts) == 2:
+                status_char = parts[0][0]
+                file_path = parts[1]
+                status = self._parse_status_char(status_char)
+                files.append(FileChange(path=file_path, status=status, staged=False))
+        
+        return files
+
+    def get_commit_diff(self, commit_hash: str) -> str:
+        """获取提交的完整diff"""
+        success, stdout, _ = self._run_git_sync(['show', commit_hash])
+        return stdout if success else ""
+
+    def get_commit_detail(self, commit_hash: str) -> Optional[CommitInfo]:
+        """获取提交详细信息"""
+        format_str = '%H|%h|%an|%ae|%ad|%s|%b'
+        success, stdout, _ = self._run_git_sync([
+            'show', '--no-patch', f'--format={format_str}',
+            '--date=format:%Y-%m-%d %H:%M', commit_hash
+        ])
+        
+        if not success or not stdout.strip():
+            return None
+        
+        parts = stdout.strip().split('|', 6)
+        if len(parts) >= 6:
+            return CommitInfo(
+                hash=parts[0],
+                short_hash=parts[1],
+                author=parts[2],
+                email=parts[3],
+                date=parts[4],
+                message=parts[5] + ('\n' + parts[6] if len(parts) == 7 else '')
+            )
+        return None
+
+    # ==================== Cherry-pick ====================
+
+    def cherry_pick(self, commit_hash: str) -> tuple[bool, str]:
+        """应用指定提交到当前分支"""
+        success, stdout, stderr = self._run_git_sync(['cherry-pick', commit_hash])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已应用提交 {commit_hash[:7]}"
+        return False, stderr or "Cherry-pick失败"
+
+    def cherry_pick_abort(self) -> tuple[bool, str]:
+        """中止cherry-pick操作"""
+        success, _, stderr = self._run_git_sync(['cherry-pick', '--abort'])
+        if success:
+            self.statusChanged.emit()
+            return True, "已中止cherry-pick"
+        return False, stderr or "中止cherry-pick失败"
+
+    def cherry_pick_continue(self) -> tuple[bool, str]:
+        """继续 cherry-pick操作"""
+        success, _, stderr = self._run_git_sync(['cherry-pick', '--continue'])
+        if success:
+            self.statusChanged.emit()
+            return True, "已继续cherry-pick"
+        return False, stderr or "继续cherry-pick失败"
+
+    # ==================== 克隆仓库 ====================
+
+    def clone(self, url: str, path: str, callback: Callable[[bool, str], None] = None):
+        """克隆远程仓库（异步）
+        
+        Args:
+            url: 远程仓库URL
+            path: 本地路径
+            callback: 完成回调
+        """
+        self.operationStarted.emit("正在克隆仓库...")
+        
+        args = ['clone', url, path, '--progress']
+        
+        def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                msg = f"克隆成功: {path}"
+            else:
+                msg = stderr or "克隆失败"
+            self.operationFinished.emit(success, msg)
+            if callback:
+                callback(success, msg)
+        
+        # 克隆可能很慢，设置较长超时
+        self._run_git_async(args, on_finished, timeout=300)
+    
+    def init(self, path: str) -> tuple[bool, str]:
+        """初始化新的Git仓库
+        
+        Args:
+            path: 要初始化的目录路径
+        """
+        if not path or not os.path.isdir(path):
+            return False, "目录不存在"
+        
+        # 检查是否已经是Git仓库
+        git_dir = os.path.join(path, '.git')
+        if os.path.isdir(git_dir):
+            return False, "该目录已经是 Git 仓库"
+        
+        # 执行git init
+        try:
+            result = subprocess.run(
+                ['git', 'init'],
+                cwd=path,
+                capture_output=True,
+                text=True,
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            )
+            if result.returncode == 0:
+                return True, f"已初始化Git仓库: {path}"
+            return False, result.stderr or "初始化失败"
+        except Exception as e:
+            return False, str(e)
+
+    # ==================== Rebase操作 ====================
+
+    def rebase(self, branch: str, callback: Callable[[bool, str], None] = None):
+        """变基到指定分支（异步）"""
+        self.operationStarted.emit(f"正在变基到 {branch}...")
+        
+        def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                self.statusChanged.emit()
+            msg = f"已变基到 {branch}" if success else (stderr or "Rebase失败")
+            self.operationFinished.emit(success, msg)
+            if callback:
+                callback(success, msg)
+        
+        self._run_git_async(['rebase', branch], on_finished)
+
+    def rebase_abort(self) -> tuple[bool, str]:
+        """中止rebase操作"""
+        success, _, stderr = self._run_git_sync(['rebase', '--abort'])
+        if success:
+            self.statusChanged.emit()
+            return True, "已中止rebase"
+        return False, stderr or "中止rebase失败"
+
+    def rebase_continue(self) -> tuple[bool, str]:
+        """继续rebase操作"""
+        success, _, stderr = self._run_git_sync(['rebase', '--continue'])
+        if success:
+            self.statusChanged.emit()
+            return True, "已继续rebase"
+        return False, stderr or "继续rebase失败"
+
+    def rebase_skip(self) -> tuple[bool, str]:
+        """跳过当前rebase冲突"""
+        success, _, stderr = self._run_git_sync(['rebase', '--skip'])
+        if success:
+            self.statusChanged.emit()
+            return True, "已跳过当前冲突"
+        return False, stderr or "跳过失败"
+
+    # ==================== Reflog引用日志 ====================
+
+    def get_reflog(self, count: int = 50) -> list[tuple[str, str, str]]:
+        """获取引用日志
+        
+        Returns:
+            list of (hash, ref, message)
+        """
+        success, stdout, _ = self._run_git_sync(['reflog', f'-{count}', '--format=%H|%gd|%gs'])
+        if not success:
+            return []
+        
+        logs = []
+        for line in stdout.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('|', 2)
+            if len(parts) == 3:
+                logs.append((parts[0], parts[1], parts[2]))
+        
+        return logs
+
+    # ==================== Blame代码作者 ====================
+
+    def blame(self, file_path: str) -> list[tuple[int, str, str, str, str]]:
+        """获取文件每行的blame信息
+        
+        Returns:
+            list of (line_num, hash, author, date, content)
+        """
+        success, stdout, _ = self._run_git_sync([
+            'blame', '--line-porcelain', file_path
+        ])
+        if not success:
+            return []
+        
+        # 解析blame输出（简化处理）
+        lines = []
+        current_hash = ""
+        current_author = ""
+        current_date = ""
+        
+        for line in stdout.split('\n'):
+            if line and not line.startswith('\t'):
+                if line.startswith('author '):
+                    current_author = line[7:]
+                elif line.startswith('author-time '):
+                    import time
+                    timestamp = int(line[12:])
+                    current_date = time.strftime('%Y-%m-%d %H:%M', time.localtime(timestamp))
+                elif len(line.split()) == 4 and line.split()[0].isalnum():
+                    current_hash = line.split()[0][:7]
+            elif line.startswith('\t'):
+                content = line[1:]
+                lines.append((len(lines)+1, current_hash, current_author, current_date, content))
+        
+        return lines
+
+    # ==================== Clean清理 ====================
+
+    def clean_preview(self) -> list[str]:
+        """预览将被清理的文件"""
+        success, stdout, _ = self._run_git_sync(['clean', '-n', '-d'])
+        if not success:
+            return []
+        
+        files = []
+        for line in stdout.strip().split('\n'):
+            if line.startswith('Would remove '):
+                files.append(line[13:])
+        return files
+
+    def clean(self, include_directories: bool = True) -> tuple[bool, str]:
+        """清理未跟踪文件（危险操作）"""
+        args = ['clean', '-f']
+        if include_directories:
+            args.append('-d')
+        
+        success, stdout, stderr = self._run_git_sync(args)
+        if success:
+            self.statusChanged.emit()
+            return True, "已清理未跟踪文件"
+        return False, stderr or "清理失败"
+
+    # ==================== Config配置 ====================
+
+    def get_config(self, key: str, global_scope: bool = False) -> str:
+        """获取Git配置"""
+        args = ['config']
+        if global_scope:
+            args.append('--global')
+        args.append(key)
+        
+        success, stdout, _ = self._run_git_sync(args)
+        return stdout.strip() if success else ""
+
+    def set_config(self, key: str, value: str, global_scope: bool = False) -> tuple[bool, str]:
+        """设置Git配置"""
+        args = ['config']
+        if global_scope:
+            args.append('--global')
+        args.extend([key, value])
+        
+        success, _, stderr = self._run_git_sync(args)
+        if success:
+            return True, f"已设置 {key} = {value}"
+        return False, stderr or "设置配置失败"
+
+    def get_user_info(self) -> tuple[str, str]:
+        """获取用户信息
+        
+        Returns:
+            (name, email)
+        """
+        name = self.get_config('user.name')
+        email = self.get_config('user.email')
+        return name, email
+
+    def set_user_info(self, name: str, email: str, global_scope: bool = True) -> tuple[bool, str]:
+        """设置用户信息"""
+        success1, _ = self.set_config('user.name', name, global_scope)
+        success2, _ = self.set_config('user.email', email, global_scope)
+        
+        if success1 and success2:
+            return True, f"已设置用户信息: {name} <{email}>"
+        return False, "设置用户信息失败"
+
+    # ==================== 远程分支清理 ====================
+
+    def prune_remote(self, remote: str = "origin") -> tuple[bool, str]:
+        """清理已删除的远程分支引用"""
+        success, stdout, stderr = self._run_git_sync(['remote', 'prune', remote])
+        if success:
+            return True, f"已清理远程分支引用: {remote}"
+        return False, stderr or "清理失败"
+
+    # ==================== 其他实用命令 ====================
+
+    def diff_with_commit(self, commit_hash: str, file_path: str = "") -> str:
+        """对比工作区与指定提交
+        
+        Args:
+            commit_hash: 目标提交
+            file_path: 文件路径（可选）
+        """
+        args = ['diff', commit_hash]
+        if file_path:
+            args.extend(['--', file_path])
+        
+        success, stdout, _ = self._run_git_sync(args)
+        return stdout if success else ""
+
+    def gc(self, callback: Callable[[bool, str], None] = None):
+        """垃圾回收，优化仓库（异步）"""
+        self.operationStarted.emit("正在优化仓库...")
+        
+        def on_finished(success: bool, stdout: str, stderr: str):
+            msg = "仓库优化完成" if success else (stderr or "优化失败")
+            self.operationFinished.emit(success, msg)
+            if callback:
+                callback(success, msg)
+        
+        self._run_git_async(['gc', '--auto'], on_finished, timeout=60)
+
+    def fsck(self) -> tuple[bool, str]:
+        """检查仓库完整性"""
+        success, stdout, stderr = self._run_git_sync(['fsck'])
+        if success:
+            return True, "仓库检查通过"
+        return False, stderr or "检查失败"
 
 
 # 全局单例

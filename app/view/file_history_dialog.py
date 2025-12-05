@@ -123,22 +123,30 @@ class FileHistoryDialog(Dialog):
         self.selected_commits = []
     
     def _load_history(self):
-        """加载文件历史"""
-        self.commits = gitService.get_file_history(self.file_path, count=50)
+        """加载文件历史（异步）"""
+        def on_load_finished(commits):
+            self.commits = commits
+            
+            if not commits:
+                self.timeLine.addItem(InfoBarIcon.INFORMATION, "此文件没有提交历史")
+                return
+            
+            for commit in commits:
+                card = FileCommitCard(commit, self.timeLine)
+                card.clicked.connect(lambda checked=False, c=commit: self._on_commit_selected(c))
+                self.timeLine.addItem(
+                    InfoBarIcon.SUCCESS,
+                    commit.date.split(' ')[0],
+                    [card]
+                )
         
-        if not self.commits:
-            self.timeLine.addItem(InfoBarIcon.INFORMATION, "此文件没有提交历史")
-            return
+        # 使用封装的异步工具
+        from app.common.async_helper import SimpleAsyncTask
         
-        # 添加到时间线
-        for commit in self.commits:
-            card = FileCommitCard(commit, self.timeLine)
-            card.clicked.connect(lambda checked=False, c=commit: self._on_commit_selected(c))
-            self.timeLine.addItem(
-                InfoBarIcon.SUCCESS,
-                commit.date.split(' ')[0],  # 日期
-                [card]
-            )
+        SimpleAsyncTask.run(
+            lambda: gitService.get_file_history(self.file_path, count=50),
+            on_load_finished
+        )
     
     def _on_commit_selected(self, commit: CommitInfo):
         """选中提交"""

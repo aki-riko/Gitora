@@ -19,6 +19,7 @@ from qfluentwidgets import (
 
 from app.common.git_service import gitService, BranchInfo
 from app.common.style_sheet import StyleSheet
+from app.common.icon import Icon
 
 
 class BranchCard(CardWidget):
@@ -47,7 +48,7 @@ class BranchCard(CardWidget):
             icon = FluentIcon.CLOUD
             icon_color = QColor(33, 150, 243)
         else:
-            icon = FluentIcon.DEVELOPER_TOOLS
+            icon = Icon.GIT_BRANCH  # Git专用分支图标
             icon_color = QColor(158, 158, 158)
 
         self.iconWidget = IconWidget(icon, self)
@@ -96,7 +97,7 @@ class BranchCard(CardWidget):
             layout.addWidget(self.checkoutBtn)
 
             # 合并按钮
-            self.mergeBtn = TransparentToolButton(FluentIcon.EMBED, self)
+            self.mergeBtn = TransparentToolButton(Icon.GIT_MERGE, self)
             self.mergeBtn.setToolTip("合并到当前分支")
             self.mergeBtn.installEventFilter(ToolTipFilter(self.mergeBtn, 500, ToolTipPosition.TOP))
             self.mergeBtn.clicked.connect(lambda: self.mergeClicked.emit(self.branch.name))
@@ -210,7 +211,8 @@ class BranchInterface(ScrollArea):
         self.syncBtn.clicked.connect(self.refresh_branches)
         
         syncMenu = RoundMenu(parent=self)
-        syncMenu.addAction(Action(FluentIcon.DOWNLOAD, "获取远程", triggered=self._on_fetch))
+        syncMenu.addAction(Action(FluentIcon.DOWNLOAD, "获取远程更新 (Fetch)", triggered=self._on_fetch))
+        syncMenu.addAction(Action(FluentIcon.DELETE, "清理远程分支 (Prune)", triggered=self._on_prune_remote))
         self.syncBtn.setFlyout(syncMenu)
         
         header_layout.addWidget(self.syncBtn)
@@ -283,32 +285,42 @@ class BranchInterface(ScrollArea):
         gitService.statusChanged.connect(self.refresh_branches)
 
     def refresh_branches(self):
-        """刷新分支列表"""
+        """刷新分支列表（完全异步）"""
         if not gitService.repo_path:
             return
+        
+        from app.common.async_helper import SimpleAsyncTask
+        
+        def fetch_data():
+            """在子线程获取所有数据"""
+            current_branch = gitService.get_current_branch()
+            branches = gitService.get_branches()
+            return current_branch, branches
+        
+        def update_ui(result):
+            """在主线程更新UI"""
+            current_branch, branches = result
+            
+            # 更新当前分支
+            self.currentBranchName.setText(current_branch or "-")
+            
+            # 清空现有列表
+            self._clear_layout(self.localBranchLayout)
+            self._clear_layout(self.remoteBranchLayout)
 
-        # 更新当前分支
-        current_branch = gitService.get_current_branch()
-        self.currentBranchName.setText(current_branch or "-")
+            # 分类添加分支
+            for branch in branches:
+                card = BranchCard(branch, self)
+                card.checkoutClicked.connect(self._on_checkout)
+                card.deleteClicked.connect(self._on_delete)
+                card.mergeClicked.connect(self._on_merge)
 
-        # 获取所有分支
-        branches = gitService.get_branches()
-
-        # 清空现有列表
-        self._clear_layout(self.localBranchLayout)
-        self._clear_layout(self.remoteBranchLayout)
-
-        # 分类添加分支
-        for branch in branches:
-            card = BranchCard(branch, self)
-            card.checkoutClicked.connect(self._on_checkout)
-            card.deleteClicked.connect(self._on_delete)
-            card.mergeClicked.connect(self._on_merge)
-
-            if branch.is_remote:
-                self.remoteBranchLayout.addWidget(card)
-            else:
-                self.localBranchLayout.addWidget(card)
+                if branch.is_remote:
+                    self.remoteBranchLayout.addWidget(card)
+                else:
+                    self.localBranchLayout.addWidget(card)
+        
+        SimpleAsyncTask.run(fetch_data, update_ui)
 
     def _clear_layout(self, layout: QVBoxLayout):
         """清空布局"""
@@ -327,18 +339,52 @@ class BranchInterface(ScrollArea):
                     title="提示",
                     content="请输入分支名称",
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
                 return
 
-            success, msg = gitService.create_branch(branch_name)
+            from app.common.async_helper import AsyncTask
+            
+            def on_success(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+                else:
+                    InfoBar.error(
+                        title="失败",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=3000
+                    )
+            
+            AsyncTask.run(
+                func=lambda: gitService.create_branch(branch_name),
+                on_success=on_success,
+                progress_title='请稍候',
+                progress_content=f'正在创建分支: {branch_name}',
+                parent=self.window()
+            )
+
+    def _on_checkout(self, branch: str):
+        """切换分支（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            success, msg = result
             if success:
                 InfoBar.success(
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
             else:
@@ -346,29 +392,17 @@ class BranchInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=3000
                 )
-
-    def _on_checkout(self, branch: str):
-        """切换分支"""
-        success, msg = gitService.checkout_branch(branch)
-        if success:
-            InfoBar.success(
-                title="成功",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=2000
-            )
-        else:
-            InfoBar.error(
-                title="失败",
-                content=msg,
-                parent=self.window(),
-                position=InfoBarPosition.TOP,
-                duration=3000
-            )
+        
+        AsyncTask.run(
+            func=lambda: gitService.checkout_branch(branch),
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content=f'正在切换到分支: {branch}',
+            parent=self.window()
+        )
 
     def _on_delete(self, branch: str):
         """删除分支"""
@@ -378,43 +412,35 @@ class BranchInterface(ScrollArea):
             self.window()
         )
         if box.exec():
-            success, msg = gitService.delete_branch(branch)
-            if success:
-                InfoBar.success(
-                    title="成功",
-                    content=msg,
-                    parent=self.window(),
-                    position=InfoBarPosition.TOP,
-                    duration=2000
-                )
-            else:
-                # 尝试强制删除
-                force_box = MessageBox(
-                    "删除失败",
-                    f"{msg}\n\n是否强制删除？（可能丢失未合并的提交）",
-                    self.window()
-                )
-                if force_box.exec():
-                    success, msg = gitService.delete_branch(branch, force=True)
-                    if success:
-                        InfoBar.success(
-                            title="成功",
-                            content=msg,
-                            parent=self.window(),
-                            position=InfoBarPosition.TOP,
-                            duration=2000
+            from app.common.async_helper import SimpleAsyncTask
+            
+            def on_finished(result):
+                success, msg = result
+                if success:
+                    InfoBar.success(
+                        title="成功",
+                        content=msg,
+                        parent=self.window(),
+                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        duration=2000
+                    )
+                else:
+                    # 尝试强制删除
+                    force_box = MessageBox(
+                        "删除失败",
+                        f"{msg}\n\n是否强制删除？（可能丢失未合并的提交）",
+                        self.window()
+                    )
+                    if force_box.exec():
+                        SimpleAsyncTask.run(
+                            lambda: gitService.delete_branch(branch, force=True),
+                            lambda r: InfoBar.success("成功", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT) if r[0] else InfoBar.error("失败", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
                         )
-                    else:
-                        InfoBar.error(
-                            title="失败",
-                            content=msg,
-                            parent=self.window(),
-                            position=InfoBarPosition.TOP,
-                            duration=3000
-                        )
+            
+            SimpleAsyncTask.run(lambda: gitService.delete_branch(branch), on_finished)
 
     def _on_merge(self, branch: str):
-        """合并分支"""
+        """合并分支（异步）"""
         current = gitService.get_current_branch()
         box = MessageBox(
             "确认合并",
@@ -422,27 +448,44 @@ class BranchInterface(ScrollArea):
             self.window()
         )
         if box.exec():
-            success, msg = gitService.merge_branch(branch)
+            # 异步执行，会自动显示进度环（通过operationStarted/Finished信号）
+            gitService.merge_branch(branch)
+
+    def _on_fetch(self):
+        """获取远程更新"""
+        gitService.fetch()
+    
+    def _on_prune_remote(self):
+        """清理远程分支引用（异步）"""
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(result):
+            success, msg = result
             if success:
                 InfoBar.success(
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=2000
                 )
+                self.refresh_branches()
             else:
                 InfoBar.error(
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.TOP,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
                     duration=3000
                 )
-
-    def _on_fetch(self):
-        """获取远程更新"""
-        gitService.fetch()
+        
+        AsyncTask.run(
+            func=gitService.prune_remote,
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content='正在清理远程分支引用...',
+            parent=self.window()
+        )
 
     def showEvent(self, event):
         """显示事件"""
