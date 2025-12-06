@@ -128,7 +128,137 @@ class UserInfoInterface(QWidget):
 
 
 class RemoteInterface(QWidget):
-    """远程仓库配置界面 - 第3步"""
+    """远程仓库配置界面 - 必填模式（用于修复/配置远程仓库）"""
+    
+    def __init__(self, parent=None, existing_remotes=None):
+        """
+        Args:
+            parent: 父窗口
+            existing_remotes: 已存在的远程列表
+        """
+        super().__init__(parent=parent)
+        self.existing_remotes = existing_remotes or []
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(80, 60, 80, 60)
+        layout.setSpacing(20)
+        layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        
+        # 标题
+        self.titleLabel = TitleLabel("添加远程仓库", self)
+        setFont(self.titleLabel, 28, QFont.Weight.Bold)
+        layout.addWidget(self.titleLabel)
+        
+        # 说明
+        self.hintLabel = BodyLabel(
+            "配置远程仓库用于推送代码到GitHub、GitLab等平台",
+            self
+        )
+        self.hintLabel.setWordWrap(True)
+        self.hintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
+        layout.addWidget(self.hintLabel)
+        
+        # 必填提示
+        self.requiredLabel = BodyLabel(
+            "⚠️ 必填项：此步骤的所有信息都必须填写完整才能继续",
+            self
+        )
+        self.requiredLabel.setWordWrap(True)
+        self.requiredLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))  # 红色
+        layout.addWidget(self.requiredLabel)
+        
+        layout.addSpacing(20)
+        
+        # 远程名称
+        self.nameLabel = BodyLabel("远程名称: *", self)
+        layout.addWidget(self.nameLabel)
+        
+        self.nameEdit = LineEdit(self)
+        self.nameEdit.setText("origin")
+        self.nameEdit.setPlaceholderText("通常使用 origin（必填）")
+        self.nameEdit.textChanged.connect(self._validate_inputs)
+        layout.addWidget(self.nameEdit)
+        
+        layout.addSpacing(12)
+        
+        # 远程URL
+        self.urlLabel = BodyLabel("远程URL: *", self)
+        layout.addWidget(self.urlLabel)
+        
+        self.urlEdit = LineEdit(self)
+        self.urlEdit.setPlaceholderText("如: https://github.com/user/repo.git 或 git@github.com:user/repo.git")
+        self.urlEdit.setClearButtonEnabled(True)
+        self.urlEdit.textChanged.connect(self._validate_inputs)
+        layout.addWidget(self.urlEdit)
+        
+        # SSH格式说明
+        self.sshHintLabel = BodyLabel(
+            "🔑 支持HTTPS和SSH两种格式",
+            self
+        )
+        self.sshHintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
+        layout.addWidget(self.sshHintLabel)
+        
+        # 显示已存在的远程列表
+        if self.existing_remotes:
+            self.existingLabel = BodyLabel(
+                f"📋 已存在的远程: {', '.join(self.existing_remotes)}",
+                self
+            )
+            self.existingLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
+            layout.addWidget(self.existingLabel)
+        
+        # 实时验证反馈
+        layout.addSpacing(12)
+        self.validationLabel = BodyLabel("", self)
+        self.validationLabel.setWordWrap(True)
+        layout.addWidget(self.validationLabel)
+        
+        layout.addStretch()
+        
+        # 初始验证
+        self._validate_inputs()
+    
+    def _validate_inputs(self):
+        """实时验证输入"""
+        name = self.nameEdit.text().strip()
+        url = self.urlEdit.text().strip()
+        
+        if not name and not url:
+            self.validationLabel.setText("❌ 请填写远程名称和URL")
+            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
+            return False
+        elif not name:
+            self.validationLabel.setText("❌ 请填写远程名称")
+            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
+            return False
+        elif not url:
+            self.validationLabel.setText("❌ 请填写远程URL")
+            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
+            return False
+        elif name in self.existing_remotes:
+            self.validationLabel.setText(f"⚠️ 远程名称 '{name}' 已存在，将会覆盖URL")
+            self.validationLabel.setTextColor(QColor(255, 152, 0), QColor(255, 152, 0))
+            return True
+        else:
+            self.validationLabel.setText("✅ 信息填写完整")
+            self.validationLabel.setTextColor(QColor(76, 175, 80), QColor(76, 175, 80))
+            return True
+    
+    def get_remote_info(self) -> tuple[str, str]:
+        """获取远程仓库信息"""
+        return self.nameEdit.text().strip(), self.urlEdit.text().strip()
+    
+    def is_valid(self) -> bool:
+        """验证是否可以继续下一步"""
+        name, url = self.get_remote_info()
+        return bool(name and url)
+
+
+class OptionalRemoteInterface(QWidget):
+    """可选的远程仓库配置界面 - 用于初始化仓库向导"""
     
     def __init__(self, parent=None):
         super().__init__(parent=parent)
@@ -154,9 +284,9 @@ class RemoteInterface(QWidget):
         self.hintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
         layout.addWidget(self.hintLabel)
         
-        # 提示：可以跳过
+        # 可选提示
         self.skipHintLabel = BodyLabel(
-            "💡 提示：如果暂时不配置，点击“下一步”将跳过此步骤",
+            "💡 提示：如果暂时不配置，点击'下一步'将跳过此步骤",
             self
         )
         self.skipHintLabel.setWordWrap(True)
@@ -244,7 +374,7 @@ class InitRepoGuide(GuideWindow):
         # 添加引导页面
         self.welcomePage = WelcomeInterface()
         self.userInfoPage = UserInfoInterface()
-        self.remotePage = RemoteInterface()
+        self.remotePage = OptionalRemoteInterface()  # 使用可选版本
         self.finalPage = FinalInterface()
         
         self.addPage(self.welcomePage)

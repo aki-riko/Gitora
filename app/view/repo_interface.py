@@ -516,54 +516,88 @@ class RepoInterface(ScrollArea):
         path_branch_layout = QHBoxLayout()
         path_branch_layout.setSpacing(8)
         self.repoPathLabel = CaptionLabel("", self)
-        path_branch_layout.addWidget(self.repoPathLabel)
+        self.repoPathLabel.setMaximumWidth(500)  # 限制最大宽度
+        from PySide6.QtCore import Qt
+        self.repoPathLabel.setTextFormat(Qt.TextFormat.PlainText)
+        # 启用文本省略
+        from PySide6.QtWidgets import QSizePolicy
+        self.repoPathLabel.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        path_branch_layout.addWidget(self.repoPathLabel, 0)
         self.branchLabel = CaptionLabel("", self)
-        path_branch_layout.addWidget(self.branchLabel)
-        path_branch_layout.addStretch()
+        path_branch_layout.addWidget(self.branchLabel, 0)
+        path_branch_layout.addStretch(1)
         repo_info_layout.addLayout(path_branch_layout)
         
-        header_layout.addLayout(repo_info_layout)
-        header_layout.addStretch()
+        header_layout.addLayout(repo_info_layout, 0)
+        header_layout.addStretch(1)
 
-        # 仓库按钮（打开/克隆/初始化）
+        # === 工具栏按钮组 ===
+        # 使用分隔线和间距优化视觉分组
+        
+        # 第一组：仓库操作
         self.repoBtn = SplitPushButton("打开仓库", self, FluentIcon.FOLDER)
         self.repoBtn.clicked.connect(self._open_repo)
         repoMenu = RoundMenu(parent=self)
         repoMenu.addAction(Action(FluentIcon.FOLDER, "打开本地仓库", triggered=self._open_repo))
-        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, "克隆远程仓库 (Clone)", triggered=self._on_clone_repo))
-        repoMenu.addAction(Action(FluentIcon.ADD, "初始化新仓库 (Init)", triggered=self._on_init_repo))
+        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, "克隆远程仓库", triggered=self._on_clone_repo))
+        repoMenu.addAction(Action(FluentIcon.ADD, "初始化新仓库", triggered=self._on_init_repo))
         repoMenu.addSeparator()
-        
-        # 最近仓库子菜单
         self.recentMenu = RoundMenu("最近仓库", repoMenu)
         self.recentMenu.setIcon(FluentIcon.HISTORY)
         repoMenu.addMenu(self.recentMenu)
         self._update_recent_repos_menu()
-        
         self.repoBtn.setFlyout(repoMenu)
         header_layout.addWidget(self.repoBtn)
-
-        # 临时保存按钮 (Stash)
-        stash_btn = PushButton("临时保存", self, Icon.GIT_PR_DRAFT)  # 草稿图标
-        stash_btn.setToolTip("临时保存当前修改，稍后恢复 (Stash)")
+        
+        # 分隔线 1
+        self._add_separator(header_layout)
+        
+        # 第二组：临时保存
+        stash_btn = TransparentToolButton(Icon.GIT_PR_DRAFT, self)
+        stash_btn.setToolTip("临时保存 (Stash)")
         stash_btn.installEventFilter(ToolTipFilter(stash_btn, 500, ToolTipPosition.TOP))
         stash_btn.clicked.connect(self._on_open_stash)
         header_layout.addWidget(stash_btn)
-
-        # 同步按钮（拉取/推送）
+        
+        # 分隔线 2
+        self._add_separator(header_layout)
+        
+        # 第三组：同步操作（重点）
         self.syncBtn = SplitPushButton("同步", self, FluentIcon.SYNC)
-        self.syncBtn.clicked.connect(self._on_pull)  # 主操作：拉取
+        self.syncBtn.clicked.connect(self._on_pull)
         syncMenu = RoundMenu(parent=self)
-        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取 (Pull)", triggered=self._on_pull))  # Git专用拉取图标
+        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取 (Pull)", triggered=self._on_pull))
         syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取并变基 (Rebase)", triggered=self._on_pull_rebase))
         syncMenu.addSeparator()
         syncMenu.addAction(Action(FluentIcon.SEND, "推送 (Push)", triggered=self._on_push))
         syncMenu.addAction(Action(FluentIcon.CANCEL, "强制推送 (Force)", triggered=self._on_force_push))
         self.syncBtn.setFlyout(syncMenu)
-        
         header_layout.addWidget(self.syncBtn)
+        
+        # 分隔线 3
+        self._add_separator(header_layout)
+        
+        # 第四组：远程仓库
+        remote_btn = TransparentToolButton(FluentIcon.CLOUD, self)
+        remote_btn.setToolTip("远程仓库 (Remote)")
+        remote_btn.installEventFilter(ToolTipFilter(remote_btn, 500, ToolTipPosition.TOP))
+        remote_btn.clicked.connect(self._on_manage_remotes)
+        header_layout.addWidget(remote_btn)
 
         parent_layout.addWidget(header)
+    
+    def _add_separator(self, layout: QHBoxLayout):
+        """添加工具栏分隔线"""
+        separator = QFrame()
+        separator.setFrameShape(QFrame.Shape.VLine)
+        separator.setFrameShadow(QFrame.Shadow.Sunken)
+        separator.setFixedHeight(20)
+        # 设置颜色（根据主题自动调整）
+        if isDarkTheme():
+            separator.setStyleSheet("QFrame { color: rgba(255, 255, 255, 0.08); }")
+        else:
+            separator.setStyleSheet("QFrame { color: rgba(0, 0, 0, 0.08); }")
+        layout.addWidget(separator)
 
     def _create_file_list_panel(self) -> QWidget:
         """创建文件变更列表面板（上下分割：文件列表+差异显示）"""
@@ -667,7 +701,13 @@ class RepoInterface(ScrollArea):
             import os
             repo_name = os.path.basename(path)
             self.repoNameLabel.setText(repo_name)
-            self.repoPathLabel.setText(path)
+            # 设置路径，并添加Tooltip显示完整路径
+            from PySide6.QtCore import Qt
+            from PySide6.QtGui import QFontMetrics
+            metrics = QFontMetrics(self.repoPathLabel.font())
+            elided_path = metrics.elidedText(path, Qt.TextElideMode.ElideMiddle, 480)
+            self.repoPathLabel.setText(elided_path)
+            self.repoPathLabel.setToolTip(path)
             self.refresh_status()
             InfoBar.success(
                 title="成功",
@@ -735,7 +775,13 @@ class RepoInterface(ScrollArea):
                 if gitService.set_repo_path(path):
                     repo_name = os.path.basename(path)
                     self.repoNameLabel.setText(repo_name)
-                    self.repoPathLabel.setText(path)
+                    # 设置路径，并添加Tooltip显示完整路径
+                    from PySide6.QtCore import Qt
+                    from PySide6.QtGui import QFontMetrics
+                    metrics = QFontMetrics(self.repoPathLabel.font())
+                    elided_path = metrics.elidedText(path, Qt.TextElideMode.ElideMiddle, 480)
+                    self.repoPathLabel.setText(elided_path)
+                    self.repoPathLabel.setToolTip(path)
                     recentReposManager.add(path)
                     self._update_recent_repos_menu()
                     
@@ -787,7 +833,13 @@ class RepoInterface(ScrollArea):
                 
                 repo_name = os.path.basename(path)
                 self.repoNameLabel.setText(repo_name)
-                self.repoPathLabel.setText(path)
+                # 设置路径，并添加Tooltip显示完整路径
+                from PySide6.QtCore import Qt
+                from PySide6.QtGui import QFontMetrics
+                metrics = QFontMetrics(self.repoPathLabel.font())
+                elided_path = metrics.elidedText(path, Qt.TextElideMode.ElideMiddle, 480)
+                self.repoPathLabel.setText(elided_path)
+                self.repoPathLabel.setToolTip(path)
                 # set_repo_path已触发statusChanged信号，自动刷新所有界面
                 
                 # 添加到最近仓库列表
@@ -1038,7 +1090,13 @@ class RepoInterface(ScrollArea):
                         import os
                         repo_name = os.path.basename(path)
                         self.repoNameLabel.setText(repo_name)
-                        self.repoPathLabel.setText(path)
+                        # 设置路径，并添加Tooltip显示完整路径
+                        from PySide6.QtCore import Qt
+                        from PySide6.QtGui import QFontMetrics
+                        metrics = QFontMetrics(self.repoPathLabel.font())
+                        elided_path = metrics.elidedText(path, Qt.TextElideMode.ElideMiddle, 480)
+                        self.repoPathLabel.setText(elided_path)
+                        self.repoPathLabel.setToolTip(path)
                         self.refresh_status()
             
             gitService.clone(url, path, on_clone_finished)
@@ -1059,6 +1117,13 @@ class RepoInterface(ScrollArea):
 
     def _on_push(self):
         """推送"""
+        # 先检查远程仓库配置
+        remotes = gitService.get_remote_info()
+        if not remotes:
+            # 无远程仓库，显示配置向导
+            self._show_remote_config_guide()
+            return
+        
         gitService.push()
     
     def _on_force_push(self):
@@ -1090,3 +1155,57 @@ class RepoInterface(ScrollArea):
             self.quickPanel.set_progress(2)
         else:
             self.quickPanel.set_progress(2)
+    
+    def _show_remote_config_guide(self):
+        """显示远程仓库配置向导"""
+        from app.view.remote_config_wizard import RemoteConfigWizard
+        
+        wizard = RemoteConfigWizard(self.window())
+        wizard.configCompleted.connect(self.refresh_status)
+        wizard.show()
+    
+    def _on_manage_remotes(self):
+        """管理远程仓库"""
+        if not gitService.repo_path:
+            InfoBar.warning(
+                '提示',
+                '请先打开一个Git仓库',
+                duration=2000,
+                parent=self,
+                position=InfoBarPosition.BOTTOM_RIGHT
+            )
+            return
+        
+        # 异步获取远程仓库信息
+        from app.common.async_helper import AsyncTask
+        
+        def on_success(remotes):
+            if not remotes:
+                # 无远程仓库，显示配置向导
+                box = MessageBox(
+                    '远程仓库列表',
+                    '当前仓库没有配置远程仓库\n\n是否现在配置？',
+                    self.window()
+                )
+                if box.exec():
+                    self._show_remote_config_guide()
+            else:
+                # 显示远程仓库列表
+                content = "\n".join([f"{name}: {url}" for name, url in remotes])
+                content += "\n\n点击确定打开配置向导"
+                
+                box = MessageBox(
+                    '远程仓库列表',
+                    content,
+                    self.window()
+                )
+                if box.exec():
+                    self._show_remote_config_guide()
+        
+        AsyncTask.run(
+            func=gitService.get_remote_info,
+            on_success=on_success,
+            progress_title='请稍候',
+            progress_content='正在获取远程仓库信息...',
+            parent=self
+        )

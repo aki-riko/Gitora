@@ -79,17 +79,6 @@ class SettingInterface(ScrollArea):
             parent=self.personalGroup
         )
 
-        # remote repository
-        self.remoteGroup = SettingCardGroup(
-            self.tr("远程仓库"), self.scrollWidget)
-        self.remoteCard = PushSettingCard(
-            self.tr('管理远程仓库'),
-            FIF.CLOUD,
-            self.tr('远程仓库'),
-            self.tr('添加、删除和修改远程仓库URL'),
-            self.remoteGroup
-        )
-        self.remoteCard.clicked.connect(self._on_manage_remotes)
         
         # repository maintenance
         self.maintenanceGroup = SettingCardGroup(
@@ -178,7 +167,6 @@ class SettingInterface(ScrollArea):
 
         self.aboutGroup.addSettingCard(self.aboutCard)
 
-        self.remoteGroup.addSettingCard(self.remoteCard)
         
         self.maintenanceGroup.addSettingCard(self.cleanCard)
         self.maintenanceGroup.addSettingCard(self.gcCard)
@@ -187,8 +175,7 @@ class SettingInterface(ScrollArea):
         # add setting card group to layout
         self.expandLayout.setSpacing(28)
         self.expandLayout.setContentsMargins(36, 10, 36, 0)
-        # 调整顺序：远程仓库和仓库维护移到个性化上面
-        self.expandLayout.addWidget(self.remoteGroup)
+        # 调整顺序：仓库维护移到个性化上面
         self.expandLayout.addWidget(self.maintenanceGroup)
         self.expandLayout.addWidget(self.personalGroup)
         self.expandLayout.addWidget(self.updateSoftwareGroup)
@@ -215,44 +202,6 @@ class SettingInterface(ScrollArea):
         # check update
         self.aboutCard.clicked.connect(signalBus.checkUpdateSig)
     
-    def _on_manage_remotes(self):
-        """管理远程仓库"""
-        from ..common.git_service import gitService
-        
-        if not gitService.repo_path:
-            InfoBar.warning(
-                self.tr('提示'),
-                self.tr('请先打开一个Git仓库'),
-                duration=2000,
-                parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT
-            )
-            return
-        
-        # 异步获取远程仓库信息
-        from app.common.async_helper import AsyncTask
-        
-        def on_success(remotes):
-            if not remotes:
-                content = self.tr('当前仓库没有配置远程仓库')
-            else:
-                content = "\n".join([f"{name}: {url}" for name, url in remotes])
-            
-            # 显示信息对话框
-            box = MessageBox(
-                self.tr('远程仓库列表'),
-                content,
-                self
-            )
-            box.exec()
-        
-        AsyncTask.run(
-            func=gitService.get_remote_info,
-            on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在获取远程仓库信息...',
-            parent=self
-        )
     
     def _on_clean_files(self):
         """清理未跟踪文件"""
