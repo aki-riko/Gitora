@@ -267,38 +267,50 @@ class RemoteConfigWizard(GuideWindow):
         # 连接信号
         self.appStarted.connect(self._on_finish)
         self.currentIndexChanged.connect(self._on_page_changed)
+        
+        # 连接验证信号来实时控制按钮状态
+        self.remoteInfoPage.nameEdit.textChanged.connect(self._update_next_button)
+        self.remoteInfoPage.urlEdit.textChanged.connect(self._update_next_button)
+        self.branchConfigPage.localBranchCombo.currentTextChanged.connect(self._update_next_button)
+        self.branchConfigPage.remoteBranchEdit.textChanged.connect(self._update_next_button)
+        
+        # 初始化按钮状态
+        self._update_next_button()
+    
+    def _update_next_button(self):
+        """实时更新下一步按钮状态"""
+        current_index = self.currentIndex()
+        
+        # 第2页：验证远程信息
+        if current_index == 1:
+            is_valid = self.remoteInfoPage.is_valid()
+            try:
+                # GuideWindow的下一步按钮可能是nextButton或nextBtn
+                if hasattr(self, 'nextButton'):
+                    self.nextButton.setEnabled(is_valid)
+                elif hasattr(self, 'nextBtn'):
+                    self.nextBtn.setEnabled(is_valid)
+            except:
+                pass
+        
+        # 第3页：验证分支配置
+        elif current_index == 2:
+            is_valid = self.branchConfigPage.is_valid()
+            try:
+                if hasattr(self, 'nextButton'):
+                    self.nextButton.setEnabled(is_valid)
+                elif hasattr(self, 'nextBtn'):
+                    self.nextBtn.setEnabled(is_valid)
+            except:
+                pass
     
     def _on_page_changed(self, index: int):
-        """页面切换时验证"""
-        # 第2页 → 第3页：验证远程信息
-        if index == 2:
-            if not self.remoteInfoPage.is_valid():
-                InfoBar.warning(
-                    "信息不完整",
-                    "请填写完整的远程仓库名称和URL才能继续",
-                    parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
-                    duration=3000
-                )
-                # 强制返回上一页
-                self.setCurrentIndex(1)
-                return
+        """页面切换时验证并更新按钮状态"""
+        # 更新按钮状态
+        self._update_next_button()
         
-        # 第3页 → 第4页：验证分支配置并显示预览
-        elif index == 3:
-            if not self.branchConfigPage.is_valid():
-                InfoBar.warning(
-                    "信息不完整",
-                    "请选择本地分支并填写远程分支名称才能继续",
-                    parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
-                    duration=3000
-                )
-                # 强制返回上一页
-                self.setCurrentIndex(2)
-                return
-            
-            # 更新确认页预览
+        # 第4页：更新确认页预览
+        if index == 3:
             remote_name, remote_url = self.remoteInfoPage.get_remote_info()
             local_branch, remote_branch = self.branchConfigPage.get_branch_config()
             self.confirmationPage.set_config_preview(
