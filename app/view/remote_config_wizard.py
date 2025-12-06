@@ -9,7 +9,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout
 
 from qfluentwidgets import (
     TitleLabel, BodyLabel, setFont, ComboBox, 
-    InfoBar, InfoBarPosition, TextEdit
+    InfoBar, InfoBarPosition, TextEdit, LineEdit
 )
 from qfluentwidgetspro import GuideWindow
 
