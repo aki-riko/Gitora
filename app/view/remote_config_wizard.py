@@ -113,12 +113,12 @@ class BranchConfigStep(QWidget):
         self.remoteBranchLabel = BodyLabel("远程分支: *", self)
         layout.addWidget(self.remoteBranchLabel)
         
-        self.remoteBranchCombo = ComboBox(self)
-        self.remoteBranchCombo.setEditable(True)
-        self.remoteBranchCombo.addItems(["main", "master", "develop"])
-        self.remoteBranchCombo.setCurrentText("main")
-        self.remoteBranchCombo.currentTextChanged.connect(self._validate_inputs)
-        layout.addWidget(self.remoteBranchCombo)
+        # 使用LineEdit而不是ComboBox，因为QFluentWidgets的ComboBox不支持setEditable
+        self.remoteBranchEdit = LineEdit(self)
+        self.remoteBranchEdit.setPlaceholderText("请输入远程分支名称，如：main、master")
+        self.remoteBranchEdit.setText("main")
+        self.remoteBranchEdit.textChanged.connect(self._validate_inputs)
+        layout.addWidget(self.remoteBranchEdit)
         
         # 提示
         self.branchHintLabel = BodyLabel(
@@ -143,7 +143,7 @@ class BranchConfigStep(QWidget):
     def _validate_inputs(self):
         """实时验证"""
         local = self.localBranchCombo.currentText().strip()
-        remote = self.remoteBranchCombo.currentText().strip()
+        remote = self.remoteBranchEdit.text().strip()
         
         if not local or not remote:
             self.validationLabel.setText("❌ 请选择本地分支并填写远程分支")
@@ -158,7 +158,7 @@ class BranchConfigStep(QWidget):
         """获取分支配置"""
         return (
             self.localBranchCombo.currentText().strip(),
-            self.remoteBranchCombo.currentText().strip()
+            self.remoteBranchEdit.text().strip()
         )
     
     def is_valid(self) -> bool:
