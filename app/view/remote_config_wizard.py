@@ -77,14 +77,6 @@ class BranchConfigStep(QWidget):
         self.hintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
         layout.addWidget(self.hintLabel)
         
-        # 必填提示
-        self.requiredLabel = BodyLabel(
-            "⚠️ 必填项：必须选择本地分支并填写远程分支",
-            self
-        )
-        self.requiredLabel.setWordWrap(True)
-        self.requiredLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
-        layout.addWidget(self.requiredLabel)
         
         layout.addSpacing(20)
         
@@ -120,20 +112,6 @@ class BranchConfigStep(QWidget):
         self.remoteBranchEdit.textChanged.connect(self._validate_inputs)
         layout.addWidget(self.remoteBranchEdit)
         
-        # 提示
-        self.branchHintLabel = BodyLabel(
-            "💡 通常远程分支名称与本地分支相同",
-            self
-        )
-        self.branchHintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
-        layout.addWidget(self.branchHintLabel)
-        
-        layout.addSpacing(12)
-        
-        # 验证反馈
-        self.validationLabel = BodyLabel("", self)
-        self.validationLabel.setWordWrap(True)
-        layout.addWidget(self.validationLabel)
         
         layout.addStretch()
         

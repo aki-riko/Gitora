@@ -160,15 +160,6 @@ class RemoteInterface(QWidget):
         self.hintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
         layout.addWidget(self.hintLabel)
         
-        # 必填提示
-        self.requiredLabel = BodyLabel(
-            "⚠️ 必填项：此步骤的所有信息都必须填写完整才能继续",
-            self
-        )
-        self.requiredLabel.setWordWrap(True)
-        self.requiredLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))  # 红色
-        layout.addWidget(self.requiredLabel)
-        
         layout.addSpacing(20)
         
         # 远程名称
