@@ -1180,27 +1180,34 @@ class RepoInterface(ScrollArea):
         from app.common.async_helper import AsyncTask
         
         def on_success(remotes):
-            if not remotes:
-                # 无远程仓库，显示配置向导
-                box = MessageBox(
-                    '远程仓库列表',
-                    '当前仓库没有配置远程仓库\n\n是否现在配置？',
-                    self.window()
-                )
-                if box.exec():
-                    self._show_remote_config_guide()
-            else:
-                # 显示远程仓库列表
-                content = "\n".join([f"{name}: {url}" for name, url in remotes])
-                content += "\n\n点击确定打开配置向导"
-                
-                box = MessageBox(
-                    '远程仓库列表',
-                    content,
-                    self.window()
-                )
-                if box.exec():
-                    self._show_remote_config_guide()
+            # 延迟显示对话框，确保进度环完全关闭
+            from PySide6.QtCore import QTimer
+            
+            def show_dialog():
+                if not remotes:
+                    # 无远程仓库，显示配置向导
+                    box = MessageBox(
+                        '远程仓库列表',
+                        '当前仓库没有配置远程仓库\n\n是否现在配置？',
+                        self
+                    )
+                    if box.exec():
+                        self._show_remote_config_guide()
+                else:
+                    # 显示远程仓库列表
+                    content = "\n".join([f"{name}: {url}" for name, url in remotes])
+                    content += "\n\n点击确定打开配置向导"
+                    
+                    box = MessageBox(
+                        '远程仓库列表',
+                        content,
+                        self
+                    )
+                    if box.exec():
+                        self._show_remote_config_guide()
+            
+            # 延迟100ms显示，确保进度环关闭动画完成
+            QTimer.singleShot(100, show_dialog)
         
         AsyncTask.run(
             func=gitService.get_remote_info,
