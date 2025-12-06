@@ -122,15 +122,7 @@ class BranchConfigStep(QWidget):
         """实时验证"""
         local = self.localBranchCombo.currentText().strip()
         remote = self.remoteBranchEdit.text().strip()
-        
-        if not local or not remote:
-            self.validationLabel.setText("❌ 请选择本地分支并填写远程分支")
-            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
-            return False
-        else:
-            self.validationLabel.setText("✅ 分支配置完整")
-            self.validationLabel.setTextColor(QColor(76, 175, 80), QColor(76, 175, 80))
-            return True
+        return bool(local and remote)
     
     def get_branch_config(self) -> tuple[str, str]:
         """获取分支配置"""
