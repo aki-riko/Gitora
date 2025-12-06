@@ -278,6 +278,13 @@ class RemoteConfigWizard(GuideWindow):
     
     def _on_page_changed(self, index: int):
         """页面切换时验证并更新按钮状态"""
+        # 第2页：立即触发验证UI更新
+        if index == 1:
+            self.remoteInfoPage._validate_inputs()
+        # 第3页：立即触发验证UI更新
+        elif index == 2:
+            self.branchConfigPage._validate_inputs()
+        
         # 更新按钮状态
         self._update_next_button()
         
