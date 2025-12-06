@@ -217,21 +217,9 @@ class RemoteInterface(QWidget):
         name = self.nameEdit.text().strip()
         url = self.urlEdit.text().strip()
         
-        if not name and not url:
-            self.validationLabel.setText("❌ 请填写远程名称和URL")
-            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
-            return False
-        elif not name:
-            self.validationLabel.setText("❌ 请填写远程名称")
-            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
-            return False
-        elif not url:
-            self.validationLabel.setText("❌ 请填写远程URL")
-            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
-            return False
-        elif not self._is_valid_git_url(url):
-            self.validationLabel.setText("❌ URL格式不正确，请检查")
-            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
+        # 移除错误提示，禁用按钮已经足够提示用户
+        if not name or not url or not self._is_valid_git_url(url):
+            self.validationLabel.setText("")  # 清空提示
             return False
         elif name in self.existing_remotes:
             self.validationLabel.setText(f"⚠️ 远程名称 '{name}' 已存在，将会覆盖URL")
