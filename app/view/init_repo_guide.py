@@ -238,6 +238,10 @@ class RemoteInterface(QWidget):
             self.validationLabel.setText("❌ 请填写远程URL")
             self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
             return False
+        elif not self._is_valid_git_url(url):
+            self.validationLabel.setText("❌ URL格式不正确，请检查")
+            self.validationLabel.setTextColor(QColor(244, 67, 54), QColor(244, 67, 54))
+            return False
         elif name in self.existing_remotes:
             self.validationLabel.setText(f"⚠️ 远程名称 '{name}' 已存在，将会覆盖URL")
             self.validationLabel.setTextColor(QColor(255, 152, 0), QColor(255, 152, 0))
@@ -246,6 +250,38 @@ class RemoteInterface(QWidget):
             self.validationLabel.setText("✅ 信息填写完整")
             self.validationLabel.setTextColor(QColor(76, 175, 80), QColor(76, 175, 80))
             return True
+    
+    def _is_valid_git_url(self, url: str) -> bool:
+        """验证Git URL格式"""
+        if not url:
+            return False
+        
+        # HTTPS: https://github.com/user/repo.git
+        if url.startswith('https://') or url.startswith('http://'):
+            # 基本检查：至少包含域名和路径
+            parts = url.split('/')
+            return len(parts) >= 4 and '.' in parts[2]
+        
+        # SSH: git@github.com:user/repo.git
+        if url.startswith('git@') or url.startswith('ssh://'):
+            # SSH格式检查
+            if url.startswith('git@'):
+                # git@host:path 格式
+                return ':' in url and len(url.split(':')) == 2 and '/' in url.split(':')[1]
+            else:
+                # ssh://git@host/path 格式
+                return len(url.split('/')) >= 4
+        
+        # Git协议: git://github.com/user/repo.git
+        if url.startswith('git://'):
+            parts = url.split('/')
+            return len(parts) >= 4
+        
+        # 本地路径或文件URL
+        if url.startswith('file://') or url.startswith('/'):
+            return True
+        
+        return False
     
     def get_remote_info(self) -> tuple[str, str]:
         """获取远程仓库信息"""
