@@ -85,7 +85,6 @@ class BranchConfigStep(QWidget):
         layout.addWidget(self.localBranchLabel)
         
         self.localBranchCombo = ComboBox(self)
-        self.localBranchCombo.currentTextChanged.connect(self._validate_inputs)
         layout.addWidget(self.localBranchCombo)
         
         # 加载本地分支列表
@@ -109,11 +108,13 @@ class BranchConfigStep(QWidget):
         self.remoteBranchEdit = LineEdit(self)
         self.remoteBranchEdit.setPlaceholderText("请输入远程分支名称，如：main、master")
         self.remoteBranchEdit.setText("main")
-        self.remoteBranchEdit.textChanged.connect(self._validate_inputs)
         layout.addWidget(self.remoteBranchEdit)
         
-        
         layout.addStretch()
+        
+        # 所有控件创建完成后，再连接信号
+        self.localBranchCombo.currentTextChanged.connect(self._validate_inputs)
+        self.remoteBranchEdit.textChanged.connect(self._validate_inputs)
         
         # 初始验证
         self._validate_inputs()
@@ -251,28 +252,29 @@ class RemoteConfigWizard(GuideWindow):
         """实时更新下一步按钮状态"""
         current_index = self.currentIndex()
         
+        # 第1页（欢迎页）：总是启用
+        if current_index == 0:
+            is_valid = True
         # 第2页：验证远程信息
-        if current_index == 1:
+        elif current_index == 1:
             is_valid = self.remoteInfoPage.is_valid()
-            try:
-                # GuideWindow的下一步按钮可能是nextButton或nextBtn
-                if hasattr(self, 'nextButton'):
-                    self.nextButton.setEnabled(is_valid)
-                elif hasattr(self, 'nextBtn'):
-                    self.nextBtn.setEnabled(is_valid)
-            except:
-                pass
-        
         # 第3页：验证分支配置
         elif current_index == 2:
             is_valid = self.branchConfigPage.is_valid()
-            try:
-                if hasattr(self, 'nextButton'):
-                    self.nextButton.setEnabled(is_valid)
-                elif hasattr(self, 'nextBtn'):
-                    self.nextBtn.setEnabled(is_valid)
-            except:
-                pass
+        # 第4页（确认页）：总是启用
+        elif current_index == 3:
+            is_valid = True
+        else:
+            is_valid = True
+        
+        # 更新按钮状态
+        try:
+            if hasattr(self, 'nextButton'):
+                self.nextButton.setEnabled(is_valid)
+            elif hasattr(self, 'nextBtn'):
+                self.nextBtn.setEnabled(is_valid)
+        except:
+            pass
     
     def _on_page_changed(self, index: int):
         """页面切换时验证并更新按钮状态"""
