@@ -622,7 +622,20 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "提交成功"
-        return False, stderr or "提交失败"
+        
+        # 详细的错误处理
+        error_msg = stderr.strip() if stderr.strip() else stdout.strip()
+        if not error_msg:
+            error_msg = "提交失败（未知原因）"
+        
+        # 常见错误的友好提示
+        if "nothing to commit" in error_msg.lower() or "no changes added" in error_msg.lower():
+            return False, "暂存区为空，请先暂存文件再提交"
+        if "please tell me who you are" in error_msg.lower() or "user.name" in error_msg.lower():
+            return False, "请先配置Git用户信息（用户名和邮箱）"
+        
+        logger.error(f"Git commit失败: stdout={stdout}, stderr={stderr}")
+        return False, error_msg
 
     def amend_commit(self, message: str) -> tuple[bool, str]:
         """修改最后一次提交"""
