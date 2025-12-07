@@ -363,9 +363,9 @@ class GitService(QObject):
                     match = re.search(r'at\s+([a-f0-9]+)', line)
                     if match:
                         commit_hash = match.group(1)[:7]
-                        name = f"分离头指针 ({commit_hash})"
+                        name = f"分离头指针 (Detached HEAD) @ {commit_hash}"
                     else:
-                        name = "分离头指针"
+                        name = "分离头指针 (Detached HEAD)"
                     tracking = ""
                     ahead = behind = 0
                     branches.append(BranchInfo(

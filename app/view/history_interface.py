@@ -176,7 +176,7 @@ class CommitCard(CardWidget):
         menu.addSeparator()
         
         # Cherry-pick
-        cherry_pick_action = Action(FluentIcon.COPY, "Cherry-pick此提交")
+        cherry_pick_action = Action(FluentIcon.COPY, "应用此提交 (Cherry-pick)")
         cherry_pick_action.triggered.connect(lambda: self.cherryPickClicked.emit(self.commit.hash))
         menu.addAction(cherry_pick_action)
         
@@ -870,7 +870,7 @@ class HistoryInterface(QWidget):
     def _on_cherry_pick(self, commit_hash: str):
         """处理Cherry-pick操作"""
         box = MessageBox(
-            "Cherry-pick确认",
+            "应用提交确认 (Cherry-pick)",
             f"确定要应用提交 {commit_hash[:7]} 到当前分支吗？",
             self.window()
         )

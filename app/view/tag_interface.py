@@ -139,7 +139,7 @@ class TagInterface(ScrollArea):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         
-        title_label = SubtitleLabel("Tag管理", self)
+        title_label = SubtitleLabel("标签管理 (Tag)", self)
         header_layout.addWidget(title_label)
         
         header_layout.addStretch()
@@ -155,7 +155,7 @@ class TagInterface(ScrollArea):
         header_layout.addWidget(push_all_btn)
         
         # 创建Tag按钮
-        create_btn = PushButton("创建Tag", self, FluentIcon.ADD)
+        create_btn = PushButton("创建标签 (Tag)", self, FluentIcon.ADD)
         create_btn.clicked.connect(self._on_create_tag)
         header_layout.addWidget(create_btn)
         

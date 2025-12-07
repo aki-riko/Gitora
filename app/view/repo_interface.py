@@ -726,7 +726,7 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 第二组：临时保存（图标+文本）
-        stash_btn = TransparentPushButton("暂存", self, Icon.GIT_PR_DRAFT)
+        stash_btn = TransparentPushButton("储藏 (Stash)", self, Icon.GIT_PR_DRAFT)
         stash_btn.clicked.connect(self._on_open_stash)
         header_layout.addWidget(stash_btn)
         
@@ -749,7 +749,7 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 第四组：远程仓库（图标+文本）
-        remote_btn = TransparentPushButton("远程", self, FluentIcon.CLOUD)
+        remote_btn = TransparentPushButton("远程 (Remote)", self, FluentIcon.CLOUD)
         remote_btn.clicked.connect(self._on_manage_remotes)
         header_layout.addWidget(remote_btn)
         

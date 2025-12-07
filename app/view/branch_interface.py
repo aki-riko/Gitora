@@ -199,7 +199,7 @@ class BranchInterface(ScrollArea):
         header_layout.setContentsMargins(0, 0, 0, 0)
 
         # 标题
-        self.titleLabel = SubtitleLabel("分支管理", self)
+        self.titleLabel = SubtitleLabel("分支管理 (Branch)", self)
         header_layout.addWidget(self.titleLabel)
 
         header_layout.addStretch()

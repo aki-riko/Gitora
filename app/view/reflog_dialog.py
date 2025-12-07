@@ -85,7 +85,7 @@ class ReflogDialog(Dialog):
     """Reflog引用日志对话框"""
     
     def __init__(self, parent=None):
-        super().__init__("引用日志", "查看所有引用变更记录，可恢复丢失的提交", parent)
+        super().__init__("引用日志 (Reflog)", "查看所有引用变更记录，可恢复丢失的提交", parent)
         self._setup_ui()
         self._load_reflog()
     
@@ -93,7 +93,7 @@ class ReflogDialog(Dialog):
         self.setFixedSize(800, 600)
         
         # 说明
-        hint = BodyLabel("Reflog记录了所有引用的变更历史，即使提交被删除也能找回", self)
+        hint = BodyLabel("引用日志 (Reflog) 记录了所有引用的变更历史，即使提交被删除也能找回", self)
         self.textLayout.addWidget(hint)
         
         # 滚动区域
