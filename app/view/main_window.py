@@ -74,7 +74,7 @@ class MainWindow(MSFluentWindow):
             content=msg,
             orient=Qt.Orientation.Horizontal,
             isClosable=False,
-            position=InfoBarPosition.BOTTOM_RIGHT,
+            position=InfoBarPosition.BOTTOM,
             parent=self
         )
     

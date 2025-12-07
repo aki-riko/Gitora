@@ -245,7 +245,7 @@ class ConflictInterface(ScrollArea):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 self.refresh_conflicts()
@@ -254,7 +254,7 @@ class ConflictInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -277,7 +277,7 @@ class ConflictInterface(ScrollArea):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 self.refresh_conflicts()
@@ -286,7 +286,7 @@ class ConflictInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -324,7 +324,7 @@ class ConflictInterface(ScrollArea):
                 title="读取失败",
                 content=f"无法读取文件: {error_msg}",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=3000
             )
         
@@ -345,7 +345,7 @@ class ConflictInterface(ScrollArea):
                         title="成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                     self.refresh_conflicts()
@@ -354,7 +354,7 @@ class ConflictInterface(ScrollArea):
                         title="失败",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=3000
                     )
             

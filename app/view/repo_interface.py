@@ -164,7 +164,7 @@ class FileChangeCard(CardWidget):
                 "Blame失败",
                 error_msg,
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=3000
             )
         
@@ -351,7 +351,7 @@ class CommitPanel(QFrame):
                 title="提示",
                 content="请输入提交信息",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return
@@ -364,7 +364,7 @@ class CommitPanel(QFrame):
                 title="提示",
                 content="请输入提交信息",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return
@@ -376,7 +376,7 @@ class CommitPanel(QFrame):
                 title="成功",
                 content=msg,
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
         else:
@@ -384,7 +384,7 @@ class CommitPanel(QFrame):
                 title="失败",
                 content=msg,
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=3000
             )
 
@@ -791,7 +791,7 @@ class RepoInterface(ScrollArea):
                 title="成功",
                 content=f"已打开仓库: {repo_name}",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
         else:
@@ -799,7 +799,7 @@ class RepoInterface(ScrollArea):
                 title="错误",
                 content="仓库不存在或已被删除",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=3000
             )
     
@@ -812,7 +812,7 @@ class RepoInterface(ScrollArea):
             title="成功",
             content="已清空最近仓库列表",
             parent=self.window(),
-            position=InfoBarPosition.BOTTOM_RIGHT,
+            position=InfoBarPosition.BOTTOM,
             duration=2000
         )
     
@@ -838,7 +838,7 @@ class RepoInterface(ScrollArea):
             content='正在初始化Git仓库...',
             orient=Qt.Orientation.Horizontal,
             isClosable=False,
-            position=InfoBarPosition.BOTTOM_RIGHT,
+            position=InfoBarPosition.BOTTOM,
             parent=self.window()
         )
         
@@ -890,7 +890,7 @@ class RepoInterface(ScrollArea):
             title="配置完成",
             content="Git仓库已初始化并完成配置！",
             parent=self.window(),
-            position=InfoBarPosition.BOTTOM_RIGHT,
+            position=InfoBarPosition.BOTTOM,
             duration=2000
         )
     
@@ -930,7 +930,7 @@ class RepoInterface(ScrollArea):
                     content='正在检测仓库大小...',
                     orient=Qt.Orientation.Horizontal,
                     isClosable=False,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     parent=self.window()
                 )
                 
@@ -961,7 +961,7 @@ class RepoInterface(ScrollArea):
                     title="错误",
                     content="所选目录不是有效的Git仓库",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
 
@@ -1009,7 +1009,7 @@ class RepoInterface(ScrollArea):
                     title="错误",
                     content=f"操作失败: {path}",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
         
@@ -1031,7 +1031,7 @@ class RepoInterface(ScrollArea):
                         title="成功",
                         content="已放弃修改",
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                 else:
@@ -1039,7 +1039,7 @@ class RepoInterface(ScrollArea):
                         title="错误",
                         content="放弃修改失败",
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
             
@@ -1062,7 +1062,7 @@ class RepoInterface(ScrollArea):
                     title="成功",
                     content="已暂存所有变更",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
@@ -1070,7 +1070,7 @@ class RepoInterface(ScrollArea):
                     title="失败",
                     content="暂存失败",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
         
@@ -1092,7 +1092,7 @@ class RepoInterface(ScrollArea):
                     title="成功",
                     content="已取消暂存所有文件",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
@@ -1100,7 +1100,7 @@ class RepoInterface(ScrollArea):
                     title="失败",
                     content="取消暂存失败",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
         
@@ -1124,7 +1124,7 @@ class RepoInterface(ScrollArea):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
@@ -1132,7 +1132,7 @@ class RepoInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -1155,7 +1155,7 @@ class RepoInterface(ScrollArea):
                     title="提示",
                     content="请输入URL和路径",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 return
@@ -1250,7 +1250,7 @@ class RepoInterface(ScrollArea):
                 '请先打开一个Git仓库',
                 duration=2000,
                 parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT
+                position=InfoBarPosition.BOTTOM
             )
             return
         
@@ -1292,7 +1292,7 @@ class RepoInterface(ScrollArea):
                 "获取失败",
                 error_msg,
                 parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=3000
             )
         

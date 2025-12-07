@@ -385,7 +385,7 @@ class CommitDetailPanel(QFrame):
                 title="成功",
                 content="已复制Hash到剪贴板",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
 
@@ -405,7 +405,7 @@ class CommitDetailPanel(QFrame):
                     title="成功",
                     content=f"已检出到 {commit_hash}",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
@@ -413,7 +413,7 @@ class CommitDetailPanel(QFrame):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -452,7 +452,7 @@ class CommitDetailPanel(QFrame):
                         title="成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=3000
                     )
                 else:
@@ -460,7 +460,7 @@ class CommitDetailPanel(QFrame):
                         title="撤销失败",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=4000
                     )
             
@@ -506,7 +506,7 @@ class CommitDetailPanel(QFrame):
                         title="回滚成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=3000
                     )
                 else:
@@ -514,7 +514,7 @@ class CommitDetailPanel(QFrame):
                         title="回滚失败",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=4000
                     )
             
@@ -880,9 +880,9 @@ class HistoryInterface(QWidget):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.cherry_pick(commit_hash),

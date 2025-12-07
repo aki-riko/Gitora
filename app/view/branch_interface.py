@@ -342,7 +342,7 @@ class BranchInterface(ScrollArea):
                     title="提示",
                     content="请输入分支名称",
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 return
@@ -356,7 +356,7 @@ class BranchInterface(ScrollArea):
                         title="成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                 else:
@@ -364,7 +364,7 @@ class BranchInterface(ScrollArea):
                         title="失败",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=3000
                     )
             
@@ -387,7 +387,7 @@ class BranchInterface(ScrollArea):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
@@ -395,7 +395,7 @@ class BranchInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -424,7 +424,7 @@ class BranchInterface(ScrollArea):
                         title="成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                 else:
@@ -437,7 +437,7 @@ class BranchInterface(ScrollArea):
                     if force_box.exec():
                         SimpleAsyncTask.run(
                             lambda: gitService.delete_branch(branch, force=True),
-                            lambda r: InfoBar.success("成功", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT) if r[0] else InfoBar.error("失败", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                            lambda r: InfoBar.success("成功", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM) if r[0] else InfoBar.error("失败", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM)
                         )
             
             SimpleAsyncTask.run(lambda: gitService.delete_branch(branch), on_finished)
@@ -469,7 +469,7 @@ class BranchInterface(ScrollArea):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 self.refresh_branches()
@@ -478,7 +478,7 @@ class BranchInterface(ScrollArea):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         

@@ -525,7 +525,7 @@ class RemoteConfigWizard(GuideWindow):
                     f"远程仓库 '{remote_name}' 已添加。\n"
                     f"远程仓库为空，请点击「推送」按钮进行首次推送。",
                     parent=self.parent() if self.parent() else self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=5000
                 )
             elif result == "upstream_warning":
@@ -535,7 +535,7 @@ class RemoteConfigWizard(GuideWindow):
                     f"远程仓库 '{remote_name}' 已添加，但上游分支设置失败。\n\n"
                     f"请手动运行: git push -u {remote_name} {local_branch}",
                     parent=self.parent() if self.parent() else self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=5000
                 )
             else:
@@ -544,7 +544,7 @@ class RemoteConfigWizard(GuideWindow):
                     "配置完成",
                     f"远程仓库 '{remote_name}' 已配置完成",
                     parent=self.parent() if self.parent() else self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
             self.configCompleted.emit()
@@ -559,7 +559,7 @@ class RemoteConfigWizard(GuideWindow):
                 "配置失败",
                 str(e),
                 parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=5000
             )
         

@@ -191,7 +191,7 @@ class SettingInterface(ScrollArea):
             self.tr('Configuration takes effect after restart'),
             duration=1500,
             parent=self,
-            position=InfoBarPosition.BOTTOM_RIGHT
+            position=InfoBarPosition.BOTTOM
         )
 
     def _connectSignalToSlot(self):
@@ -214,7 +214,7 @@ class SettingInterface(ScrollArea):
                 self.tr('请先打开一个Git仓库'),
                 duration=2000,
                 parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT
+                position=InfoBarPosition.BOTTOM
             )
             return
         
@@ -229,7 +229,7 @@ class SettingInterface(ScrollArea):
                     msg,
                     duration=2000,
                     parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT
+                    position=InfoBarPosition.BOTTOM
                 )
             else:
                 InfoBar.error(
@@ -237,7 +237,7 @@ class SettingInterface(ScrollArea):
                     msg,
                     duration=3000,
                     parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT
+                    position=InfoBarPosition.BOTTOM
                 )
     
     def _on_gc(self):
@@ -248,7 +248,7 @@ class SettingInterface(ScrollArea):
                 self.tr('请先打开一个Git仓库'),
                 duration=2000,
                 parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT
+                position=InfoBarPosition.BOTTOM
             )
             return
         
@@ -267,7 +267,7 @@ class SettingInterface(ScrollArea):
                 f'Git已安装: {version}',
                 duration=3000,
                 parent=self,
-                position=InfoBarPosition.BOTTOM_RIGHT
+                position=InfoBarPosition.BOTTOM
             )
             return
         

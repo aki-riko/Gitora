@@ -68,9 +68,9 @@ class ReflogCard(CardWidget):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.checkout_branch(commit_hash),

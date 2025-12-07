@@ -86,7 +86,7 @@ class StashItemCard(CardWidget):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
@@ -94,7 +94,7 @@ class StashItemCard(CardWidget):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -120,7 +120,7 @@ class StashItemCard(CardWidget):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 # 刷新列表
@@ -131,7 +131,7 @@ class StashItemCard(CardWidget):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -166,7 +166,7 @@ class StashItemCard(CardWidget):
                         title="成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                     # 刷新列表
@@ -177,7 +177,7 @@ class StashItemCard(CardWidget):
                         title="失败",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=3000
                     )
             
@@ -289,7 +289,7 @@ class StashDialog(Dialog):
                     title="成功",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
                 self.messageEdit.clear()
@@ -299,7 +299,7 @@ class StashDialog(Dialog):
                     title="失败",
                     content=msg,
                     parent=self.window(),
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=3000
                 )
         
@@ -319,7 +319,7 @@ class StashDialog(Dialog):
                 title="提示",
                 content="没有可清空的Stash",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return
@@ -336,7 +336,7 @@ class StashDialog(Dialog):
                         title="成功",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                     self.refresh_stash_list()
@@ -345,7 +345,7 @@ class StashDialog(Dialog):
                         title="失败",
                         content=msg,
                         parent=self.window(),
-                        position=InfoBarPosition.BOTTOM_RIGHT,
+                        position=InfoBarPosition.BOTTOM,
                         duration=3000
                     )
             

@@ -635,7 +635,7 @@ class InitRepoGuide(GuideWindow):
                     "提示",
                     "请同时填写用户名和邮箱，或者两者都不填",
                     parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             elif email and not name:
@@ -644,7 +644,7 @@ class InitRepoGuide(GuideWindow):
                     "提示",
                     "请同时填写用户名和邮箱，或者两者都不填",
                     parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
         
@@ -656,7 +656,7 @@ class InitRepoGuide(GuideWindow):
                     "提示",
                     "请同时填写远程名称和URL，或者两者都不填",
                     parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             elif remote_url and not remote_name:
@@ -664,7 +664,7 @@ class InitRepoGuide(GuideWindow):
                     "提示",
                     "请同时填写远程名称和URL，或者两者都不填",
                     parent=self,
-                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
     

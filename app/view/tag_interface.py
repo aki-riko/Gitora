@@ -206,7 +206,7 @@ class TagInterface(ScrollArea):
         if dialog.exec():
             name, message = dialog.get_tag_info()
             if not name:
-                InfoBar.warning("提示", "请输入Tag名称", parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                InfoBar.warning("提示", "请输入Tag名称", parent=self.window(), position=InfoBarPosition.BOTTOM)
                 return
             
             from app.common.async_helper import AsyncTask
@@ -214,10 +214,10 @@ class TagInterface(ScrollArea):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                     self.refresh_tags()
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.create_tag(name, message),
@@ -236,10 +236,10 @@ class TagInterface(ScrollArea):
             def on_finished(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                     self.refresh_tags()
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             SimpleAsyncTask.run(lambda: gitService.delete_tag(tag_name), on_finished)
     
@@ -250,9 +250,9 @@ class TagInterface(ScrollArea):
         def on_success(result):
             success, msg = result
             if success:
-                InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             else:
-                InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
         
         AsyncTask.run(
             func=lambda: gitService.push_tag(tag_name),
@@ -269,9 +269,9 @@ class TagInterface(ScrollArea):
         def on_success(result):
             success, msg = result
             if success:
-                InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             else:
-                InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
         
         AsyncTask.run(
             func=gitService.push_all_tags,
@@ -294,9 +294,9 @@ class TagInterface(ScrollArea):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM_RIGHT)
+                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.checkout_tag(tag_name),

@@ -199,7 +199,7 @@ class RemoteDialog(Dialog):
                 "提示",
                 "请输入远程仓库名称",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return False
@@ -209,7 +209,7 @@ class RemoteDialog(Dialog):
                 "提示",
                 "请输入主机名",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return False
@@ -219,7 +219,7 @@ class RemoteDialog(Dialog):
                 "提示",
                 "请输入用户名",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return False
@@ -229,7 +229,7 @@ class RemoteDialog(Dialog):
                 "提示",
                 "请输入仓库名",
                 parent=self.window(),
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
             return False

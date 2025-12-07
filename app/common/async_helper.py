@@ -82,7 +82,7 @@ class AsyncTask:
                 content=progress_content,
                 orient=Qt.Orientation.Horizontal,
                 isClosable=False,
-                position=InfoBarPosition.BOTTOM_RIGHT,
+                position=InfoBarPosition.BOTTOM,
                 parent=parent
             )
         
