@@ -358,12 +358,14 @@ class GitService(QObject):
 
                 # 处理分离头指针状态: (HEAD detached at xxx)
                 if line.startswith('(HEAD'):
-                    # 提取完整的括号内容
-                    end_paren = line.find(')')
-                    if end_paren != -1:
-                        name = line[:end_paren + 1]  # 包含完整括号
+                    # 提取commit hash并显示中文
+                    import re
+                    match = re.search(r'at\s+([a-f0-9]+)', line)
+                    if match:
+                        commit_hash = match.group(1)[:7]
+                        name = f"分离头指针 ({commit_hash})"
                     else:
-                        name = "HEAD (detached)"
+                        name = "分离头指针"
                     tracking = ""
                     ahead = behind = 0
                     branches.append(BranchInfo(
