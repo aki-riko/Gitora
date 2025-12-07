@@ -131,7 +131,7 @@ class MainWindow(MSFluentWindow):
         self.addSubInterface(
             self.tagInterface,
             FIF.TAG,
-            self.tr('标签 (Tag)')
+            self.tr('标签')
         )
 
         # 设置界面（底部）
