@@ -21,6 +21,7 @@ from qfluentwidgets import (
 from qfluentwidgetspro import TimeLineWidget, TimeLineCard, Splitter
 
 from app.common.git_service import gitService, CommitInfo
+from app.common.icon import Icon
 from app.common.logger import get_logger
 
 logger = get_logger("HistoryInterface")
