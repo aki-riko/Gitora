@@ -146,16 +146,22 @@ class TagInterface(ScrollArea):
         
         # 刷新按钮
         refresh_btn = TransparentPushButton("刷新", self, FluentIcon.SYNC)
+        refresh_btn.setToolTip("重新加载标签列表")
+        refresh_btn.installEventFilter(ToolTipFilter(refresh_btn, 500, ToolTipPosition.BOTTOM))
         refresh_btn.clicked.connect(self.refresh_tags)
         header_layout.addWidget(refresh_btn)
         
         # 推送所有Tag
         push_all_btn = PushButton("推送所有", self, FluentIcon.SEND)
+        push_all_btn.setToolTip("将所有本地标签推送到远程仓库")
+        push_all_btn.installEventFilter(ToolTipFilter(push_all_btn, 500, ToolTipPosition.BOTTOM))
         push_all_btn.clicked.connect(self._on_push_all_tags)
         header_layout.addWidget(push_all_btn)
         
         # 创建Tag按钮
         create_btn = PushButton("创建标签 (Tag)", self, FluentIcon.ADD)
+        create_btn.setToolTip("在当前提交上创建新的标签\n标签可用于标记版本号或重要节点")
+        create_btn.installEventFilter(ToolTipFilter(create_btn, 500, ToolTipPosition.BOTTOM))
         create_btn.clicked.connect(self._on_create_tag)
         header_layout.addWidget(create_btn)
         

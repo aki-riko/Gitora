@@ -206,11 +206,15 @@ class BranchInterface(ScrollArea):
 
         # 新建分支按钮
         self.createBtn = PrimaryPushButton("新建分支", self, FluentIcon.ADD)
+        self.createBtn.setToolTip("基于当前分支创建新的分支\n可用于开发新功能或修复问题")
+        self.createBtn.installEventFilter(ToolTipFilter(self.createBtn, 500, ToolTipPosition.BOTTOM))
         self.createBtn.clicked.connect(self._on_create_branch)
         header_layout.addWidget(self.createBtn)
 
         # 同步操作 - Split按钮（主操作：刷新，下拉：获取远程）
         self.syncBtn = SplitPushButton("刷新", self, FluentIcon.SYNC)
+        self.syncBtn.setToolTip("刷新分支列表\n下拉菜单可获取远程更新或清理已删除的远程分支")
+        self.syncBtn.installEventFilter(ToolTipFilter(self.syncBtn, 500, ToolTipPosition.BOTTOM))
         self.syncBtn.clicked.connect(self.refresh_branches)
         
         syncMenu = RoundMenu(parent=self)

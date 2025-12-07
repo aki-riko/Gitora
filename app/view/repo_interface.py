@@ -714,6 +714,8 @@ class RepoInterface(ScrollArea):
         
         # 第一组：仓库操作
         self.repoBtn = SplitPushButton("打开仓库", self, FluentIcon.FOLDER)
+        self.repoBtn.setToolTip("打开本地Git仓库，或克隆/初始化新仓库")
+        self.repoBtn.installEventFilter(ToolTipFilter(self.repoBtn, 500, ToolTipPosition.BOTTOM))
         self.repoBtn.clicked.connect(self._open_repo)
         repoMenu = RoundMenu(parent=self)
         repoMenu.addAction(Action(FluentIcon.FOLDER, "打开本地仓库", triggered=self._open_repo))
@@ -737,6 +739,8 @@ class RepoInterface(ScrollArea):
         
         # 第三组：同步操作（重点）
         self.syncBtn = SplitPushButton("同步", self, FluentIcon.SYNC)
+        self.syncBtn.setToolTip("拉取远程更新或推送本地提交\n点击主按钮拉取，下拉选择其他操作")
+        self.syncBtn.installEventFilter(ToolTipFilter(self.syncBtn, 500, ToolTipPosition.BOTTOM))
         self.syncBtn.clicked.connect(self._on_pull)
         syncMenu = RoundMenu(parent=self)
         syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取 (Pull)", triggered=self._on_pull))

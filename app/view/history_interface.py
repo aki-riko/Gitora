@@ -252,10 +252,14 @@ class CommitDetailPanel(QFrame):
         # 操作按钮 - 第一行（安全操作）
         btn_layout = QHBoxLayout()
         self.copyHashBtn = PushButton("复制Hash", self, FluentIcon.COPY)
+        self.copyHashBtn.setToolTip("复制提交的完整Hash到剪贴板")
+        self.copyHashBtn.installEventFilter(ToolTipFilter(self.copyHashBtn, 500, ToolTipPosition.TOP))
         self.copyHashBtn.clicked.connect(self._copy_hash)
         btn_layout.addWidget(self.copyHashBtn)
 
         self.checkoutBtn = PushButton("检出此提交", self, FluentIcon.SYNC)
+        self.checkoutBtn.setToolTip("切换到此提交的代码状态\n注意：会进入分离头指针状态")
+        self.checkoutBtn.installEventFilter(ToolTipFilter(self.checkoutBtn, 500, ToolTipPosition.TOP))
         self.checkoutBtn.clicked.connect(self._checkout_commit)
         btn_layout.addWidget(self.checkoutBtn)
 

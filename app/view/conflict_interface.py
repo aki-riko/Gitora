@@ -12,7 +12,8 @@ from PySide6.QtGui import QColor
 from qfluentwidgets import (
     ScrollArea, CardWidget, BodyLabel, CaptionLabel, StrongBodyLabel,
     PrimaryPushButton, PushButton, TransparentPushButton, FluentIcon,
-    InfoBar, InfoBarPosition, MessageBox, IconWidget, TitleLabel
+    InfoBar, InfoBarPosition, MessageBox, IconWidget, TitleLabel,
+    ToolTipFilter, ToolTipPosition
 )
 
 from ..common.git_service import gitService, ConflictInfo
@@ -138,11 +139,15 @@ class ConflictInterface(ScrollArea):
         
         # 刷新按钮
         refresh_btn = TransparentPushButton("刷新", self, FluentIcon.SYNC)
+        refresh_btn.setToolTip("重新检测冲突文件")
+        refresh_btn.installEventFilter(ToolTipFilter(refresh_btn, 500, ToolTipPosition.BOTTOM))
         refresh_btn.clicked.connect(self.refresh_conflicts)
         header_layout.addWidget(refresh_btn)
         
         # 中止合并按钮
         self.abortBtn = PushButton("中止合并", self, FluentIcon.CLOSE)
+        self.abortBtn.setToolTip("放弃本次合并，恢复到合并前的状态\n所有合并中的修改都会丢失")
+        self.abortBtn.installEventFilter(ToolTipFilter(self.abortBtn, 500, ToolTipPosition.BOTTOM))
         self.abortBtn.clicked.connect(self._on_abort_merge)
         header_layout.addWidget(self.abortBtn)
         

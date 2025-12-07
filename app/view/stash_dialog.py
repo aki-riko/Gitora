@@ -212,6 +212,8 @@ class StashDialog(Dialog):
         top_layout.addWidget(self.messageEdit)
         
         save_btn = PushButton("保存当前修改", self, FluentIcon.SAVE)
+        save_btn.setToolTip("将当前工作区的所有修改保存到储藏区\n工作区会恢复到干净状态")
+        save_btn.installEventFilter(ToolTipFilter(save_btn, 500, ToolTipPosition.BOTTOM))
         save_btn.clicked.connect(self._on_save_stash)
         top_layout.addWidget(save_btn)
         
@@ -219,11 +221,15 @@ class StashDialog(Dialog):
         
         # 刷新按钮
         refresh_btn = TransparentPushButton("刷新", self, FluentIcon.SYNC)
+        refresh_btn.setToolTip("重新加载储藏列表")
+        refresh_btn.installEventFilter(ToolTipFilter(refresh_btn, 500, ToolTipPosition.BOTTOM))
         refresh_btn.clicked.connect(self.refresh_stash_list)
         top_layout.addWidget(refresh_btn)
         
         # 清空所有按钮
         clear_btn = TransparentPushButton("清空所有", self, FluentIcon.DELETE)
+        clear_btn.setToolTip("删除所有储藏记录\n此操作不可恢复")
+        clear_btn.installEventFilter(ToolTipFilter(clear_btn, 500, ToolTipPosition.BOTTOM))
         clear_btn.clicked.connect(self._on_clear_all)
         top_layout.addWidget(clear_btn)
         
