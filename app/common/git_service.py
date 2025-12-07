@@ -874,23 +874,38 @@ class GitService(QObject):
         # 异步执行所有步骤
         def do_quick_commit_push():
             """在子线程执行所有Git操作"""
-            # 步骤1：暂存所有
-            self.progressUpdated.emit(0, "暂存所有变更...")
-            if not self.stage_all():
-                return False, "暂存失败"
+            has_committed = False
             
-            # 步骤2：提交
-            self.progressUpdated.emit(33, "提交变更...")
-            success, commit_msg = self.commit(message)
-            if not success:
-                return False, commit_msg
+            # 步骤1：检查是否有变更需要暂存
+            self.progressUpdated.emit(0, "检查变更...")
+            changes = self.get_status()
+            has_unstaged = any(not c.staged for c in changes)
+            has_staged = any(c.staged for c in changes)
             
-            # 步骤3：检查远程仓库
+            # 步骤2：如果有未暂存的变更，暂存所有
+            if has_unstaged:
+                self.progressUpdated.emit(10, "暂存所有变更...")
+                if not self.stage_all():
+                    return False, "暂存失败"
+                has_staged = True  # 暂存后就有已暂存的了
+            
+            # 步骤3：如果有已暂存的变更，提交
+            if has_staged:
+                self.progressUpdated.emit(33, "提交变更...")
+                success, commit_msg = self.commit(message)
+                if not success:
+                    return False, commit_msg
+                has_committed = True
+            
+            # 步骤4：检查远程仓库
             remotes = self.get_remotes()
             if not remotes:
-                return True, "提交成功，但没有配置远程仓库"
+                if has_committed:
+                    return True, "提交成功，但没有配置远程仓库"
+                else:
+                    return False, "没有变更需要提交，也没有配置远程仓库"
             
-            # 步骤4：推送（同步执行）
+            # 步骤5：推送（同步执行）
             self.progressUpdated.emit(66, "推送到远程...")
             current_branch = self.get_current_branch()
             args = ['push', '-u', 'origin', current_branch]
@@ -898,7 +913,10 @@ class GitService(QObject):
             
             if success:
                 self.progressUpdated.emit(100, "完成")
-                return True, "一键提交推送成功"
+                if has_committed:
+                    return True, "一键提交推送成功"
+                else:
+                    return True, "推送成功（无新提交）"
             else:
                 return False, f"推送失败: {stderr or '未知错误'}"
         
