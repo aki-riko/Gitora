@@ -727,6 +727,8 @@ class RepoInterface(ScrollArea):
         
         # 第二组：临时保存（图标+文本）
         stash_btn = TransparentPushButton("储藏 (Stash)", self, Icon.GIT_PR_DRAFT)
+        stash_btn.setToolTip("保存当前修改，稍后恢复（类似草稿箱）")
+        stash_btn.installEventFilter(ToolTipFilter(stash_btn, 500, ToolTipPosition.BOTTOM))
         stash_btn.clicked.connect(self._on_open_stash)
         header_layout.addWidget(stash_btn)
         
@@ -750,6 +752,8 @@ class RepoInterface(ScrollArea):
         
         # 第四组：远程仓库（图标+文本）
         remote_btn = TransparentPushButton("远程 (Remote)", self, FluentIcon.CLOUD)
+        remote_btn.setToolTip("管理远程仓库地址")
+        remote_btn.installEventFilter(ToolTipFilter(remote_btn, 500, ToolTipPosition.BOTTOM))
         remote_btn.clicked.connect(self._on_manage_remotes)
         header_layout.addWidget(remote_btn)
         
@@ -758,6 +762,8 @@ class RepoInterface(ScrollArea):
         
         # 最右边：最近仓库按钮（打开抽屉）
         self.historyBtn = TransparentPushButton("历史", self, FluentIcon.HISTORY)
+        self.historyBtn.setToolTip("最近打开的仓库")
+        self.historyBtn.installEventFilter(ToolTipFilter(self.historyBtn, 500, ToolTipPosition.BOTTOM))
         self.historyBtn.clicked.connect(self._show_recent_repos_drawer)
         header_layout.addWidget(self.historyBtn)
         
