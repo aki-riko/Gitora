@@ -4,8 +4,27 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../../view/main_window.py" line="41"/>
-        <source>Settings</source>
+        <source>仓库</source>
+        <translation>仓库</translation>
+    </message>
+    <message>
+        <source>历史</source>
+        <translation>历史</translation>
+    </message>
+    <message>
+        <source>分支</source>
+        <translation>分支</translation>
+    </message>
+    <message>
+        <source>冲突</source>
+        <translation>冲突</translation>
+    </message>
+    <message>
+        <source>标签</source>
+        <translation>标签</translation>
+    </message>
+    <message>
+        <source>设置</source>
         <translation>设置</translation>
     </message>
 </context>
