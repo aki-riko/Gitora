@@ -356,6 +356,26 @@ class GitService(QObject):
                 is_current = line.startswith('*')
                 line = line[2:].strip()
 
+                # 处理分离头指针状态: (HEAD detached at xxx)
+                if line.startswith('(HEAD'):
+                    # 提取完整的括号内容
+                    end_paren = line.find(')')
+                    if end_paren != -1:
+                        name = line[:end_paren + 1]  # 包含完整括号
+                    else:
+                        name = "HEAD (detached)"
+                    tracking = ""
+                    ahead = behind = 0
+                    branches.append(BranchInfo(
+                        name=name,
+                        is_current=is_current,
+                        is_remote=False,
+                        tracking=tracking,
+                        ahead=ahead,
+                        behind=behind
+                    ))
+                    continue
+
                 parts = line.split()
                 if len(parts) >= 2:
                     name = parts[0]
