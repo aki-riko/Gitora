@@ -22,7 +22,7 @@ class CommitDetailDialog(Dialog):
     
     def __init__(self, commit_hash: str, parent=None):
         super().__init__(
-            title="提交详情",
+            title=self.tr("提交详情"),
             content="",
             parent=parent
         )
@@ -50,7 +50,7 @@ class CommitDetailDialog(Dialog):
         
         # Hash
         hash_row = QHBoxLayout()
-        hash_row.addWidget(CaptionLabel("Hash:", self))
+        hash_row.addWidget(CaptionLabel(self.tr("Hash:"), self))
         self.hashLabel = BodyLabel("", self)
         self.hashLabel.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         hash_row.addWidget(self.hashLabel, 1)
@@ -58,14 +58,14 @@ class CommitDetailDialog(Dialog):
         
         # 作者
         author_row = QHBoxLayout()
-        author_row.addWidget(CaptionLabel("作者:", self))
+        author_row.addWidget(CaptionLabel(self.tr("作者:"), self))
         self.authorLabel = BodyLabel("", self)
         author_row.addWidget(self.authorLabel, 1)
         info_layout.addLayout(author_row)
         
         # 日期
         date_row = QHBoxLayout()
-        date_row.addWidget(CaptionLabel("日期:", self))
+        date_row.addWidget(CaptionLabel(self.tr("日期:"), self))
         self.dateLabel = BodyLabel("", self)
         date_row.addWidget(self.dateLabel, 1)
         info_layout.addLayout(date_row)
@@ -78,7 +78,7 @@ class CommitDetailDialog(Dialog):
         layout.addWidget(self.infoCard)
         
         # 变更文件标题
-        self.filesLabel = StrongBodyLabel("变更文件", self)
+        self.filesLabel = StrongBodyLabel(self.tr("变更文件"), self)
         layout.addWidget(self.filesLabel)
         
         # 文件列表
@@ -89,7 +89,7 @@ class CommitDetailDialog(Dialog):
         layout.addWidget(self.filesWidget)
         
         # Diff显示
-        self.diffLabel = StrongBodyLabel("完整Diff", self)
+        self.diffLabel = StrongBodyLabel(self.tr("完整Diff"), self)
         layout.addWidget(self.diffLabel)
         
         self.diffEdit = QTextEdit(self)
@@ -110,7 +110,7 @@ class CommitDetailDialog(Dialog):
         self.textLayout.addWidget(scroll)
         
         # 设置按钮
-        self.yesButton.setText("关闭")
+        self.yesButton.setText(self.tr("关闭"))
         self.cancelButton.hide()
     
     def _load_commit_detail(self):
@@ -126,19 +126,19 @@ class CommitDetailDialog(Dialog):
         # 获取变更文件
         files = gitService.get_commit_files(self.commit_hash)
         if files:
-            self.filesLabel.setText(f"变更文件 ({len(files)})")
+            self.filesLabel.setText(self.tr("变更文件") + f" ({len(files)})")
             for file_change in files:
                 file_label = BodyLabel(f"{file_change.status_text}: {file_change.path}", self)
                 self.filesLayout.addWidget(file_label)
         else:
-            self.filesLabel.setText("变更文件 (0)")
+            self.filesLabel.setText(self.tr("变更文件") + " (0)")
         
         # 获取diff
         diff_text = gitService.get_commit_diff(self.commit_hash)
         if diff_text:
             self._format_diff(diff_text)
         else:
-            self.diffEdit.setPlainText("无差异")
+            self.diffEdit.setPlainText(self.tr("无差异"))
     
     def _format_diff(self, diff_text: str):
         """格式化diff文本"""

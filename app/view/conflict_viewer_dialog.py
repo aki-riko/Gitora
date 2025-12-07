@@ -18,7 +18,7 @@ class ConflictViewerDialog(Dialog):
     """冲突内容查看对话框"""
     
     def __init__(self, file_path: str, content: str, parent=None):
-        super().__init__("查看冲突内容", "", parent)
+        super().__init__(self.tr("查看冲突内容"), "", parent)
         self.file_path = file_path
         self.content = content
         self._setup_ui()
@@ -28,13 +28,13 @@ class ConflictViewerDialog(Dialog):
         self.setFixedSize(800, 600)
         
         # 文件路径标签
-        path_label = BodyLabel(f"文件: {self.file_path}", self)
+        path_label = BodyLabel(self.tr("文件: ") + self.file_path, self)
         self.textLayout.addWidget(path_label)
         
         # 说明标签
         hint_label = BodyLabel(
-            "<<<<<<< HEAD 和 ======= 之间是我们的版本\n"
-            "======= 和 >>>>>>> 之间是他们的版本",
+            self.tr("<<<<<<< HEAD 和 ======= 之间是我们的版本") + "\n" +
+            self.tr("======= 和 >>>>>>> 之间是他们的版本"),
             self
         )
         self.textLayout.addWidget(hint_label)
@@ -59,7 +59,7 @@ class ConflictViewerDialog(Dialog):
         self._format_content()
         
         # 只显示关闭按钮
-        self.cancelButton.setText("关闭")
+        self.cancelButton.setText(self.tr("关闭"))
         self.yesButton.hide()
     
     def _format_content(self):

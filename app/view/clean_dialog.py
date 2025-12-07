@@ -21,8 +21,8 @@ class CleanDialog(Dialog):
     
     def __init__(self, parent=None):
         super().__init__(
-            title="清理未跟踪文件",
-            content="删除所有未被Git跟踪的文件和目录",
+            title=self.tr("清理未跟踪文件"),
+            content=self.tr("删除所有未被Git跟踪的文件和目录"),
             parent=parent
         )
         self._setup_content()
@@ -32,16 +32,16 @@ class CleanDialog(Dialog):
         self.setFixedSize(600, 500)
         
         # 警告
-        warning = BodyLabel("⚠️ 警告：此操作不可恢复！", self)
+        warning = BodyLabel(self.tr("⚠️ 警告：此操作不可恢复！"), self)
         self.textLayout.addWidget(warning)
         
         # 选项
-        self.includeDirCheckbox = CheckBox("包括目录", self)
+        self.includeDirCheckbox = CheckBox(self.tr("包括目录"), self)
         self.includeDirCheckbox.setChecked(True)
         self.textLayout.addWidget(self.includeDirCheckbox)
         
         # 文件列表
-        list_label = BodyLabel("将被删除的文件：", self)
+        list_label = BodyLabel(self.tr("将被删除的文件："), self)
         self.textLayout.addWidget(list_label)
         
         scroll = ScrollArea(self)
@@ -57,15 +57,15 @@ class CleanDialog(Dialog):
         self.textLayout.addWidget(scroll)
         
         # 按钮
-        self.yesButton.setText("确认清理")
-        self.cancelButton.setText("取消")
+        self.yesButton.setText(self.tr("确认清理"))
+        self.cancelButton.setText(self.tr("取消"))
     
     def _preview_files(self):
         """预览将被清理的文件"""
         files = gitService.clean_preview()
         
         if not files:
-            label = BodyLabel("没有需要清理的文件", self)
+            label = BodyLabel(self.tr("没有需要清理的文件"), self)
             label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.fileListLayout.addWidget(label)
             self.yesButton.setEnabled(False)

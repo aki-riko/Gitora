@@ -73,7 +73,7 @@ class FileChangeCard(CardWidget):
 
         status_text = self.file_change.status_text
         if self.file_change.staged:
-            status_text += " (已暂存)"
+            status_text += " " + self.tr("(已暂存)")
         self.statusLabel = CaptionLabel(status_text, self)
         self.statusLabel.setObjectName("statusLabel")
         self.statusLabel.setTextColor(self._get_status_color(), self._get_status_color())
@@ -85,13 +85,13 @@ class FileChangeCard(CardWidget):
         if self.file_change.staged:
             # 已暂存 -> 取消暂存
             self.actionBtn = TransparentToolButton(FluentIcon.REMOVE, self)
-            self.actionBtn.setToolTip("取消暂存")
+            self.actionBtn.setToolTip(self.tr("取消暂存"))
             self.actionBtn.installEventFilter(ToolTipFilter(self.actionBtn, 500, ToolTipPosition.TOP))
             self.actionBtn.clicked.connect(lambda: self.stageClicked.emit(self.file_change.path, False))
         else:
             # 未暂存 -> 暂存
             self.actionBtn = TransparentToolButton(FluentIcon.ADD, self)
-            self.actionBtn.setToolTip("暂存")
+            self.actionBtn.setToolTip(self.tr("暂存"))
             self.actionBtn.installEventFilter(ToolTipFilter(self.actionBtn, 500, ToolTipPosition.TOP))
             self.actionBtn.clicked.connect(lambda: self.stageClicked.emit(self.file_change.path, True))
 
@@ -100,7 +100,7 @@ class FileChangeCard(CardWidget):
         # 放弃修改按钮
         if not self.file_change.staged:
             self.discardBtn = TransparentToolButton(FluentIcon.DELETE, self)
-            self.discardBtn.setToolTip("放弃修改")
+            self.discardBtn.setToolTip(self.tr("放弃修改"))
             self.discardBtn.installEventFilter(ToolTipFilter(self.discardBtn, 500, ToolTipPosition.TOP))
             self.discardBtn.clicked.connect(lambda: self.discardClicked.emit(self.file_change.path))
             layout.addWidget(self.discardBtn)
@@ -138,12 +138,12 @@ class FileChangeCard(CardWidget):
         menu = RoundMenu(parent=self)
         
         # 查看历史
-        history_action = Action(FluentIcon.HISTORY, "文件历史 (History)")
+        history_action = Action(FluentIcon.HISTORY, self.tr("文件历史 (History)"))
         history_action.triggered.connect(self._on_view_history)
         menu.addAction(history_action)
         
         # 查看代码作者
-        blame_action = Action(FluentIcon.PEOPLE, "代码作者 (Blame)")
+        blame_action = Action(FluentIcon.PEOPLE, self.tr("代码作者 (Blame)"))
         blame_action.triggered.connect(self._on_view_blame)
         menu.addAction(blame_action)
         
@@ -161,7 +161,7 @@ class FileChangeCard(CardWidget):
         
         def on_error(error_msg):
             InfoBar.error(
-                "Blame失败",
+                self.tr("Blame失败"),
                 error_msg,
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
@@ -171,10 +171,10 @@ class FileChangeCard(CardWidget):
         AsyncTask.run(
             func=lambda: gitService.blame(self.file_change.path),
             on_error=on_error,
-            progress_title='请稍候',
-            progress_content=f'正在分析代码作者: {self.file_change.path}',
-            success_title='分析完成',
-            success_content=lambda result: f'共 {len(result)} 行代码' if result else 'Blame信息获取失败',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在分析代码作者: %s') % self.file_change.path,
+            success_title=self.tr('分析完成'),
+            success_content=lambda result: self.tr('共 %d 行代码') % len(result) if result else self.tr('Blame信息获取失败'),
             parent=self.window()
         )
 
@@ -196,7 +196,7 @@ class DiffViewPanel(QFrame):
         
         # 标题栏
         title_layout = QHBoxLayout()
-        self.titleLabel = StrongBodyLabel("文件差异", self)
+        self.titleLabel = StrongBodyLabel(self.tr("文件差异"), self)
         title_layout.addWidget(self.titleLabel)
         title_layout.addStretch()
         
@@ -221,7 +221,7 @@ class DiffViewPanel(QFrame):
         layout.addWidget(self.diffEdit, 1)
         
         # 空状态提示
-        self.emptyLabel = BodyLabel("选择一个文件查看差异", self)
+        self.emptyLabel = BodyLabel(self.tr("选择一个文件查看差异"), self)
         self.emptyLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.emptyLabel)
         
@@ -237,7 +237,7 @@ class DiffViewPanel(QFrame):
         
         # 显示加载提示
         self.diffEdit.hide()
-        self.emptyLabel.setText("正在加载diff...")
+        self.emptyLabel.setText(self.tr("正在加载diff..."))
         self.emptyLabel.show()
         
         # 异步获取diff
@@ -250,7 +250,7 @@ class DiffViewPanel(QFrame):
             if not diff_text or not diff_text.strip():
                 # 无差异
                 self.diffEdit.hide()
-                self.emptyLabel.setText(f"无差异: {file_path}")
+                self.emptyLabel.setText(self.tr("无差异: %s") % file_path)
                 self.emptyLabel.show()
             else:
                 # 显示diff
@@ -300,7 +300,7 @@ class DiffViewPanel(QFrame):
         self.filePathLabel.setText("")
         self.diffEdit.clear()
         self.diffEdit.hide()
-        self.emptyLabel.setText("选择一个文件查看差异")
+        self.emptyLabel.setText(self.tr("选择一个文件查看差异"))
         self.emptyLabel.show()
 
 
@@ -319,12 +319,12 @@ class CommitPanel(QFrame):
         layout.setSpacing(12)
 
         # 标题
-        self.titleLabel = StrongBodyLabel("提交信息", self)
+        self.titleLabel = StrongBodyLabel(self.tr("提交信息"), self)
         layout.addWidget(self.titleLabel)
 
         # 提交信息输入框
         self.messageEdit = TextEdit(self)
-        self.messageEdit.setPlaceholderText("请输入提交信息...\n\n提示：第一行为标题，空一行后为详细描述")
+        self.messageEdit.setPlaceholderText(self.tr("请输入提交信息...\n\n提示：第一行为标题，空一行后为详细描述"))
         self.messageEdit.setMinimumHeight(100)
         layout.addWidget(self.messageEdit)
 
@@ -332,12 +332,12 @@ class CommitPanel(QFrame):
         btn_layout = QHBoxLayout()
         btn_layout.setSpacing(8)
 
-        self.commitBtn = PrimaryPushButton("提交", self, Icon.GIT_COMMIT)  # Git专用提交图标
+        self.commitBtn = PrimaryPushButton(self.tr("提交"), self, Icon.GIT_COMMIT)  # Git专用提交图标
         self.commitBtn.clicked.connect(self._on_commit)
         btn_layout.addWidget(self.commitBtn)
 
-        self.amendBtn = PushButton("修改上次提交", self)
-        self.amendBtn.setToolTip("修改最后一次提交的信息或内容\n⚠️ 如已推送到远程，需要强制推送")
+        self.amendBtn = PushButton(self.tr("修改上次提交"), self)
+        self.amendBtn.setToolTip(self.tr("修改最后一次提交的信息或内容\n⚠️ 如已推送到远程，需要强制推送"))
         self.amendBtn.installEventFilter(ToolTipFilter(self.amendBtn, 500, ToolTipPosition.TOP))
         self.amendBtn.clicked.connect(self._on_amend)
         btn_layout.addWidget(self.amendBtn)
@@ -348,8 +348,8 @@ class CommitPanel(QFrame):
         message = self.messageEdit.toPlainText().strip()
         if not message:
             InfoBar.warning(
-                title="提示",
-                content="请输入提交信息",
+                title=self.tr("提示"),
+                content=self.tr("请输入提交信息"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
@@ -361,8 +361,8 @@ class CommitPanel(QFrame):
         message = self.messageEdit.toPlainText().strip()
         if not message:
             InfoBar.warning(
-                title="提示",
-                content="请输入提交信息",
+                title=self.tr("提示"),
+                content=self.tr("请输入提交信息"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
@@ -373,7 +373,7 @@ class CommitPanel(QFrame):
         if success:
             self.messageEdit.clear()
             InfoBar.success(
-                title="成功",
+                title=self.tr("成功"),
                 content=msg,
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
@@ -381,7 +381,7 @@ class CommitPanel(QFrame):
             )
         else:
             InfoBar.error(
-                title="失败",
+                title=self.tr("失败"),
                 content=msg,
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
@@ -415,14 +415,14 @@ class QuickActionPanel(QFrame):
         self.iconWidget.setFixedSize(28, 28)
         title_layout.addWidget(self.iconWidget)
 
-        self.titleLabel = TitleLabel("一键提交推送", self)
+        self.titleLabel = TitleLabel(self.tr("一键提交推送"), self)
         title_layout.addWidget(self.titleLabel)
         title_layout.addStretch()
         layout.addLayout(title_layout)
 
         # 说明
         self.descLabel = BodyLabel(
-            "新手推荐！自动执行：暂存所有变更 → 提交 → 推送到远程",
+            self.tr("新手推荐！自动执行：暂存所有变更 → 提交 → 推送到远程"),
             self
         )
         self.descLabel.setWordWrap(True)
@@ -454,12 +454,12 @@ class QuickActionPanel(QFrame):
 
         # 提交信息
         self.messageEdit = LineEdit(self)
-        self.messageEdit.setPlaceholderText("输入提交信息，如：修复登录bug")
+        self.messageEdit.setPlaceholderText(self.tr("输入提交信息，如：修复登录bug"))
         self.messageEdit.setClearButtonEnabled(True)
         layout.addWidget(self.messageEdit)
 
         # 一键按钮
-        self.quickBtn = PrimaryPushButton("一键提交推送", self, FluentIcon.SEND)
+        self.quickBtn = PrimaryPushButton(self.tr("一键提交推送"), self, FluentIcon.SEND)
         self.quickBtn.setFixedHeight(44)
         setFont(self.quickBtn, 14)
         self.quickBtn.clicked.connect(self._on_quick_action)
@@ -478,7 +478,7 @@ class QuickActionPanel(QFrame):
         message = self.messageEdit.text().strip()
         if not message:
             # 使用默认提交信息
-            message = f"更新 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+            message = self.tr("更新") + f" {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             self.messageEdit.setText(message)
         
         # 显示进度区域并开始
@@ -493,16 +493,16 @@ class QuickActionPanel(QFrame):
         # 根据步骤设置目标进度和状态文字
         if step == 0:
             self._target_progress = 30
-            self.statusLabel.setText("正在暂存变更...")
+            self.statusLabel.setText(self.tr("正在暂存变更..."))
         elif step == 1:
             self._target_progress = 60
-            self.statusLabel.setText("正在提交...")
+            self.statusLabel.setText(self.tr("正在提交..."))
         elif step == 2:
             self._target_progress = 90
-            self.statusLabel.setText("正在推送到远程...")
+            self.statusLabel.setText(self.tr("正在推送到远程..."))
         else:
             self._target_progress = 100
-            self.statusLabel.setText("完成！")
+            self.statusLabel.setText(self.tr("完成！"))
         
         # 启动平滑动画
         if not self._animation_timer.isActive():
@@ -550,7 +550,7 @@ class RecentReposDrawerContent(QWidget):
         
         # 标题栏
         title_layout = QHBoxLayout()
-        title_label = SubtitleLabel("最近仓库", self)
+        title_label = SubtitleLabel(self.tr("最近仓库"), self)
         title_layout.addWidget(title_label)
         title_layout.addStretch(1)
         
@@ -562,7 +562,7 @@ class RecentReposDrawerContent(QWidget):
         
         # 搜索框
         self.searchEdit = LineEdit(self)
-        self.searchEdit.setPlaceholderText("搜索仓库...")
+        self.searchEdit.setPlaceholderText(self.tr("搜索仓库..."))
         self.searchEdit.setClearButtonEnabled(True)
         self.searchEdit.textChanged.connect(self._on_search)
         layout.addWidget(self.searchEdit)
@@ -583,7 +583,7 @@ class RecentReposDrawerContent(QWidget):
         layout.addWidget(self.scrollArea, 1)
         
         # 底部清空按钮
-        self.clearBtn = TransparentPushButton("清空列表", self, FluentIcon.DELETE)
+        self.clearBtn = TransparentPushButton(self.tr("清空列表"), self, FluentIcon.DELETE)
         self.clearBtn.clicked.connect(self.clearRequested.emit)
         layout.addWidget(self.clearBtn)
     
@@ -609,7 +609,7 @@ class RecentReposDrawerContent(QWidget):
                            or filter_text in p.lower()]
         
         if not filtered_repos:
-            empty_label = CaptionLabel("无匹配结果" if filter_text else "暂无最近打开的仓库", self)
+            empty_label = CaptionLabel(self.tr("无匹配结果") if filter_text else self.tr("暂无最近打开的仓库"), self)
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.listLayout.insertWidget(0, empty_label)
             self.clearBtn.setEnabled(False)
@@ -687,7 +687,7 @@ class RepoInterface(ScrollArea):
         repo_info_layout.setSpacing(2)
         
         # 仓库名称（大标题）
-        self.repoNameLabel = SubtitleLabel("未选择仓库", self)
+        self.repoNameLabel = SubtitleLabel(self.tr("未选择仓库"), self)
         repo_info_layout.addWidget(self.repoNameLabel)
         
         # 仓库路径 + 分支（小字）
@@ -713,14 +713,14 @@ class RepoInterface(ScrollArea):
         # 使用分隔线和间距优化视觉分组
         
         # 第一组：仓库操作
-        self.repoBtn = SplitPushButton("打开仓库", self, FluentIcon.FOLDER)
-        self.repoBtn.setToolTip("打开本地Git仓库，或克隆/初始化新仓库")
+        self.repoBtn = SplitPushButton(self.tr("打开仓库"), self, FluentIcon.FOLDER)
+        self.repoBtn.setToolTip(self.tr("打开本地Git仓库，或克隆/初始化新仓库"))
         self.repoBtn.installEventFilter(ToolTipFilter(self.repoBtn, 500, ToolTipPosition.BOTTOM))
         self.repoBtn.clicked.connect(self._open_repo)
         repoMenu = RoundMenu(parent=self)
-        repoMenu.addAction(Action(FluentIcon.FOLDER, "打开本地仓库", triggered=self._open_repo))
-        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, "克隆远程仓库", triggered=self._on_clone_repo))
-        repoMenu.addAction(Action(FluentIcon.ADD, "初始化新仓库", triggered=self._on_init_repo))
+        repoMenu.addAction(Action(FluentIcon.FOLDER, self.tr("打开本地仓库"), triggered=self._open_repo))
+        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, self.tr("克隆远程仓库"), triggered=self._on_clone_repo))
+        repoMenu.addAction(Action(FluentIcon.ADD, self.tr("初始化新仓库"), triggered=self._on_init_repo))
         self.repoBtn.setFlyout(repoMenu)
         header_layout.addWidget(self.repoBtn)
         
@@ -728,8 +728,8 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 第二组：临时保存（图标+文本）
-        stash_btn = TransparentPushButton("储藏 (Stash)", self, Icon.GIT_PR_DRAFT)
-        stash_btn.setToolTip("保存当前修改，稍后恢复（类似草稿箱）")
+        stash_btn = TransparentPushButton(self.tr("储藏 (Stash)"), self, Icon.GIT_PR_DRAFT)
+        stash_btn.setToolTip(self.tr("保存当前修改，稍后恢复（类似草稿箱）"))
         stash_btn.installEventFilter(ToolTipFilter(stash_btn, 500, ToolTipPosition.BOTTOM))
         stash_btn.clicked.connect(self._on_open_stash)
         header_layout.addWidget(stash_btn)
@@ -738,16 +738,16 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 第三组：同步操作（重点）
-        self.syncBtn = SplitPushButton("同步", self, FluentIcon.SYNC)
-        self.syncBtn.setToolTip("拉取远程更新或推送本地提交\n点击主按钮拉取，下拉选择其他操作")
+        self.syncBtn = SplitPushButton(self.tr("同步"), self, FluentIcon.SYNC)
+        self.syncBtn.setToolTip(self.tr("拉取远程更新或推送本地提交\n点击主按钮拉取，下拉选择其他操作"))
         self.syncBtn.installEventFilter(ToolTipFilter(self.syncBtn, 500, ToolTipPosition.BOTTOM))
         self.syncBtn.clicked.connect(self._on_pull)
         syncMenu = RoundMenu(parent=self)
-        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取 (Pull)", triggered=self._on_pull))
-        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, "拉取并变基 (Rebase)", triggered=self._on_pull_rebase))
+        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, self.tr("拉取 (Pull)"), triggered=self._on_pull))
+        syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, self.tr("拉取并变基 (Rebase)"), triggered=self._on_pull_rebase))
         syncMenu.addSeparator()
-        syncMenu.addAction(Action(FluentIcon.SEND, "推送 (Push)", triggered=self._on_push))
-        syncMenu.addAction(Action(FluentIcon.CANCEL, "强制推送 (Force)", triggered=self._on_force_push))
+        syncMenu.addAction(Action(FluentIcon.SEND, self.tr("推送 (Push)"), triggered=self._on_push))
+        syncMenu.addAction(Action(FluentIcon.CANCEL, self.tr("强制推送 (Force)"), triggered=self._on_force_push))
         self.syncBtn.setFlyout(syncMenu)
         header_layout.addWidget(self.syncBtn)
         
@@ -755,8 +755,8 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 第四组：远程仓库（图标+文本）
-        remote_btn = TransparentPushButton("远程 (Remote)", self, FluentIcon.CLOUD)
-        remote_btn.setToolTip("管理远程仓库地址")
+        remote_btn = TransparentPushButton(self.tr("远程 (Remote)"), self, FluentIcon.CLOUD)
+        remote_btn.setToolTip(self.tr("管理远程仓库地址"))
         remote_btn.installEventFilter(ToolTipFilter(remote_btn, 500, ToolTipPosition.BOTTOM))
         remote_btn.clicked.connect(self._on_manage_remotes)
         header_layout.addWidget(remote_btn)
@@ -765,8 +765,8 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 最右边：最近仓库按钮（打开抽屉）
-        self.historyBtn = TransparentPushButton("历史", self, FluentIcon.HISTORY)
-        self.historyBtn.setToolTip("最近打开的仓库")
+        self.historyBtn = TransparentPushButton(self.tr("历史"), self, FluentIcon.HISTORY)
+        self.historyBtn.setToolTip(self.tr("最近打开的仓库"))
         self.historyBtn.installEventFilter(ToolTipFilter(self.historyBtn, 500, ToolTipPosition.BOTTOM))
         self.historyBtn.clicked.connect(self._show_recent_repos_drawer)
         header_layout.addWidget(self.historyBtn)
@@ -803,15 +803,15 @@ class RepoInterface(ScrollArea):
 
         # 标题和操作
         title_layout = QHBoxLayout()
-        self.changesLabel = StrongBodyLabel("文件变更 (0)", self)
+        self.changesLabel = StrongBodyLabel(self.tr("文件变更 (0)"), self)
         title_layout.addWidget(self.changesLabel)
         title_layout.addStretch()
 
-        self.stageAllBtn = TransparentPushButton("全部暂存", self, FluentIcon.ADD)
+        self.stageAllBtn = TransparentPushButton(self.tr("全部暂存"), self, FluentIcon.ADD)
         self.stageAllBtn.clicked.connect(self._stage_all)
         title_layout.addWidget(self.stageAllBtn)
 
-        self.unstageAllBtn = TransparentPushButton("全部取消", self, FluentIcon.REMOVE)
+        self.unstageAllBtn = TransparentPushButton(self.tr("全部取消"), self, FluentIcon.REMOVE)
         self.unstageAllBtn.clicked.connect(self._unstage_all)
         title_layout.addWidget(self.unstageAllBtn)
 
@@ -900,16 +900,16 @@ class RepoInterface(ScrollArea):
             self.repoPathLabel.setToolTip(path)
             self.refresh_status()
             InfoBar.success(
-                title="成功",
-                content=f"已打开仓库: {repo_name}",
+                title=self.tr("成功"),
+                content=self.tr("已打开仓库: %s") % repo_name,
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
             )
         else:
             InfoBar.error(
-                title="错误",
-                content="仓库不存在或已被删除",
+                title=self.tr("错误"),
+                content=self.tr("仓库不存在或已被删除"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=3000
@@ -921,8 +921,8 @@ class RepoInterface(ScrollArea):
         recentReposManager.clear()
         self._recentReposContent.refresh()  # 刷新抽屉内容
         InfoBar.success(
-            title="成功",
-            content="已清空最近仓库列表",
+            title=self.tr("成功"),
+            content=self.tr("已清空最近仓库列表"),
             parent=self.window(),
             position=InfoBarPosition.BOTTOM,
             duration=2000
@@ -932,7 +932,7 @@ class RepoInterface(ScrollArea):
         """初始化新仓库（异步）"""
         path = QFileDialog.getExistingDirectory(
             self,
-            "选择要初始化的目录",
+            self.tr("选择要初始化的目录"),
             "",
             QFileDialog.Option.ShowDirsOnly
         )
@@ -946,8 +946,8 @@ class RepoInterface(ScrollArea):
         
         # 显示进度环
         progress_bar = ProgressInfoBar.create(
-            title='请稍候',
-            content='正在初始化Git仓库...',
+            title=self.tr('请稍候'),
+            content=self.tr('正在初始化Git仓库...'),
             orient=Qt.Orientation.Horizontal,
             isClosable=False,
             position=InfoBarPosition.BOTTOM,
@@ -957,7 +957,7 @@ class RepoInterface(ScrollArea):
         def on_finished(result):
             success, msg = result
             if success:
-                progress_bar.setTitle('成功')
+                progress_bar.setTitle(self.tr('成功'))
                 progress_bar.setContent(msg)
                 progress_bar.success(duration=2000)
                 
@@ -977,7 +977,7 @@ class RepoInterface(ScrollArea):
                     # 显示引导窗口
                     self._show_init_guide(path)
             else:
-                progress_bar.setTitle('失败')
+                progress_bar.setTitle(self.tr('失败'))
                 progress_bar.setContent(msg)
                 progress_bar.error(duration=3000)
         
@@ -998,8 +998,8 @@ class RepoInterface(ScrollArea):
     def _on_init_guide_completed(self, repo_path: str):
         """引导完成"""
         InfoBar.success(
-            title="配置完成",
-            content="Git仓库已初始化并完成配置！",
+            title=self.tr("配置完成"),
+            content=self.tr("Git仓库已初始化并完成配置！"),
             parent=self.window(),
             position=InfoBarPosition.BOTTOM,
             duration=2000
@@ -1009,7 +1009,7 @@ class RepoInterface(ScrollArea):
         """打开仓库"""
         path = QFileDialog.getExistingDirectory(
             self,
-            "选择Git仓库",
+            self.tr("选择Git仓库"),
             "",
             QFileDialog.Option.ShowDirsOnly
         )
@@ -1036,8 +1036,8 @@ class RepoInterface(ScrollArea):
                 
                 # 显示进度条
                 progress_bar = ProgressInfoBar.create(
-                    title='请稍候',
-                    content='正在检测仓库大小...',
+                    title=self.tr('请稍候'),
+                    content=self.tr('正在检测仓库大小...'),
                     orient=Qt.Orientation.Horizontal,
                     isClosable=False,
                     position=InfoBarPosition.BOTTOM,
@@ -1055,12 +1055,12 @@ class RepoInterface(ScrollArea):
                 
                 def on_check_finished(is_large, repo_info):
                     if is_large:
-                        progress_bar.setTitle('大仓库检测')
-                        progress_bar.setContent(f"检测到大仓库（{repo_info.get('commit_count', 0)}个提交）")
+                        progress_bar.setTitle(self.tr('大仓库检测'))
+                        progress_bar.setContent(self.tr("检测到大仓库（%d个提交）") % repo_info.get('commit_count', 0))
                         progress_bar.warning(duration=3000)
                     else:
-                        progress_bar.setTitle('成功')
-                        progress_bar.setContent('已打开仓库')
+                        progress_bar.setTitle(self.tr('成功'))
+                        progress_bar.setContent(self.tr('已打开仓库'))
                         progress_bar.success(duration=2000)
                 
                 self._check_worker = CheckRepoWorker()  # 保存引用
@@ -1068,8 +1068,8 @@ class RepoInterface(ScrollArea):
                 self._check_worker.start()
             else:
                 InfoBar.error(
-                    title="错误",
-                    content="所选目录不是有效的Git仓库",
+                    title=self.tr("错误"),
+                    content=self.tr("所选目录不是有效的Git仓库"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=3000
@@ -1093,10 +1093,10 @@ class RepoInterface(ScrollArea):
             branch, changes = result
             
             # 更新分支信息
-            self.branchLabel.setText(f"分支: {branch}" if branch else "")
+            self.branchLabel.setText(self.tr("分支: %s") % branch if branch else "")
             
             # 更新文件变更计数
-            self.changesLabel.setText(f"文件变更 ({len(changes)})")
+            self.changesLabel.setText(self.tr("文件变更 (%d)") % len(changes))
             
             # 使用虚拟滚动列表显示所有文件
             self.fileList.setFileChanges(changes)
@@ -1116,8 +1116,8 @@ class RepoInterface(ScrollArea):
         def on_finished(success):
             if not success:
                 InfoBar.error(
-                    title="错误",
-                    content=f"操作失败: {path}",
+                    title=self.tr("错误"),
+                    content=self.tr("操作失败: %s") % path,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -1128,8 +1128,8 @@ class RepoInterface(ScrollArea):
     def _on_discard_file(self, path: str):
         """放弃文件修改"""
         box = MessageBox(
-            "确认放弃修改",
-            f"确定要放弃对 {path} 的修改吗？此操作不可恢复。",
+            self.tr("确认放弃修改"),
+            self.tr("确定要放弃对 %s 的修改吗？此操作不可恢复。") % path,
             self.window()
         )
         if box.exec():
@@ -1138,16 +1138,16 @@ class RepoInterface(ScrollArea):
             def on_finished(success):
                 if success:
                     InfoBar.success(
-                        title="成功",
-                        content="已放弃修改",
+                        title=self.tr("成功"),
+                        content=self.tr("已放弃修改"),
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
                         duration=2000
                     )
                 else:
                     InfoBar.error(
-                        title="错误",
-                        content="放弃修改失败",
+                        title=self.tr("错误"),
+                        content=self.tr("放弃修改失败"),
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
                         duration=2000
@@ -1169,16 +1169,16 @@ class RepoInterface(ScrollArea):
         def on_success(result):
             if result:
                 InfoBar.success(
-                    title="成功",
-                    content="已暂存所有变更",
+                    title=self.tr("成功"),
+                    content=self.tr("已暂存所有变更"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
                 InfoBar.error(
-                    title="失败",
-                    content="暂存失败",
+                    title=self.tr("失败"),
+                    content=self.tr("暂存失败"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -1187,8 +1187,8 @@ class RepoInterface(ScrollArea):
         AsyncTask.run(
             func=gitService.stage_all,
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在暂存所有文件...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在暂存所有文件...'),
             parent=self.window()
         )
 
@@ -1199,16 +1199,16 @@ class RepoInterface(ScrollArea):
         def on_success(result):
             if result:
                 InfoBar.success(
-                    title="成功",
-                    content="已取消暂存所有文件",
+                    title=self.tr("成功"),
+                    content=self.tr("已取消暂存所有文件"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             else:
                 InfoBar.error(
-                    title="失败",
-                    content="取消暂存失败",
+                    title=self.tr("失败"),
+                    content=self.tr("取消暂存失败"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -1217,8 +1217,8 @@ class RepoInterface(ScrollArea):
         AsyncTask.run(
             func=gitService.unstage_all,
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在取消暂存...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在取消暂存...'),
             parent=self.window()
         )
     
@@ -1231,7 +1231,7 @@ class RepoInterface(ScrollArea):
             if success:
                 self.commitPanel.clear()
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -1239,7 +1239,7 @@ class RepoInterface(ScrollArea):
                 )
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -1249,8 +1249,8 @@ class RepoInterface(ScrollArea):
         AsyncTask.run(
             func=lambda: gitService.commit(message),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在提交...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在提交...'),
             parent=self.window()
         )
     
@@ -1262,8 +1262,8 @@ class RepoInterface(ScrollArea):
             url, path = dialog.get_clone_info()
             if not url or not path:
                 InfoBar.warning(
-                    title="提示",
-                    content="请输入URL和路径",
+                    title=self.tr("提示"),
+                    content=self.tr("请输入URL和路径"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -1356,8 +1356,8 @@ class RepoInterface(ScrollArea):
         """管理远程仓库"""
         if not gitService.repo_path:
             InfoBar.warning(
-                '提示',
-                '请先打开一个Git仓库',
+                self.tr('提示'),
+                self.tr('请先打开一个Git仓库'),
                 duration=2000,
                 parent=self,
                 position=InfoBarPosition.BOTTOM
@@ -1375,8 +1375,8 @@ class RepoInterface(ScrollArea):
                 if not remotes:
                     # 无远程仓库，显示配置向导
                     box = MessageBox(
-                        '远程仓库列表',
-                        '当前仓库没有配置远程仓库\n\n是否现在配置？',
+                        self.tr('远程仓库列表'),
+                        self.tr('当前仓库没有配置远程仓库\n\n是否现在配置？'),
                         self
                     )
                     if box.exec():
@@ -1384,10 +1384,10 @@ class RepoInterface(ScrollArea):
                 else:
                     # 显示远程仓库列表
                     content = "\n".join([f"{name}: {url}" for name, url in remotes])
-                    content += "\n\n点击确定打开配置向导"
+                    content += self.tr("\n\n点击确定打开配置向导")
                     
                     box = MessageBox(
-                        '远程仓库列表',
+                        self.tr('远程仓库列表'),
                         content,
                         self
                     )
@@ -1399,7 +1399,7 @@ class RepoInterface(ScrollArea):
         
         def on_error(error_msg):
             InfoBar.error(
-                "获取失败",
+                self.tr("获取失败"),
                 error_msg,
                 parent=self,
                 position=InfoBarPosition.BOTTOM,
@@ -1410,7 +1410,7 @@ class RepoInterface(ScrollArea):
             func=gitService.get_remote_info,
             on_success=on_success,
             on_error=on_error,
-            progress_title='请稍候',
-            progress_content='正在获取远程仓库信息...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在获取远程仓库信息...'),
             parent=self
         )

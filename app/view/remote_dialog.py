@@ -3,6 +3,7 @@
 远程仓库配置对话框
 """
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout
+from PySide6.QtGui import QColor
 from qfluentwidgets import (
     Dialog, LineEdit, BodyLabel, InfoBar, InfoBarPosition
 )
@@ -17,8 +18,8 @@ class RemoteDialog(Dialog):
     """远程仓库配置对话框"""
     
     def __init__(self, parent=None, is_new_repo=False):
-        title = "添加远程仓库" if is_new_repo else "配置远程仓库"
-        content = "请输入远程仓库信息（可选，稍后也可以配置）" if is_new_repo else "请输入远程仓库信息"
+        title = self.tr("添加远程仓库") if is_new_repo else self.tr("配置远程仓库")
+        content = self.tr("请输入远程仓库信息（可选，稍后也可以配置）") if is_new_repo else self.tr("请输入远程仓库信息")
         super().__init__(title, content, parent)
         self.is_new_repo = is_new_repo
         self._setup_content()
@@ -26,11 +27,11 @@ class RemoteDialog(Dialog):
     def _setup_content(self):
         # 远程仓库名称
         name_layout = QHBoxLayout()
-        name_label = BodyLabel("远程名称:", self)
+        name_label = BodyLabel(self.tr("远程名称:"), self)
         name_label.setFixedWidth(80)
         self.nameEdit = LineEdit(self)
         self.nameEdit.setText("origin")
-        self.nameEdit.setPlaceholderText("通常使用 origin")
+        self.nameEdit.setPlaceholderText(self.tr("通常使用 origin"))
         name_layout.addWidget(name_label)
         name_layout.addWidget(self.nameEdit)
         self.textLayout.addLayout(name_layout)
@@ -38,7 +39,7 @@ class RemoteDialog(Dialog):
         # 协议选择
         from qfluentwidgets import SegmentedWidget
         protocol_layout = QHBoxLayout()
-        protocol_label = BodyLabel("协议类型:", self)
+        protocol_label = BodyLabel(self.tr("协议类型:"), self)
         protocol_label.setFixedWidth(80)
         self.protocolSegmented = SegmentedWidget(self)
         self.protocolSegmented.addItem("https", "HTTPS", lambda: self._on_protocol_changed("https"))
@@ -52,7 +53,7 @@ class RemoteDialog(Dialog):
         host_port_layout = QHBoxLayout()
         host_port_layout.setSpacing(8)
         
-        host_label = BodyLabel("主机名:", self)
+        host_label = BodyLabel(self.tr("主机名:"), self)
         host_label.setFixedWidth(80)
         self.hostEdit = LineEdit(self)
         self.hostEdit.setPlaceholderText("如: github.com")
@@ -61,7 +62,7 @@ class RemoteDialog(Dialog):
         host_port_layout.addWidget(host_label)
         host_port_layout.addWidget(self.hostEdit, 3)
         
-        self.port_label = BodyLabel("SSH端口:", self)
+        self.port_label = BodyLabel(self.tr("SSH端口:"), self)
         self.port_label.setFixedWidth(70)
         self.sshPortEdit = LineEdit(self)
         self.sshPortEdit.setText("22")
@@ -81,7 +82,7 @@ class RemoteDialog(Dialog):
         user_repo_layout = QHBoxLayout()
         user_repo_layout.setSpacing(8)
         
-        user_label = BodyLabel("用户名:", self)
+        user_label = BodyLabel(self.tr("用户名:"), self)
         user_label.setFixedWidth(80)
         self.userEdit = LineEdit(self)
         self.userEdit.setPlaceholderText("如: username")
@@ -90,7 +91,7 @@ class RemoteDialog(Dialog):
         user_repo_layout.addWidget(user_label)
         user_repo_layout.addWidget(self.userEdit, 1)
         
-        repo_label = BodyLabel("仓库名:", self)
+        repo_label = BodyLabel(self.tr("仓库名:"), self)
         repo_label.setFixedWidth(70)
         from qfluentwidgetspro import LabelLineEdit
         self.repoEdit = LabelLineEdit(self)
@@ -114,7 +115,7 @@ class RemoteDialog(Dialog):
         self.textLayout.addLayout(preview_layout)
         
         if self.is_new_repo:
-            skip_hint_label = BodyLabel("💡 提示：如果暂时不配置，可以点击取消，稍后在设置中添加", self)
+            skip_hint_label = BodyLabel(self.tr("💡 提示：如果暂时不配置，可以点击取消，稍后在设置中添加"), self)
             skip_hint_label.setWordWrap(True)
             self.textLayout.addWidget(skip_hint_label)
         
@@ -122,8 +123,8 @@ class RemoteDialog(Dialog):
         self._update_url_preview()
         
         # 修改按钮文本
-        self.yesButton.setText("添加")
-        self.cancelButton.setText("跳过" if self.is_new_repo else "取消")
+        self.yesButton.setText(self.tr("添加"))
+        self.cancelButton.setText(self.tr("跳过") if self.is_new_repo else self.tr("取消"))
     
     def _on_protocol_changed(self, protocol: str):
         """协议类型变化时的处理"""
@@ -145,7 +146,7 @@ class RemoteDialog(Dialog):
         port = self.sshPortEdit.text().strip() or "22"
         
         if not host or not user or not repo:
-            self.urlPreviewLabel.setText("请填写完整信息")
+            self.urlPreviewLabel.setText(self.tr("请填写完整信息"))
             return
         
         # 组合路径（repoEdit只包含仓库名，需要添加.git后缀）
@@ -196,8 +197,8 @@ class RemoteDialog(Dialog):
         
         if not name:
             InfoBar.warning(
-                "提示",
-                "请输入远程仓库名称",
+                self.tr("提示"),
+                self.tr("请输入远程仓库名称"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
@@ -206,8 +207,8 @@ class RemoteDialog(Dialog):
         
         if not host:
             InfoBar.warning(
-                "提示",
-                "请输入主机名",
+                self.tr("提示"),
+                self.tr("请输入主机名"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
@@ -216,8 +217,8 @@ class RemoteDialog(Dialog):
         
         if not user:
             InfoBar.warning(
-                "提示",
-                "请输入用户名",
+                self.tr("提示"),
+                self.tr("请输入用户名"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
@@ -226,8 +227,8 @@ class RemoteDialog(Dialog):
         
         if not repo:
             InfoBar.warning(
-                "提示",
-                "请输入仓库名",
+                self.tr("提示"),
+                self.tr("请输入仓库名"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000

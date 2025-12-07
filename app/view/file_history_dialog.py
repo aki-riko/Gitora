@@ -32,7 +32,7 @@ class FileHistoryDialog(Dialog):
     """文件历史对话框"""
     
     def __init__(self, file_path: str, parent=None):
-        super().__init__("文件历史", f"查看 {file_path} 的提交历史", parent)
+        super().__init__(self.tr("文件历史"), self.tr("查看 %s 的提交历史") % file_path, parent)
         self.file_path = file_path
         self.commits = []
         self._setup_ui()
@@ -44,7 +44,7 @@ class FileHistoryDialog(Dialog):
         
         # 说明
         hint_label = BodyLabel(
-            "点击提交记录查看该版本的文件内容，选择两个版本可以进行对比",
+            self.tr("点击提交记录查看该版本的文件内容，选择两个版本可以进行对比"),
             self
         )
         self.textLayout.addWidget(hint_label)
@@ -57,7 +57,7 @@ class FileHistoryDialog(Dialog):
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(0, 0, 0, 0)
         
-        timeline_label = StrongBodyLabel("提交历史", self)
+        timeline_label = StrongBodyLabel(self.tr("提交历史"), self)
         left_layout.addWidget(timeline_label)
         
         # 时间线滚动区域
@@ -85,12 +85,12 @@ class FileHistoryDialog(Dialog):
         # 操作按钮
         btn_layout = QHBoxLayout()
         
-        self.viewBtn = TransparentPushButton("查看此版本", self, FluentIcon.VIEW)
+        self.viewBtn = TransparentPushButton(self.tr("查看此版本"), self, FluentIcon.VIEW)
         self.viewBtn.clicked.connect(self._on_view_version)
         self.viewBtn.setEnabled(False)
         btn_layout.addWidget(self.viewBtn)
         
-        self.compareBtn = PushButton("对比两个版本", self, FluentIcon.ALIGNMENT)
+        self.compareBtn = PushButton(self.tr("对比两个版本"), self, FluentIcon.ALIGNMENT)
         self.compareBtn.clicked.connect(self._on_compare_versions)
         self.compareBtn.setEnabled(False)
         btn_layout.addWidget(self.compareBtn)
@@ -111,7 +111,7 @@ class FileHistoryDialog(Dialog):
                 font-size: 12px;
             }
         """)
-        self.contentEdit.setPlaceholderText("选择一个提交查看文件内容")
+        self.contentEdit.setPlaceholderText(self.tr("选择一个提交查看文件内容"))
         right_layout.addWidget(self.contentEdit)
         
         content_layout.addWidget(right_widget, 1)
@@ -119,7 +119,7 @@ class FileHistoryDialog(Dialog):
         self.textLayout.addLayout(content_layout)
         
         # 修改按钮文本
-        self.yesButton.setText("关闭")
+        self.yesButton.setText(self.tr("关闭"))
         self.cancelButton.hide()
         
         # 选中的提交
@@ -131,7 +131,7 @@ class FileHistoryDialog(Dialog):
             self.commits = commits
             
             if not commits:
-                self.timeLine.addItem(InfoBarIcon.INFORMATION, "此文件没有提交历史")
+                self.timeLine.addItem(InfoBarIcon.INFORMATION, self.tr("此文件没有提交历史"))
                 return
             
             for commit in commits:
@@ -203,4 +203,4 @@ class FileHistoryDialog(Dialog):
                 f"{diff}"
             )
         else:
-            self.contentEdit.setPlainText("两个版本之间没有差异")
+            self.contentEdit.setPlainText(self.tr("两个版本之间没有差异"))

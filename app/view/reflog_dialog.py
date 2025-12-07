@@ -50,15 +50,15 @@ class ReflogCard(CardWidget):
         layout.addLayout(info_layout, 1)
         
         # 操作按钮
-        checkout_btn = TransparentPushButton("检出", self, Icon.GIT_COMMIT)
+        checkout_btn = TransparentPushButton(self.tr("检出"), self, Icon.GIT_COMMIT)
         checkout_btn.clicked.connect(self._on_checkout)
         layout.addWidget(checkout_btn)
     
     def _on_checkout(self):
         """检出此提交"""
         box = MessageBox(
-            "确认检出",
-            f"确定要检出到 {self.hash_val[:7]} 吗？\n这将进入分离头指针状态。",
+            self.tr("确认检出"),
+            self.tr("确定要检出到 %s 吗？\n这将进入分离头指针状态。") % self.hash_val[:7],
             self.window()
         )
         if box.exec():
@@ -69,15 +69,15 @@ class ReflogCard(CardWidget):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.success(self.tr("成功"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.error(self.tr("失败"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.checkout_branch(commit_hash),
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content=f'正在检出到 {commit_hash}...',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在检出到 %s...') % commit_hash,
                 parent=self.window()
             )
 
@@ -86,7 +86,7 @@ class ReflogDialog(Dialog):
     """Reflog引用日志对话框"""
     
     def __init__(self, parent=None):
-        super().__init__("引用日志 (Reflog)", "查看所有引用变更记录，可恢复丢失的提交", parent)
+        super().__init__(self.tr("引用日志 (Reflog)"), self.tr("查看所有引用变更记录，可恢复丢失的提交"), parent)
         self._setup_ui()
         self._load_reflog()
     
@@ -94,7 +94,7 @@ class ReflogDialog(Dialog):
         self.setFixedSize(800, 600)
         
         # 说明
-        hint = BodyLabel("引用日志 (Reflog) 记录了所有引用的变更历史，即使提交被删除也能找回", self)
+        hint = BodyLabel(self.tr("引用日志 (Reflog) 记录了所有引用的变更历史，即使提交被删除也能找回"), self)
         self.textLayout.addWidget(hint)
         
         # 滚动区域
@@ -112,7 +112,7 @@ class ReflogDialog(Dialog):
         self.textLayout.addWidget(scroll)
         
         # 按钮
-        self.yesButton.setText("关闭")
+        self.yesButton.setText(self.tr("关闭"))
         self.cancelButton.hide()
     
     def _load_reflog(self):
@@ -120,7 +120,7 @@ class ReflogDialog(Dialog):
         logs = gitService.get_reflog(count=100)
         
         if not logs:
-            empty_label = BodyLabel("暂无引用日志", self)
+            empty_label = BodyLabel(self.tr("暂无引用日志"), self)
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.reflogLayout.insertWidget(0, empty_label)
             return

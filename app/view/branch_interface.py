@@ -71,12 +71,12 @@ class BranchCard(CardWidget):
         name_layout.addWidget(self.nameLabel)
 
         if self.branch.is_current:
-            current_label = CaptionLabel("当前", self)
+            current_label = CaptionLabel(self.tr("当前"), self)
             current_label.setTextColor(QColor(76, 175, 80), QColor(76, 175, 80))
             name_layout.addWidget(current_label)
 
         if self.branch.is_remote:
-            remote_label = CaptionLabel("远程", self)
+            remote_label = CaptionLabel(self.tr("远程"), self)
             remote_label.setTextColor(QColor(33, 150, 243), QColor(33, 150, 243))
             name_layout.addWidget(remote_label)
 
@@ -94,21 +94,21 @@ class BranchCard(CardWidget):
         if not self.branch.is_current and not self.branch.is_remote:
             # 切换按钮
             self.checkoutBtn = TransparentToolButton(Icon.GIT_BRANCH, self)
-            self.checkoutBtn.setToolTip("切换到此分支")
+            self.checkoutBtn.setToolTip(self.tr("切换到此分支"))
             self.checkoutBtn.installEventFilter(ToolTipFilter(self.checkoutBtn, 500, ToolTipPosition.TOP))
             self.checkoutBtn.clicked.connect(lambda: self.checkoutClicked.emit(self.branch.name))
             layout.addWidget(self.checkoutBtn)
 
             # 合并按钮
             self.mergeBtn = TransparentToolButton(Icon.GIT_MERGE, self)
-            self.mergeBtn.setToolTip("合并到当前分支")
+            self.mergeBtn.setToolTip(self.tr("合并到当前分支"))
             self.mergeBtn.installEventFilter(ToolTipFilter(self.mergeBtn, 500, ToolTipPosition.TOP))
             self.mergeBtn.clicked.connect(lambda: self.mergeClicked.emit(self.branch.name))
             layout.addWidget(self.mergeBtn)
 
             # 删除按钮
             self.deleteBtn = TransparentToolButton(FluentIcon.DELETE, self)
-            self.deleteBtn.setToolTip("删除分支")
+            self.deleteBtn.setToolTip(self.tr("删除分支"))
             self.deleteBtn.installEventFilter(ToolTipFilter(self.deleteBtn, 500, ToolTipPosition.TOP))
             self.deleteBtn.clicked.connect(lambda: self.deleteClicked.emit(self.branch.name))
             layout.addWidget(self.deleteBtn)
@@ -116,7 +116,7 @@ class BranchCard(CardWidget):
         elif self.branch.is_remote:
             # 检出远程分支
             self.checkoutBtn = TransparentToolButton(FluentIcon.DOWNLOAD, self)
-            self.checkoutBtn.setToolTip("检出此远程分支")
+            self.checkoutBtn.setToolTip(self.tr("检出此远程分支"))
             self.checkoutBtn.installEventFilter(ToolTipFilter(self.checkoutBtn, 500, ToolTipPosition.TOP))
             self.checkoutBtn.clicked.connect(self._checkout_remote)
             layout.addWidget(self.checkoutBtn)
@@ -136,8 +136,8 @@ class CreateBranchDialog(Dialog):
 
     def __init__(self, parent=None):
         super().__init__(
-            title="创建新分支",
-            content="输入新分支的名称",
+            title=self.tr("创建新分支"),
+            content=self.tr("输入新分支的名称"),
             parent=parent
         )
         self._setup_content()
@@ -145,7 +145,7 @@ class CreateBranchDialog(Dialog):
     def _setup_content(self):
         # 分支名输入框
         self.branchEdit = LineEdit(self)
-        self.branchEdit.setPlaceholderText("如: feature/new-feature")
+        self.branchEdit.setPlaceholderText(self.tr("如: feature/new-feature"))
         self.branchEdit.setClearButtonEnabled(True)
 
         # 添加到对话框
@@ -199,27 +199,27 @@ class BranchInterface(ScrollArea):
         header_layout.setContentsMargins(0, 0, 0, 0)
 
         # 标题
-        self.titleLabel = SubtitleLabel("分支管理 (Branch)", self)
+        self.titleLabel = SubtitleLabel(self.tr("分支管理 (Branch)"), self)
         header_layout.addWidget(self.titleLabel)
 
         header_layout.addStretch()
 
         # 新建分支按钮
-        self.createBtn = PrimaryPushButton("新建分支", self, FluentIcon.ADD)
-        self.createBtn.setToolTip("基于当前分支创建新的分支\n可用于开发新功能或修复问题")
+        self.createBtn = PrimaryPushButton(self.tr("新建分支"), self, FluentIcon.ADD)
+        self.createBtn.setToolTip(self.tr("基于当前分支创建新的分支\n可用于开发新功能或修复问题"))
         self.createBtn.installEventFilter(ToolTipFilter(self.createBtn, 500, ToolTipPosition.BOTTOM))
         self.createBtn.clicked.connect(self._on_create_branch)
         header_layout.addWidget(self.createBtn)
 
         # 同步操作 - Split按钮（主操作：刷新，下拉：获取远程）
-        self.syncBtn = SplitPushButton("刷新", self, FluentIcon.SYNC)
-        self.syncBtn.setToolTip("刷新分支列表\n下拉菜单可获取远程更新或清理已删除的远程分支")
+        self.syncBtn = SplitPushButton(self.tr("刷新"), self, FluentIcon.SYNC)
+        self.syncBtn.setToolTip(self.tr("刷新分支列表\n下拉菜单可获取远程更新或清理已删除的远程分支"))
         self.syncBtn.installEventFilter(ToolTipFilter(self.syncBtn, 500, ToolTipPosition.BOTTOM))
         self.syncBtn.clicked.connect(self.refresh_branches)
         
         syncMenu = RoundMenu(parent=self)
-        syncMenu.addAction(Action(FluentIcon.DOWNLOAD, "获取远程更新 (Fetch)", triggered=self._on_fetch))
-        syncMenu.addAction(Action(FluentIcon.DELETE, "清理远程分支 (Prune)", triggered=self._on_prune_remote))
+        syncMenu.addAction(Action(FluentIcon.DOWNLOAD, self.tr("获取远程更新 (Fetch)"), triggered=self._on_fetch))
+        syncMenu.addAction(Action(FluentIcon.DELETE, self.tr("清理远程分支 (Prune)"), triggered=self._on_prune_remote))
         self.syncBtn.setFlyout(syncMenu)
         
         header_layout.addWidget(self.syncBtn)
@@ -242,7 +242,7 @@ class BranchInterface(ScrollArea):
         info_layout = QVBoxLayout()
         info_layout.setSpacing(4)
 
-        self.currentBranchLabel = TitleLabel("当前分支", self)
+        self.currentBranchLabel = TitleLabel(self.tr("当前分支"), self)
         info_layout.addWidget(self.currentBranchLabel)
 
         self.currentBranchName = StrongBodyLabel("-", self)
@@ -257,7 +257,7 @@ class BranchInterface(ScrollArea):
         """创建本地分支区域"""
         # 标题
         title_layout = QHBoxLayout()
-        local_title = StrongBodyLabel("本地分支", self)
+        local_title = StrongBodyLabel(self.tr("本地分支"), self)
         title_layout.addWidget(local_title)
         title_layout.addStretch()
         parent_layout.addLayout(title_layout)
@@ -274,7 +274,7 @@ class BranchInterface(ScrollArea):
         """创建远程分支区域"""
         # 标题
         title_layout = QHBoxLayout()
-        remote_title = StrongBodyLabel("远程分支", self)
+        remote_title = StrongBodyLabel(self.tr("远程分支"), self)
         title_layout.addWidget(remote_title)
         title_layout.addStretch()
         parent_layout.addLayout(title_layout)
@@ -343,8 +343,8 @@ class BranchInterface(ScrollArea):
             branch_name = dialog.get_branch_name()
             if not branch_name:
                 InfoBar.warning(
-                    title="提示",
-                    content="请输入分支名称",
+                    title=self.tr("提示"),
+                    content=self.tr("请输入分支名称"),
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -357,7 +357,7 @@ class BranchInterface(ScrollArea):
                 success, msg = result
                 if success:
                     InfoBar.success(
-                        title="成功",
+                        title=self.tr("成功"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -365,7 +365,7 @@ class BranchInterface(ScrollArea):
                     )
                 else:
                     InfoBar.error(
-                        title="失败",
+                        title=self.tr("失败"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -375,8 +375,8 @@ class BranchInterface(ScrollArea):
             AsyncTask.run(
                 func=lambda: gitService.create_branch(branch_name),
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content=f'正在创建分支: {branch_name}',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在创建分支: %s') % branch_name,
                 parent=self.window()
             )
 
@@ -388,7 +388,7 @@ class BranchInterface(ScrollArea):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -396,7 +396,7 @@ class BranchInterface(ScrollArea):
                 )
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -406,16 +406,16 @@ class BranchInterface(ScrollArea):
         AsyncTask.run(
             func=lambda: gitService.checkout_branch(branch),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content=f'正在切换到分支: {branch}',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在切换到分支: %s') % branch,
             parent=self.window()
         )
 
     def _on_delete(self, branch: str):
         """删除分支"""
         box = MessageBox(
-            "确认删除",
-            f"确定要删除分支 {branch} 吗？",
+            self.tr("确认删除"),
+            self.tr("确定要删除分支 %s 吗？") % branch,
             self.window()
         )
         if box.exec():
@@ -425,7 +425,7 @@ class BranchInterface(ScrollArea):
                 success, msg = result
                 if success:
                     InfoBar.success(
-                        title="成功",
+                        title=self.tr("成功"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -434,14 +434,14 @@ class BranchInterface(ScrollArea):
                 else:
                     # 尝试强制删除
                     force_box = MessageBox(
-                        "删除失败",
-                        f"{msg}\n\n是否强制删除？（可能丢失未合并的提交）",
+                        self.tr("删除失败"),
+                        msg + self.tr("\n\n是否强制删除？（可能丢失未合并的提交）"),
                         self.window()
                     )
                     if force_box.exec():
                         SimpleAsyncTask.run(
                             lambda: gitService.delete_branch(branch, force=True),
-                            lambda r: InfoBar.success("成功", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM) if r[0] else InfoBar.error("失败", r[1], parent=self.window(), position=InfoBarPosition.BOTTOM)
+                            lambda r: InfoBar.success(self.tr("成功"), r[1], parent=self.window(), position=InfoBarPosition.BOTTOM) if r[0] else InfoBar.error(self.tr("失败"), r[1], parent=self.window(), position=InfoBarPosition.BOTTOM)
                         )
             
             SimpleAsyncTask.run(lambda: gitService.delete_branch(branch), on_finished)
@@ -450,8 +450,8 @@ class BranchInterface(ScrollArea):
         """合并分支（异步）"""
         current = gitService.get_current_branch()
         box = MessageBox(
-            "确认合并",
-            f"确定要将分支 {branch} 合并到当前分支 {current} 吗？",
+            self.tr("确认合并"),
+            self.tr("确定要将分支 %s 合并到当前分支 %s 吗？") % (branch, current),
             self.window()
         )
         if box.exec():
@@ -470,7 +470,7 @@ class BranchInterface(ScrollArea):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -479,7 +479,7 @@ class BranchInterface(ScrollArea):
                 self.refresh_branches()
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -489,8 +489,8 @@ class BranchInterface(ScrollArea):
         AsyncTask.run(
             func=gitService.prune_remote,
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在清理远程分支引用...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在清理远程分支引用...'),
             parent=self.window()
         )
 

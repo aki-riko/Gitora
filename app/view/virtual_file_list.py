@@ -128,7 +128,7 @@ class FileChangeDelegate(QStyledItemDelegate):
         
         display_status = status_text
         if staged:
-            display_status += " (已暂存)"
+            display_status += " " + QApplication.translate("VirtualFileList", "(已暂存)")
         painter.drawText(status_rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, display_status)
         
         # 操作按钮区域（只在hover时显示）

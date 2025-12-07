@@ -24,8 +24,8 @@ class CreateTagDialog(Dialog):
     
     def __init__(self, parent=None):
         super().__init__(
-            title="创建Tag",
-            content="输入Tag信息",
+            title=self.tr("创建Tag"),
+            content=self.tr("输入Tag信息"),
             parent=parent
         )
         self._setup_content()
@@ -33,13 +33,13 @@ class CreateTagDialog(Dialog):
     def _setup_content(self):
         # Tag名称
         self.nameEdit = LineEdit(self)
-        self.nameEdit.setPlaceholderText("Tag名称，如: v1.0.0")
+        self.nameEdit.setPlaceholderText(self.tr("Tag名称，如: v1.0.0"))
         self.nameEdit.setClearButtonEnabled(True)
         self.textLayout.addWidget(self.nameEdit)
         
         # Tag消息（可选）
         self.messageEdit = TextEdit(self)
-        self.messageEdit.setPlaceholderText("Tag消息（可选）\n如果填写，将创建附注Tag")
+        self.messageEdit.setPlaceholderText(self.tr("Tag消息（可选）\n如果填写，将创建附注Tag"))
         self.messageEdit.setFixedHeight(80)
         self.textLayout.addWidget(self.messageEdit)
     
@@ -90,15 +90,15 @@ class TagCard(CardWidget):
         layout.addLayout(info_layout, 1)
         
         # 操作按钮
-        checkout_btn = TransparentPushButton("切换", self, Icon.GIT_COMMIT)
+        checkout_btn = TransparentPushButton(self.tr("切换"), self, Icon.GIT_COMMIT)
         checkout_btn.clicked.connect(lambda: self.checkoutClicked.emit(self.tag_name))
         layout.addWidget(checkout_btn)
         
-        push_btn = TransparentPushButton("推送", self, FluentIcon.SEND)
+        push_btn = TransparentPushButton(self.tr("推送"), self, FluentIcon.SEND)
         push_btn.clicked.connect(lambda: self.pushClicked.emit(self.tag_name))
         layout.addWidget(push_btn)
         
-        delete_btn = TransparentPushButton("删除", self, FluentIcon.DELETE)
+        delete_btn = TransparentPushButton(self.tr("删除"), self, FluentIcon.DELETE)
         delete_btn.clicked.connect(lambda: self.deleteClicked.emit(self.tag_name))
         layout.addWidget(delete_btn)
 
@@ -140,28 +140,28 @@ class TagInterface(ScrollArea):
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(0, 0, 0, 0)
         
-        title_label = SubtitleLabel("标签管理 (Tag)", self)
+        title_label = SubtitleLabel(self.tr("标签管理 (Tag)"), self)
         header_layout.addWidget(title_label)
         
         header_layout.addStretch()
         
         # 刷新按钮
-        refresh_btn = TransparentPushButton("刷新", self, FluentIcon.SYNC)
-        refresh_btn.setToolTip("重新加载标签列表")
+        refresh_btn = TransparentPushButton(self.tr("刷新"), self, FluentIcon.SYNC)
+        refresh_btn.setToolTip(self.tr("重新加载标签列表"))
         refresh_btn.installEventFilter(ToolTipFilter(refresh_btn, 500, ToolTipPosition.BOTTOM))
         refresh_btn.clicked.connect(self.refresh_tags)
         header_layout.addWidget(refresh_btn)
         
         # 推送所有Tag
-        push_all_btn = PushButton("推送所有", self, FluentIcon.SEND)
-        push_all_btn.setToolTip("将所有本地标签推送到远程仓库")
+        push_all_btn = PushButton(self.tr("推送所有"), self, FluentIcon.SEND)
+        push_all_btn.setToolTip(self.tr("将所有本地标签推送到远程仓库"))
         push_all_btn.installEventFilter(ToolTipFilter(push_all_btn, 500, ToolTipPosition.BOTTOM))
         push_all_btn.clicked.connect(self._on_push_all_tags)
         header_layout.addWidget(push_all_btn)
         
         # 创建Tag按钮
-        create_btn = PushButton("创建标签 (Tag)", self, FluentIcon.ADD)
-        create_btn.setToolTip("在当前提交上创建新的标签\n标签可用于标记版本号或重要节点")
+        create_btn = PushButton(self.tr("创建标签 (Tag)"), self, FluentIcon.ADD)
+        create_btn.setToolTip(self.tr("在当前提交上创建新的标签\n标签可用于标记版本号或重要节点"))
         create_btn.installEventFilter(ToolTipFilter(create_btn, 500, ToolTipPosition.BOTTOM))
         create_btn.clicked.connect(self._on_create_tag)
         header_layout.addWidget(create_btn)
@@ -192,7 +192,7 @@ class TagInterface(ScrollArea):
             
             if not tags:
                 # 空状态
-                empty_label = BodyLabel("暂无Tag", self)
+                empty_label = BodyLabel(self.tr("暂无Tag"), self)
                 empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 self.tagListLayout.addWidget(empty_label)
                 return
@@ -213,7 +213,7 @@ class TagInterface(ScrollArea):
         if dialog.exec():
             name, message = dialog.get_tag_info()
             if not name:
-                InfoBar.warning("提示", "请输入Tag名称", parent=self.window(), position=InfoBarPosition.BOTTOM)
+                InfoBar.warning(self.tr("提示"), self.tr("请输入Tag名称"), parent=self.window(), position=InfoBarPosition.BOTTOM)
                 return
             
             from app.common.async_helper import AsyncTask
@@ -221,32 +221,32 @@ class TagInterface(ScrollArea):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.success(self.tr("成功"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                     self.refresh_tags()
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.error(self.tr("失败"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.create_tag(name, message),
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content=f'正在创建Tag: {name}',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在创建Tag: %s') % name,
                 parent=self.window()
             )
     
     def _on_delete_tag(self, tag_name: str):
         """删除Tag"""
-        box = MessageBox("确认删除", f"确定要删除Tag '{tag_name}' 吗？", self.window())
+        box = MessageBox(self.tr("确认删除"), self.tr("确定要删除Tag '%s' 吗？") % tag_name, self.window())
         if box.exec():
             from app.common.async_helper import SimpleAsyncTask
             
             def on_finished(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.success(self.tr("成功"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                     self.refresh_tags()
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.error(self.tr("失败"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             SimpleAsyncTask.run(lambda: gitService.delete_tag(tag_name), on_finished)
     
@@ -257,15 +257,15 @@ class TagInterface(ScrollArea):
         def on_success(result):
             success, msg = result
             if success:
-                InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                InfoBar.success(self.tr("成功"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             else:
-                InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                InfoBar.error(self.tr("失败"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
         
         AsyncTask.run(
             func=lambda: gitService.push_tag(tag_name),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content=f'正在推送Tag: {tag_name}',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在推送Tag: %s') % tag_name,
             parent=self.window()
         )
     
@@ -276,23 +276,23 @@ class TagInterface(ScrollArea):
         def on_success(result):
             success, msg = result
             if success:
-                InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                InfoBar.success(self.tr("成功"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             else:
-                InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                InfoBar.error(self.tr("失败"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
         
         AsyncTask.run(
             func=gitService.push_all_tags,
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在推送所有Tag...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在推送所有Tag...'),
             parent=self.window()
         )
     
     def _on_checkout_tag(self, tag_name: str):
         """切换到Tag"""
         box = MessageBox(
-            "确认切换",
-            f"切换到Tag '{tag_name}' 将进入分离头指针状态。\n确定继续吗？",
+            self.tr("确认切换"),
+            self.tr("切换到Tag '%s' 将进入分离头指针状态。\n确定继续吗？") % tag_name,
             self.window()
         )
         if box.exec():
@@ -301,15 +301,15 @@ class TagInterface(ScrollArea):
             def on_success(result):
                 success, msg = result
                 if success:
-                    InfoBar.success("成功", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.success(self.tr("成功"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
                 else:
-                    InfoBar.error("失败", msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
+                    InfoBar.error(self.tr("失败"), msg, parent=self.window(), position=InfoBarPosition.BOTTOM)
             
             AsyncTask.run(
                 func=lambda: gitService.checkout_tag(tag_name),
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content=f'正在切换到Tag: {tag_name}',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在切换到Tag: %s') % tag_name,
                 parent=self.window()
             )
     

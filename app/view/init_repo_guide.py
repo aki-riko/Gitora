@@ -33,17 +33,17 @@ class WelcomeInterface(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # 标题
-        self.titleLabel = TitleLabel("初始化Git仓库", self)
+        self.titleLabel = TitleLabel(self.tr("初始化Git仓库"), self)
         setFont(self.titleLabel, 28, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel, 0, Qt.AlignmentFlag.AlignCenter)
         
         # 说明
         self.bodyLabel = BodyLabel(
-            "将为您创建一个新的Git仓库，并引导您完成基本配置。\n\n"
+            self.tr("将为您创建一个新的Git仓库，并引导您完成基本配置。\n\n"
             "这包括：\n"
             "• 初始化Git仓库\n"
             "• 配置用户信息（可选）\n"
-            "• 添加远程仓库（可选）",
+            "• 添加远程仓库（可选）"),
             self
         )
         self.bodyLabel.setWordWrap(True)
@@ -65,13 +65,13 @@ class UserInfoInterface(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
-        self.titleLabel = TitleLabel("配置用户信息", self)
+        self.titleLabel = TitleLabel(self.tr("配置用户信息"), self)
         setFont(self.titleLabel, 28, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
         self.hintLabel = BodyLabel(
-            "设置提交时显示的用户名和邮箱",
+            self.tr("设置提交时显示的用户名和邮箱"),
             self
         )
         self.hintLabel.setWordWrap(True)
@@ -80,7 +80,7 @@ class UserInfoInterface(QWidget):
         
         # 提示：可以跳过
         self.skipHintLabel = BodyLabel(
-            "💡 提示：如果不填写，点击“下一步”将跳过此步骤",
+            self.tr("💡 提示：如果不填写，点击“下一步”将跳过此步骤"),
             self
         )
         self.skipHintLabel.setWordWrap(True)
@@ -90,11 +90,11 @@ class UserInfoInterface(QWidget):
         layout.addSpacing(20)
         
         # 用户名
-        self.nameLabel = BodyLabel("用户名:", self)
+        self.nameLabel = BodyLabel(self.tr("用户名:"), self)
         layout.addWidget(self.nameLabel)
         
         self.nameEdit = LineEdit(self)
-        self.nameEdit.setPlaceholderText("如: Zhang San")
+        self.nameEdit.setPlaceholderText(self.tr("如: Zhang San"))
         self.nameEdit.setClearButtonEnabled(True)
         
         layout.addWidget(self.nameEdit)
@@ -102,11 +102,11 @@ class UserInfoInterface(QWidget):
         layout.addSpacing(12)
         
         # 邮箱
-        self.emailLabel = BodyLabel("邮箱:", self)
+        self.emailLabel = BodyLabel(self.tr("邮箱:"), self)
         layout.addWidget(self.emailLabel)
         
         self.emailEdit = LineEdit(self)
-        self.emailEdit.setPlaceholderText("如: zhangsan@example.com")
+        self.emailEdit.setPlaceholderText(self.tr("如: zhangsan@example.com"))
         self.emailEdit.setClearButtonEnabled(True)
         
         # 异步加载全局配置
@@ -150,13 +150,13 @@ class RemoteInterface(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
-        self.titleLabel = TitleLabel("添加远程仓库", self)
+        self.titleLabel = TitleLabel(self.tr("添加远程仓库"), self)
         setFont(self.titleLabel, 24, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
         self.hintLabel = BodyLabel(
-            "配置远程仓库用于推送代码到GitHub、GitLab等平台",
+            self.tr("配置远程仓库用于推送代码到GitHub、GitLab等平台"),
             self
         )
         self.hintLabel.setWordWrap(True)
@@ -166,12 +166,12 @@ class RemoteInterface(QWidget):
         layout.addSpacing(12)
         
         # 远程名称
-        self.nameLabel = BodyLabel("远程名称: *", self)
+        self.nameLabel = BodyLabel(self.tr("远程名称: *"), self)
         layout.addWidget(self.nameLabel)
         
         self.nameEdit = LineEdit(self)
         self.nameEdit.setText("origin")
-        self.nameEdit.setPlaceholderText("通常使用 origin（必填）")
+        self.nameEdit.setPlaceholderText(self.tr("通常使用 origin（必填）"))
         self.nameEdit.textChanged.connect(self._validate_inputs)
         layout.addWidget(self.nameEdit)
         
@@ -179,7 +179,7 @@ class RemoteInterface(QWidget):
         
         # 协议选择
         from qfluentwidgets import SegmentedWidget
-        self.protocolLabel = BodyLabel("协议类型: *", self)
+        self.protocolLabel = BodyLabel(self.tr("协议类型: *"), self)
         layout.addWidget(self.protocolLabel)
         
         self.protocolSegmented = SegmentedWidget(self)
@@ -197,7 +197,7 @@ class RemoteInterface(QWidget):
         # 主机名
         host_container = QVBoxLayout()
         host_container.setSpacing(4)
-        self.hostLabel = BodyLabel("主机名: *", self)
+        self.hostLabel = BodyLabel(self.tr("主机名: *"), self)
         self.hostEdit = LineEdit(self)
         self.hostEdit.setPlaceholderText("如: github.com")
         self.hostEdit.setClearButtonEnabled(True)
@@ -208,10 +208,10 @@ class RemoteInterface(QWidget):
         # SSH端口（仅SSH显示）
         port_container = QVBoxLayout()
         port_container.setSpacing(4)
-        self.sshPortLabel = BodyLabel("SSH端口:", self)
+        self.sshPortLabel = BodyLabel(self.tr("SSH端口:"), self)
         self.sshPortEdit = LineEdit(self)
         self.sshPortEdit.setText("22")
-        self.sshPortEdit.setPlaceholderText("默认: 22")
+        self.sshPortEdit.setPlaceholderText(self.tr("默认: 22"))
         self.sshPortEdit.setClearButtonEnabled(True)
         port_container.addWidget(self.sshPortLabel)
         port_container.addWidget(self.sshPortEdit)
@@ -232,7 +232,7 @@ class RemoteInterface(QWidget):
         # 用户名
         user_container = QVBoxLayout()
         user_container.setSpacing(4)
-        self.userLabel = BodyLabel("用户名: *", self)
+        self.userLabel = BodyLabel(self.tr("用户名: *"), self)
         self.userEdit = LineEdit(self)
         self.userEdit.setPlaceholderText("如: username")
         self.userEdit.setClearButtonEnabled(True)
@@ -243,7 +243,7 @@ class RemoteInterface(QWidget):
         # 仓库名
         repo_container = QVBoxLayout()
         repo_container.setSpacing(4)
-        self.repoLabel = BodyLabel("仓库名: *", self)
+        self.repoLabel = BodyLabel(self.tr("仓库名: *"), self)
         from qfluentwidgetspro import LabelLineEdit
         self.repoEdit = LabelLineEdit(self)
         self.repoEdit.setPlaceholderText("如: repository")
@@ -296,7 +296,7 @@ class RemoteInterface(QWidget):
         port = self.sshPortEdit.text().strip() or "22"
         
         if not host or not user or not repo:
-            self.urlPreviewLabel.setText("📋 预览: 请填写完整信息")
+            self.urlPreviewLabel.setText(self.tr("📋 预览: 请填写完整信息"))
             self.urlPreviewLabel.setTextColor(QColor(150, 150, 150), QColor(150, 150, 150))
             return
         
@@ -372,13 +372,13 @@ class OptionalRemoteInterface(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
-        self.titleLabel = TitleLabel("添加远程仓库", self)
+        self.titleLabel = TitleLabel(self.tr("添加远程仓库"), self)
         setFont(self.titleLabel, 24, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
         self.hintLabel = BodyLabel(
-            "配置远程仓库用于推送代码到GitHub、GitLab等平台",
+            self.tr("配置远程仓库用于推送代码到GitHub、GitLab等平台"),
             self
         )
         self.hintLabel.setWordWrap(True)
@@ -387,7 +387,7 @@ class OptionalRemoteInterface(QWidget):
         
         # 可选提示
         self.skipHintLabel = BodyLabel(
-            "💡 提示：如果暂时不配置，点击'下一步'将跳过此步骤",
+            self.tr("💡 提示：如果暂时不配置，点击'下一步'将跳过此步骤"),
             self
         )
         self.skipHintLabel.setWordWrap(True)
@@ -397,19 +397,19 @@ class OptionalRemoteInterface(QWidget):
         layout.addSpacing(12)
         
         # 远程名称
-        self.nameLabel = BodyLabel("远程名称:", self)
+        self.nameLabel = BodyLabel(self.tr("远程名称:"), self)
         layout.addWidget(self.nameLabel)
         
         self.nameEdit = LineEdit(self)
         self.nameEdit.setText("origin")
-        self.nameEdit.setPlaceholderText("通常使用 origin")
+        self.nameEdit.setPlaceholderText(self.tr("通常使用 origin"))
         layout.addWidget(self.nameEdit)
         
         layout.addSpacing(8)
         
         # 协议选择
         from qfluentwidgets import SegmentedWidget
-        self.protocolLabel = BodyLabel("协议类型:", self)
+        self.protocolLabel = BodyLabel(self.tr("协议类型:"), self)
         layout.addWidget(self.protocolLabel)
         
         self.protocolSegmented = SegmentedWidget(self)
@@ -426,7 +426,7 @@ class OptionalRemoteInterface(QWidget):
         
         host_container = QVBoxLayout()
         host_container.setSpacing(4)
-        self.hostLabel = BodyLabel("主机名:", self)
+        self.hostLabel = BodyLabel(self.tr("主机名:"), self)
         self.hostEdit = LineEdit(self)
         self.hostEdit.setPlaceholderText("如: github.com")
         self.hostEdit.setClearButtonEnabled(True)
@@ -436,10 +436,10 @@ class OptionalRemoteInterface(QWidget):
         
         port_container = QVBoxLayout()
         port_container.setSpacing(4)
-        self.sshPortLabel = BodyLabel("SSH端口:", self)
+        self.sshPortLabel = BodyLabel(self.tr("SSH端口:"), self)
         self.sshPortEdit = LineEdit(self)
         self.sshPortEdit.setText("22")
-        self.sshPortEdit.setPlaceholderText("默认: 22")
+        self.sshPortEdit.setPlaceholderText(self.tr("默认: 22"))
         self.sshPortEdit.setClearButtonEnabled(True)
         port_container.addWidget(self.sshPortLabel)
         port_container.addWidget(self.sshPortEdit)
@@ -459,7 +459,7 @@ class OptionalRemoteInterface(QWidget):
         
         user_container = QVBoxLayout()
         user_container.setSpacing(4)
-        self.userLabel = BodyLabel("用户名:", self)
+        self.userLabel = BodyLabel(self.tr("用户名:"), self)
         self.userEdit = LineEdit(self)
         self.userEdit.setPlaceholderText("如: username")
         self.userEdit.setClearButtonEnabled(True)
@@ -469,7 +469,7 @@ class OptionalRemoteInterface(QWidget):
         
         repo_container = QVBoxLayout()
         repo_container.setSpacing(4)
-        self.repoLabel = BodyLabel("仓库名:", self)
+        self.repoLabel = BodyLabel(self.tr("仓库名:"), self)
         from qfluentwidgetspro import LabelLineEdit
         self.repoEdit = LabelLineEdit(self)
         self.repoEdit.setPlaceholderText("如: repository")
@@ -520,7 +520,7 @@ class OptionalRemoteInterface(QWidget):
         port = self.sshPortEdit.text().strip() or "22"
         
         if not host or not user or not repo:
-            self.urlPreviewLabel.setText("📋 预览: 请填写完整信息")
+            self.urlPreviewLabel.setText(self.tr("📋 预览: 请填写完整信息"))
             self.urlPreviewLabel.setTextColor(QColor(150, 150, 150), QColor(150, 150, 150))
             return
         
@@ -579,14 +579,14 @@ class FinalInterface(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # 标题
-        self.titleLabel = TitleLabel("配置完成！", self)
+        self.titleLabel = TitleLabel(self.tr("配置完成！"), self)
         setFont(self.titleLabel, 28, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel, 0, Qt.AlignmentFlag.AlignCenter)
         
         # 说明
         self.bodyLabel = BodyLabel(
-            "Git仓库已成功初始化并完成配置。\n\n"
-            "您现在可以开始使用Gitess管理您的代码了！",
+            self.tr("Git仓库已成功初始化并完成配置。\n\n"
+            "您现在可以开始使用Gitess管理您的代码了！"),
             self
         )
         self.bodyLabel.setWordWrap(True)
@@ -603,7 +603,7 @@ class InitRepoGuide(GuideWindow):
         super().__init__()  # GuideWindow不需要parent参数
         self.repo_path = repo_path
         
-        self.setWindowTitle("初始化Git仓库")
+        self.setWindowTitle(self.tr("初始化Git仓库"))
         self.resize(800, 500)
         
         # 添加引导页面
@@ -632,8 +632,8 @@ class InitRepoGuide(GuideWindow):
             if name and not email:
                 # 填了用户名但没填邮箱
                 InfoBar.warning(
-                    "提示",
-                    "请同时填写用户名和邮箱，或者两者都不填",
+                    self.tr("提示"),
+                    self.tr("请同时填写用户名和邮箱，或者两者都不填"),
                     parent=self,
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -641,8 +641,8 @@ class InitRepoGuide(GuideWindow):
             elif email and not name:
                 # 填了邮箱但没填用户名
                 InfoBar.warning(
-                    "提示",
-                    "请同时填写用户名和邮箱，或者两者都不填",
+                    self.tr("提示"),
+                    self.tr("请同时填写用户名和邮箱，或者两者都不填"),
                     parent=self,
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
@@ -653,16 +653,16 @@ class InitRepoGuide(GuideWindow):
             remote_name, remote_url = self.remotePage.get_remote_info()
             if remote_name and not remote_url:
                 InfoBar.warning(
-                    "提示",
-                    "请同时填写远程名称和URL，或者两者都不填",
+                    self.tr("提示"),
+                    self.tr("请同时填写远程名称和URL，或者两者都不填"),
                     parent=self,
                     position=InfoBarPosition.BOTTOM,
                     duration=2000
                 )
             elif remote_url and not remote_name:
                 InfoBar.warning(
-                    "提示",
-                    "请同时填写远程名称和URL，或者两者都不填",
+                    self.tr("提示"),
+                    self.tr("请同时填写远程名称和URL，或者两者都不填"),
                     parent=self,
                     position=InfoBarPosition.BOTTOM,
                     duration=2000

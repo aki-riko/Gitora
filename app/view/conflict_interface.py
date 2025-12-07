@@ -56,11 +56,11 @@ class ConflictFileCard(CardWidget):
         
         # 冲突标记提示
         if self.conflict.has_conflict_markers:
-            marker_label = CaptionLabel("⚠️ 包含冲突标记（<<<<<<<  >>>>>>>）", self)
+            marker_label = CaptionLabel(self.tr("⚠️ 包含冲突标记（<<<<<<<  >>>>>>>）"), self)
             marker_label.setTextColor(QColor(220, 53, 69), QColor(220, 53, 69))
             info_layout.addWidget(marker_label)
         else:
-            status_label = CaptionLabel("需要选择保留哪个版本", self)
+            status_label = CaptionLabel(self.tr("需要选择保留哪个版本"), self)
             info_layout.addWidget(status_label)
         
         layout.addLayout(info_layout, 1)
@@ -71,17 +71,17 @@ class ConflictFileCard(CardWidget):
         
         # 查看冲突按钮
         if self.conflict.has_conflict_markers:
-            view_btn = TransparentPushButton("查看冲突", self, FluentIcon.VIEW)
+            view_btn = TransparentPushButton(self.tr("查看冲突"), self, FluentIcon.VIEW)
             view_btn.clicked.connect(lambda: self.viewConflict.emit(self.conflict.path))
             btn_layout.addWidget(view_btn)
         
         # 使用我们的版本
-        ours_btn = PushButton("使用我们的", self, FluentIcon.ACCEPT)
+        ours_btn = PushButton(self.tr("使用我们的"), self, FluentIcon.ACCEPT)
         ours_btn.clicked.connect(lambda: self.resolveOurs.emit(self.conflict.path))
         btn_layout.addWidget(ours_btn)
         
         # 使用他们的版本
-        theirs_btn = PushButton("使用他们的", self, FluentIcon.ACCEPT)
+        theirs_btn = PushButton(self.tr("使用他们的"), self, FluentIcon.ACCEPT)
         theirs_btn.clicked.connect(lambda: self.resolveTheirs.emit(self.conflict.path))
         btn_layout.addWidget(theirs_btn)
         
@@ -132,21 +132,21 @@ class ConflictInterface(ScrollArea):
         header_layout.setContentsMargins(0, 0, 0, 0)
         
         # 标题
-        title_label = TitleLabel("解决合并冲突", self)
+        title_label = TitleLabel(self.tr("解决合并冲突"), self)
         header_layout.addWidget(title_label)
         
         header_layout.addStretch()
         
         # 刷新按钮
-        refresh_btn = TransparentPushButton("刷新", self, FluentIcon.SYNC)
-        refresh_btn.setToolTip("重新检测冲突文件")
+        refresh_btn = TransparentPushButton(self.tr("刷新"), self, FluentIcon.SYNC)
+        refresh_btn.setToolTip(self.tr("重新检测冲突文件"))
         refresh_btn.installEventFilter(ToolTipFilter(refresh_btn, 500, ToolTipPosition.BOTTOM))
         refresh_btn.clicked.connect(self.refresh_conflicts)
         header_layout.addWidget(refresh_btn)
         
         # 中止合并按钮
-        self.abortBtn = PushButton("中止合并", self, FluentIcon.CLOSE)
-        self.abortBtn.setToolTip("放弃本次合并，恢复到合并前的状态\n所有合并中的修改都会丢失")
+        self.abortBtn = PushButton(self.tr("中止合并"), self, FluentIcon.CLOSE)
+        self.abortBtn.setToolTip(self.tr("放弃本次合并，恢复到合并前的状态\n所有合并中的修改都会丢失"))
         self.abortBtn.installEventFilter(ToolTipFilter(self.abortBtn, 500, ToolTipPosition.BOTTOM))
         self.abortBtn.clicked.connect(self._on_abort_merge)
         header_layout.addWidget(self.abortBtn)
@@ -167,7 +167,7 @@ class ConflictInterface(ScrollArea):
         status_layout.addWidget(self.statusIcon)
         
         info_layout = QVBoxLayout()
-        self.statusTitle = StrongBodyLabel("正在检测冲突...", self)
+        self.statusTitle = StrongBodyLabel(self.tr("正在检测冲突..."), self)
         info_layout.addWidget(self.statusTitle)
         
         self.statusDesc = CaptionLabel("", self)
@@ -198,21 +198,21 @@ class ConflictInterface(ScrollArea):
             
             if not is_merging:
                 self.statusIcon.setIcon(FluentIcon.ACCEPT)
-                self.statusTitle.setText("当前没有合并冲突")
-                self.statusDesc.setText("所有文件已解决或没有进行中的合并操作")
+                self.statusTitle.setText(self.tr("当前没有合并冲突"))
+                self.statusDesc.setText(self.tr("所有文件已解决或没有进行中的合并操作"))
                 self.abortBtn.setEnabled(False)
                 self._clear_conflict_list()
                 return
             
             if not conflicts:
                 self.statusIcon.setIcon(FluentIcon.ACCEPT)
-                self.statusTitle.setText("所有冲突已解决")
-                self.statusDesc.setText("可以继续提交完成合并")
+                self.statusTitle.setText(self.tr("所有冲突已解决"))
+                self.statusDesc.setText(self.tr("可以继续提交完成合并"))
                 self.abortBtn.setEnabled(True)
             else:
                 self.statusIcon.setIcon(FluentIcon.CANCEL)
-                self.statusTitle.setText(f"发现 {len(conflicts)} 个冲突文件")
-                self.statusDesc.setText("请选择保留哪个版本，或手动编辑解决冲突")
+                self.statusTitle.setText(self.tr("发现 %d 个冲突文件") % len(conflicts))
+                self.statusDesc.setText(self.tr("请选择保留哪个版本，或手动编辑解决冲突"))
                 self.abortBtn.setEnabled(True)
             
             self._update_conflict_list(conflicts)
@@ -247,7 +247,7 @@ class ConflictInterface(ScrollArea):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -256,7 +256,7 @@ class ConflictInterface(ScrollArea):
                 self.refresh_conflicts()
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -266,8 +266,8 @@ class ConflictInterface(ScrollArea):
         AsyncTask.run(
             func=lambda: gitService.resolve_conflict_with_ours(file_path),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content=f'正在解决冲突: {file_path}',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在解决冲突: %s') % file_path,
             parent=self.window()
         )
     
@@ -279,7 +279,7 @@ class ConflictInterface(ScrollArea):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -288,7 +288,7 @@ class ConflictInterface(ScrollArea):
                 self.refresh_conflicts()
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -298,8 +298,8 @@ class ConflictInterface(ScrollArea):
         AsyncTask.run(
             func=lambda: gitService.resolve_conflict_with_theirs(file_path),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content=f'正在解决冲突: {file_path}',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在解决冲突: %s') % file_path,
             parent=self.window()
         )
     
@@ -326,8 +326,8 @@ class ConflictInterface(ScrollArea):
         
         def on_error(error_msg):
             InfoBar.error(
-                title="读取失败",
-                content=f"无法读取文件: {error_msg}",
+                title=self.tr("读取失败"),
+                content=self.tr("无法读取文件: %s") % error_msg,
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=3000
@@ -347,7 +347,7 @@ class ConflictInterface(ScrollArea):
                 success, msg = result
                 if success:
                     InfoBar.success(
-                        title="成功",
+                        title=self.tr("成功"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -356,7 +356,7 @@ class ConflictInterface(ScrollArea):
                     self.refresh_conflicts()
                 else:
                     InfoBar.error(
-                        title="失败",
+                        title=self.tr("失败"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -366,8 +366,8 @@ class ConflictInterface(ScrollArea):
             AsyncTask.run(
                 func=gitService.abort_merge,
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content='正在中止合并...',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在中止合并...'),
                 parent=self.window()
             )
     

@@ -54,21 +54,21 @@ class StashItemCard(CardWidget):
         btn_layout.setSpacing(8)
         
         # 应用按钮（恢复但不删除）
-        apply_btn = TransparentPushButton("应用", self, Icon.GIT_STASH_APPLY)
-        apply_btn.setToolTip("恢复此保存的内容，但保留记录（可多次使用）")
+        apply_btn = TransparentPushButton(self.tr("应用"), self, Icon.GIT_STASH_APPLY)
+        apply_btn.setToolTip(self.tr("恢复此保存的内容，但保留记录（可多次使用）"))
         apply_btn.installEventFilter(ToolTipFilter(apply_btn, 500, ToolTipPosition.TOP))
         apply_btn.clicked.connect(self._on_apply)
         btn_layout.addWidget(apply_btn)
         
         # 恢复按钮（恢复并删除）
-        pop_btn = PushButton("恢复", self, Icon.GIT_STASH_POP)
-        pop_btn.setToolTip("恢复此保存的内容，并删除记录（一次性）")
+        pop_btn = PushButton(self.tr("恢复"), self, Icon.GIT_STASH_POP)
+        pop_btn.setToolTip(self.tr("恢复此保存的内容，并删除记录（一次性）"))
         pop_btn.installEventFilter(ToolTipFilter(pop_btn, 500, ToolTipPosition.TOP))
         pop_btn.clicked.connect(self._on_pop)
         btn_layout.addWidget(pop_btn)
         
         # Delete按钮
-        delete_btn = TransparentPushButton("删除", self, FluentIcon.DELETE)
+        delete_btn = TransparentPushButton(self.tr("删除"), self, FluentIcon.DELETE)
         delete_btn.clicked.connect(self._on_delete)
         btn_layout.addWidget(delete_btn)
         
@@ -84,7 +84,7 @@ class StashItemCard(CardWidget):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -92,7 +92,7 @@ class StashItemCard(CardWidget):
                 )
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -102,8 +102,8 @@ class StashItemCard(CardWidget):
         AsyncTask.run(
             func=lambda: gitService.stash_apply(stash_id),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content=f'正在应用stash: {stash_id}',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在应用stash: %s') % stash_id,
             parent=self.window()
         )
     
@@ -118,7 +118,7 @@ class StashItemCard(CardWidget):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -129,7 +129,7 @@ class StashItemCard(CardWidget):
                     parent_dialog.refresh_stash_list()
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -139,20 +139,20 @@ class StashItemCard(CardWidget):
         AsyncTask.run(
             func=lambda: gitService.stash_pop(stash_id),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content=f'正在恢复stash: {stash_id}',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在恢复stash: %s') % stash_id,
             parent=self.window()
         )
     
     def _on_delete(self):
         """删除stash"""
         box = MessageBox(
-            "确认删除",
-            f"确定要删除 {self.stash_id} 吗？\n\n此操作不可恢复。",
+            self.tr("确认删除"),
+            self.tr("确定要删除 %s 吗？\n\n此操作不可恢复。") % self.stash_id,
             self.window()
         )
-        box.yesButton.setText("确认删除")
-        box.cancelButton.setText("取消")
+        box.yesButton.setText(self.tr("确认删除"))
+        box.cancelButton.setText(self.tr("取消"))
         
         if box.exec():
             from app.common.async_helper import AsyncTask
@@ -164,7 +164,7 @@ class StashItemCard(CardWidget):
                 success, msg = result
                 if success:
                     InfoBar.success(
-                        title="成功",
+                        title=self.tr("成功"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -175,7 +175,7 @@ class StashItemCard(CardWidget):
                         parent_dialog.refresh_stash_list()
                 else:
                     InfoBar.error(
-                        title="失败",
+                        title=self.tr("失败"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -185,8 +185,8 @@ class StashItemCard(CardWidget):
             AsyncTask.run(
                 func=lambda: gitService.stash_drop(stash_id),
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content=f'正在删除stash: {stash_id}',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在删除stash: %s') % stash_id,
                 parent=self.window()
             )
 
@@ -195,7 +195,7 @@ class StashDialog(Dialog):
     """Stash管理对话框"""
     
     def __init__(self, parent=None):
-        super().__init__("临时保存 (Stash)", "保存当前修改，稍后恢复（类似草稿箱）", parent)
+        super().__init__(self.tr("临时保存 (Stash)"), self.tr("保存当前修改，稍后恢复（类似草稿箱）"), parent)
         self._setup_ui()
         self.refresh_stash_list()
     
@@ -208,12 +208,12 @@ class StashDialog(Dialog):
         
         # 创建临时保存
         self.messageEdit = LineEdit(self)
-        self.messageEdit.setPlaceholderText("备注信息（可选）")
+        self.messageEdit.setPlaceholderText(self.tr("备注信息（可选）"))
         self.messageEdit.setFixedWidth(300)
         top_layout.addWidget(self.messageEdit)
         
-        save_btn = PushButton("保存当前修改", self, FluentIcon.SAVE)
-        save_btn.setToolTip("将当前工作区的所有修改保存到储藏区\n工作区会恢复到干净状态")
+        save_btn = PushButton(self.tr("保存当前修改"), self, FluentIcon.SAVE)
+        save_btn.setToolTip(self.tr("将当前工作区的所有修改保存到储藏区\n工作区会恢复到干净状态"))
         save_btn.installEventFilter(ToolTipFilter(save_btn, 500, ToolTipPosition.BOTTOM))
         save_btn.clicked.connect(self._on_save_stash)
         top_layout.addWidget(save_btn)
@@ -221,15 +221,15 @@ class StashDialog(Dialog):
         top_layout.addStretch()
         
         # 刷新按钮
-        refresh_btn = TransparentPushButton("刷新", self, FluentIcon.SYNC)
-        refresh_btn.setToolTip("重新加载储藏列表")
+        refresh_btn = TransparentPushButton(self.tr("刷新"), self, FluentIcon.SYNC)
+        refresh_btn.setToolTip(self.tr("重新加载储藏列表"))
         refresh_btn.installEventFilter(ToolTipFilter(refresh_btn, 500, ToolTipPosition.BOTTOM))
         refresh_btn.clicked.connect(self.refresh_stash_list)
         top_layout.addWidget(refresh_btn)
         
         # 清空所有按钮
-        clear_btn = TransparentPushButton("清空所有", self, FluentIcon.DELETE)
-        clear_btn.setToolTip("删除所有储藏记录\n此操作不可恢复")
+        clear_btn = TransparentPushButton(self.tr("清空所有"), self, FluentIcon.DELETE)
+        clear_btn.setToolTip(self.tr("删除所有储藏记录\n此操作不可恢复"))
         clear_btn.installEventFilter(ToolTipFilter(clear_btn, 500, ToolTipPosition.BOTTOM))
         clear_btn.clicked.connect(self._on_clear_all)
         top_layout.addWidget(clear_btn)
@@ -237,7 +237,7 @@ class StashDialog(Dialog):
         self.textLayout.addLayout(top_layout)
         
         # 保存列表容器
-        list_label = BodyLabel("保存列表:", self)
+        list_label = BodyLabel(self.tr("保存列表:"), self)
         self.textLayout.addWidget(list_label)
         
         # 滚动区域
@@ -255,7 +255,7 @@ class StashDialog(Dialog):
         self.textLayout.addWidget(scroll)
         
         # 修改按钮文本
-        self.yesButton.setText("关闭")
+        self.yesButton.setText(self.tr("关闭"))
         self.cancelButton.hide()
     
     def refresh_stash_list(self):
@@ -271,7 +271,7 @@ class StashDialog(Dialog):
         
         if not stashes:
             # 显示空状态
-            empty_label = BodyLabel("暂无保存记录", self)
+            empty_label = BodyLabel(self.tr("暂无保存记录"), self)
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
             self.stashListLayout.insertWidget(0, empty_label)
         else:
@@ -293,7 +293,7 @@ class StashDialog(Dialog):
             success, msg = result
             if success:
                 InfoBar.success(
-                    title="成功",
+                    title=self.tr("成功"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -303,7 +303,7 @@ class StashDialog(Dialog):
                 self.refresh_stash_list()
             else:
                 InfoBar.error(
-                    title="失败",
+                    title=self.tr("失败"),
                     content=msg,
                     parent=self.window(),
                     position=InfoBarPosition.BOTTOM,
@@ -313,8 +313,8 @@ class StashDialog(Dialog):
         AsyncTask.run(
             func=lambda: gitService.stash_save(message),
             on_success=on_success,
-            progress_title='请稍候',
-            progress_content='正在保存到stash...',
+            progress_title=self.tr('请稍候'),
+            progress_content=self.tr('正在保存到stash...'),
             parent=self.window()
         )
     
@@ -323,8 +323,8 @@ class StashDialog(Dialog):
         stashes = gitService.stash_list()
         if not stashes:
             InfoBar.warning(
-                title="提示",
-                content="没有可清空的Stash",
+                title=self.tr("提示"),
+                content=self.tr("没有可清空的Stash"),
                 parent=self.window(),
                 position=InfoBarPosition.BOTTOM,
                 duration=2000
@@ -340,7 +340,7 @@ class StashDialog(Dialog):
                 success, msg = result
                 if success:
                     InfoBar.success(
-                        title="成功",
+                        title=self.tr("成功"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -349,7 +349,7 @@ class StashDialog(Dialog):
                     self.refresh_stash_list()
                 else:
                     InfoBar.error(
-                        title="失败",
+                        title=self.tr("失败"),
                         content=msg,
                         parent=self.window(),
                         position=InfoBarPosition.BOTTOM,
@@ -359,7 +359,7 @@ class StashDialog(Dialog):
             AsyncTask.run(
                 func=gitService.stash_clear,
                 on_success=on_success,
-                progress_title='请稍候',
-                progress_content='正在清空所有stash...',
+                progress_title=self.tr('请稍候'),
+                progress_content=self.tr('正在清空所有stash...'),
                 parent=self.window()
             )

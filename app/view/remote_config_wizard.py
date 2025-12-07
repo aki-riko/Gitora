@@ -34,18 +34,18 @@ class WelcomeStep(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
         
         # 标题
-        self.titleLabel = TitleLabel("远程仓库配置向导", self)
+        self.titleLabel = TitleLabel(self.tr("远程仓库配置向导"), self)
         setFont(self.titleLabel, 28, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel, 0, Qt.AlignmentFlag.AlignCenter)
         
         # 说明
         self.bodyLabel = BodyLabel(
-            "检测到您的仓库远程信息不完整或需要配置。\n\n"
+            self.tr("检测到您的仓库远程信息不完整或需要配置。\n\n"
             "本向导将引导您完成：\n"
             "• 🌐 配置远程仓库URL\n"
             "• 🔗 设置分支跟踪关系\n"
             "• ✅ 验证远程连接\n\n"
-            "⚠️ 注意：所有步骤必须完整填写才能继续",
+            "⚠️ 注意：所有步骤必须完整填写才能继续"),
             self
         )
         self.bodyLabel.setWordWrap(True)
@@ -67,13 +67,13 @@ class BranchConfigStep(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
-        self.titleLabel = TitleLabel("配置分支跟踪", self)
+        self.titleLabel = TitleLabel(self.tr("配置分支跟踪"), self)
         setFont(self.titleLabel, 28, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
         self.hintLabel = BodyLabel(
-            "设置本地分支与远程分支的跟踪关系，用于推送和拉取",
+            self.tr("设置本地分支与远程分支的跟踪关系，用于推送和拉取"),
             self
         )
         self.hintLabel.setWordWrap(True)
@@ -84,7 +84,7 @@ class BranchConfigStep(QWidget):
         layout.addSpacing(20)
         
         # 本地分支
-        self.localBranchLabel = BodyLabel("本地分支: *", self)
+        self.localBranchLabel = BodyLabel(self.tr("本地分支: *"), self)
         layout.addWidget(self.localBranchLabel)
         
         self.localBranchCombo = ComboBox(self)
@@ -104,12 +104,12 @@ class BranchConfigStep(QWidget):
         layout.addSpacing(12)
         
         # 远程分支
-        self.remoteBranchLabel = BodyLabel("远程分支: *", self)
+        self.remoteBranchLabel = BodyLabel(self.tr("远程分支: *"), self)
         layout.addWidget(self.remoteBranchLabel)
         
         # 使用LineEdit而不是ComboBox，因为QFluentWidgets的ComboBox不支持setEditable
         self.remoteBranchEdit = LineEdit(self)
-        self.remoteBranchEdit.setPlaceholderText("请输入远程分支名称，如：main、master")
+        self.remoteBranchEdit.setPlaceholderText(self.tr("请输入远程分支名称，如：main、master"))
         
         # 智能检测远程分支：优先使用当前分支，其次是 master，最后是 main
         default_remote_branch = "main"  # 默认值
@@ -173,13 +173,13 @@ class ConfirmationStep(QWidget):
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
-        self.titleLabel = TitleLabel("确认配置", self)
+        self.titleLabel = TitleLabel(self.tr("确认配置"), self)
         setFont(self.titleLabel, 28, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
         self.hintLabel = BodyLabel(
-            "请确认以下配置信息，点击'完成'将执行配置",
+            self.tr("请确认以下配置信息，点击'完成'将执行配置"),
             self
         )
         self.hintLabel.setWordWrap(True)
@@ -196,11 +196,11 @@ class ConfirmationStep(QWidget):
         
         # 提示
         self.confirmHintLabel = BodyLabel(
-            "✅ 点击'完成'将执行以下操作：\n"
+            self.tr("✅ 点击'完成'将执行以下操作：\n"
             "• 添加/更新远程仓库URL\n"
             "• 设置分支跟踪关系\n"
             "• 尝试连接远程仓库验证配置\n\n"
-            "⚠️ 如果远程仓库需要认证，请确保已配置SSH密钥或凭据",
+            "⚠️ 如果远程仓库需要认证，请确保已配置SSH密钥或凭据"),
             self
         )
         self.confirmHintLabel.setWordWrap(True)
@@ -213,15 +213,15 @@ class ConfirmationStep(QWidget):
                           local_branch: str, remote_branch: str):
         """设置配置预览"""
         preview_text = (
-            "远程仓库配置\n"
+            self.tr("远程仓库配置") + "\n"
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"【远程仓库】\n"
-            f"名称: {remote_name}\n"
-            f"URL: {remote_url}\n\n"
-            f"【分支跟踪】\n"
-            f"本地分支: {local_branch}\n"
-            f"远程分支: {remote_name}/{remote_branch}\n\n"
-            f"【Git命令等效】\n"
+            + self.tr("【远程仓库】") + f"\n"
+            + self.tr("名称:") + f" {remote_name}\n"
+            + "URL: " + f"{remote_url}\n\n"
+            + self.tr("【分支跟踪】") + f"\n"
+            + self.tr("本地分支:") + f" {local_branch}\n"
+            + self.tr("远程分支:") + f" {remote_name}/{remote_branch}\n\n"
+            + self.tr("【Git命令等效】") + f"\n"
             f"git remote add {remote_name} {remote_url}\n"
             f"git branch --set-upstream-to={remote_name}/{remote_branch} {local_branch}"
         )
@@ -235,7 +235,7 @@ class RemoteConfigWizard(GuideWindow):
     
     def __init__(self, parent=None):
         super().__init__()
-        self.setWindowTitle("远程仓库配置向导")
+        self.setWindowTitle(self.tr("远程仓库配置向导"))
         self.resize(800, 500)
         
         # 获取已存在的远程列表
@@ -521,9 +521,8 @@ class RemoteConfigWizard(GuideWindow):
             if result == "empty_remote":
                 # 远程仓库是空的，需要首次推送
                 InfoBar.success(
-                    "配置完成",
-                    f"远程仓库 '{remote_name}' 已添加。\n"
-                    f"远程仓库为空，请点击「推送」按钮进行首次推送。",
+                    self.tr("配置完成"),
+                    self.tr("远程仓库 '%s' 已添加。\n远程仓库为空，请点击「推送」按钮进行首次推送。") % remote_name,
                     parent=self.parent() if self.parent() else self,
                     position=InfoBarPosition.BOTTOM,
                     duration=5000
@@ -531,9 +530,8 @@ class RemoteConfigWizard(GuideWindow):
             elif result == "upstream_warning":
                 # 远程仓库配置成功，但上游分支设置失败
                 InfoBar.warning(
-                    "配置部分完成",
-                    f"远程仓库 '{remote_name}' 已添加，但上游分支设置失败。\n\n"
-                    f"请手动运行: git push -u {remote_name} {local_branch}",
+                    self.tr("配置部分完成"),
+                    self.tr("远程仓库 '%s' 已添加，但上游分支设置失败。\n\n请手动运行: git push -u %s %s") % (remote_name, remote_name, local_branch),
                     parent=self.parent() if self.parent() else self,
                     position=InfoBarPosition.BOTTOM,
                     duration=5000
@@ -541,8 +539,8 @@ class RemoteConfigWizard(GuideWindow):
             else:
                 # 完全成功
                 InfoBar.success(
-                    "配置完成",
-                    f"远程仓库 '{remote_name}' 已配置完成",
+                    self.tr("配置完成"),
+                    self.tr("远程仓库 '%s' 已配置完成") % remote_name,
                     parent=self.parent() if self.parent() else self,
                     position=InfoBarPosition.BOTTOM,
                     duration=3000
@@ -556,7 +554,7 @@ class RemoteConfigWizard(GuideWindow):
             self._is_configuring = False
             
             InfoBar.error(
-                "配置失败",
+                self.tr("配置失败"),
                 str(e),
                 parent=self,
                 position=InfoBarPosition.BOTTOM,
@@ -567,7 +565,7 @@ class RemoteConfigWizard(GuideWindow):
             func=do_config,
             on_success=on_success,
             on_error=on_error,
-            progress_title='正在配置',
-            progress_content='正在配置远程仓库和分支跟踪关系...',
+            progress_title=self.tr('正在配置'),
+            progress_content=self.tr('正在配置远程仓库和分支跟踪关系...'),
             parent=self.parent() if self.parent() else self
         )
