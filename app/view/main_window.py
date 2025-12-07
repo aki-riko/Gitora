@@ -139,7 +139,7 @@ class MainWindow(MSFluentWindow):
             self.settingInterface,
             FIF.SETTING,
             self.tr('设置'),
-            NavigationItemPosition.BOTTOM
+            position=NavigationItemPosition.BOTTOM
         )
 
         self.splashScreen.finish()
