@@ -14,6 +14,7 @@ from qfluentwidgets import (
 )
 
 from ..common.git_service import gitService
+from ..common.icon import Icon
 from ..common.logger import get_logger
 
 logger = get_logger("StashDialog")
@@ -53,14 +54,14 @@ class StashItemCard(CardWidget):
         btn_layout.setSpacing(8)
         
         # 应用按钮（恢复但不删除）
-        apply_btn = TransparentPushButton("应用", self, FluentIcon.COPY)
+        apply_btn = TransparentPushButton("应用", self, Icon.GIT_STASH_APPLY)
         apply_btn.setToolTip("恢复此保存的内容，但保留记录（可多次使用）")
         apply_btn.installEventFilter(ToolTipFilter(apply_btn, 500, ToolTipPosition.TOP))
         apply_btn.clicked.connect(self._on_apply)
         btn_layout.addWidget(apply_btn)
         
         # 恢复按钮（恢复并删除）
-        pop_btn = PushButton("恢复", self, FluentIcon.DOWNLOAD)
+        pop_btn = PushButton("恢复", self, Icon.GIT_STASH_POP)
         pop_btn.setToolTip("恢复此保存的内容，并删除记录（一次性）")
         pop_btn.installEventFilter(ToolTipFilter(pop_btn, 500, ToolTipPosition.TOP))
         pop_btn.clicked.connect(self._on_pop)

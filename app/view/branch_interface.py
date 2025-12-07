@@ -93,7 +93,7 @@ class BranchCard(CardWidget):
         # 操作按钮
         if not self.branch.is_current and not self.branch.is_remote:
             # 切换按钮
-            self.checkoutBtn = TransparentToolButton(FluentIcon.SYNC, self)
+            self.checkoutBtn = TransparentToolButton(Icon.GIT_BRANCH, self)
             self.checkoutBtn.setToolTip("切换到此分支")
             self.checkoutBtn.installEventFilter(ToolTipFilter(self.checkoutBtn, 500, ToolTipPosition.TOP))
             self.checkoutBtn.clicked.connect(lambda: self.checkoutClicked.emit(self.branch.name))

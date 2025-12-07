@@ -116,7 +116,7 @@ class FileChangeCard(CardWidget):
             FileStatus.DELETED: FluentIcon.DELETE,
             FileStatus.UNTRACKED: FluentIcon.DOCUMENT,
             FileStatus.RENAMED: FluentIcon.SYNC,  # 暂时保持
-            FileStatus.UNMERGED: Icon.GIT_CLOSE_PR,  # 使用Git专用冲突图标
+            FileStatus.UNMERGED: Icon.GIT_PR_CLOSED,  # 使用Git专用冲突图标
         }
         return icon_map.get(self.file_change.status, FluentIcon.DOCUMENT)
 

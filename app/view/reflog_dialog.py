@@ -13,6 +13,7 @@ from qfluentwidgets import (
 )
 
 from ..common.git_service import gitService
+from ..common.icon import Icon
 from ..common.logger import get_logger
 
 logger = get_logger("ReflogDialog")
@@ -49,7 +50,7 @@ class ReflogCard(CardWidget):
         layout.addLayout(info_layout, 1)
         
         # 操作按钮
-        checkout_btn = TransparentPushButton("检出", self, FluentIcon.SYNC)
+        checkout_btn = TransparentPushButton("检出", self, Icon.GIT_COMMIT)
         checkout_btn.clicked.connect(self._on_checkout)
         layout.addWidget(checkout_btn)
     

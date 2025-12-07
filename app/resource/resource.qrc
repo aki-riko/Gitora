@@ -1,31 +1,36 @@
 <RCC>
     <qresource prefix="/app">
-        <file>images/icons/SettingsFilled_white.svg</file>
-        <file>images/icons/SettingsFilled_black.svg</file>
-        <file>images/icons/Settings_white.svg</file>
-        <file>images/icons/Settings_black.svg</file>
-        
         <!-- Git专用图标 -->
-        <file>images/icons/git-branch-line_black.svg</file>
-        <file>images/icons/git-branch-line_white.svg</file>
-        <file>images/icons/git-close-pull-request-line_black.svg</file>
-        <file>images/icons/git-close-pull-request-line_white.svg</file>
-        <file>images/icons/git-commit-line_black.svg</file>
-        <file>images/icons/git-commit-line_white.svg</file>
-        <file>images/icons/git-fork-line_black.svg</file>
-        <file>images/icons/git-fork-line_white.svg</file>
-        <file>images/icons/git-merge-line_black.svg</file>
-        <file>images/icons/git-merge-line_white.svg</file>
-        <file>images/icons/git-pr-draft-line_black.svg</file>
-        <file>images/icons/git-pr-draft-line_white.svg</file>
-        <file>images/icons/git-pull-request-line_black.svg</file>
-        <file>images/icons/git-pull-request-line_white.svg</file>
-        <file>images/icons/git-repository-commits-line_black.svg</file>
-        <file>images/icons/git-repository-commits-line_white.svg</file>
-        <file>images/icons/git-repository-line_black.svg</file>
-        <file>images/icons/git-repository-line_white.svg</file>
-        <file>images/icons/git-repository-private-line_black.svg</file>
-        <file>images/icons/git-repository-private-line_white.svg</file>
+        <file>images/icons/git-branch_black.svg</file>
+        <file>images/icons/git-branch_white.svg</file>
+        <file>images/icons/git-merge_black.svg</file>
+        <file>images/icons/git-merge_white.svg</file>
+        <file>images/icons/git-commit_black.svg</file>
+        <file>images/icons/git-commit_white.svg</file>
+        <file>images/icons/git-compare_black.svg</file>
+        <file>images/icons/git-compare_white.svg</file>
+        <file>images/icons/git-fork_black.svg</file>
+        <file>images/icons/git-fork_white.svg</file>
+        <file>images/icons/git-fetch_black.svg</file>
+        <file>images/icons/git-fetch_white.svg</file>
+        <file>images/icons/git-cherry-pick_black.svg</file>
+        <file>images/icons/git-cherry-pick_white.svg</file>
+        <file>images/icons/git-pull-request_black.svg</file>
+        <file>images/icons/git-pull-request_white.svg</file>
+        <file>images/icons/git-pull-request-closed_black.svg</file>
+        <file>images/icons/git-pull-request-closed_white.svg</file>
+        <file>images/icons/git-pull-request-draft_black.svg</file>
+        <file>images/icons/git-pull-request-draft_white.svg</file>
+        <file>images/icons/git-stash-apply_black.svg</file>
+        <file>images/icons/git-stash-apply_white.svg</file>
+        <file>images/icons/git-stash-pop_black.svg</file>
+        <file>images/icons/git-stash-pop_white.svg</file>
+        <file>images/icons/git-repository_black.svg</file>
+        <file>images/icons/git-repository_white.svg</file>
+        <file>images/icons/git-repository-commits_black.svg</file>
+        <file>images/icons/git-repository-commits_white.svg</file>
+        <file>images/icons/github_black.svg</file>
+        <file>images/icons/github_white.svg</file>
         
         <file>images/logo.png</file>
 

@@ -137,9 +137,8 @@ class MainWindow(MSFluentWindow):
         # 设置界面（底部）
         self.addSubInterface(
             self.settingInterface,
-            Icon.SETTINGS,
+            FluentIcon.SETTING,
             self.tr('设置'),
-            Icon.SETTINGS_FILLED,
             NavigationItemPosition.BOTTOM
         )
 

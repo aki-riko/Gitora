@@ -13,6 +13,7 @@ from qfluentwidgets import (
 )
 
 from ..common.git_service import gitService
+from ..common.icon import Icon
 from ..common.logger import get_logger
 
 logger = get_logger("TagInterface")
@@ -89,7 +90,7 @@ class TagCard(CardWidget):
         layout.addLayout(info_layout, 1)
         
         # 操作按钮
-        checkout_btn = TransparentPushButton("切换", self, FluentIcon.SYNC)
+        checkout_btn = TransparentPushButton("切换", self, Icon.GIT_COMMIT)
         checkout_btn.clicked.connect(lambda: self.checkoutClicked.emit(self.tag_name))
         layout.addWidget(checkout_btn)
         

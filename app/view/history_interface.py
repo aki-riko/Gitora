@@ -176,7 +176,7 @@ class CommitCard(CardWidget):
         menu.addSeparator()
         
         # Cherry-pick
-        cherry_pick_action = Action(FluentIcon.COPY, "应用此提交 (Cherry-pick)")
+        cherry_pick_action = Action(Icon.GIT_CHERRY_PICK, "应用此提交 (Cherry-pick)")
         cherry_pick_action.triggered.connect(lambda: self.cherryPickClicked.emit(self.commit.hash))
         menu.addAction(cherry_pick_action)
         
@@ -257,7 +257,7 @@ class CommitDetailPanel(QFrame):
         self.copyHashBtn.clicked.connect(self._copy_hash)
         btn_layout.addWidget(self.copyHashBtn)
 
-        self.checkoutBtn = PushButton("检出此提交", self, FluentIcon.SYNC)
+        self.checkoutBtn = PushButton("检出此提交", self, Icon.GIT_COMMIT)
         self.checkoutBtn.setToolTip("切换到此提交的代码状态\n注意：会进入分离头指针状态")
         self.checkoutBtn.installEventFilter(ToolTipFilter(self.checkoutBtn, 500, ToolTipPosition.TOP))
         self.checkoutBtn.clicked.connect(self._checkout_commit)
@@ -822,7 +822,7 @@ class HistoryInterface(QWidget):
         menu.addSeparator()
         
         # 应用提交
-        cherry_pick_action = Action(FluentIcon.COPY, "应用此提交 (Cherry-pick)")
+        cherry_pick_action = Action(Icon.GIT_CHERRY_PICK, "应用此提交 (Cherry-pick)")
         cherry_pick_action.triggered.connect(lambda: self._on_cherry_pick(commit_hash))
         menu.addAction(cherry_pick_action)
         

@@ -42,7 +42,7 @@ class ConflictFileCard(CardWidget):
         layout.setSpacing(12)
         
         # 左侧：冲突图标
-        icon = IconWidget(Icon.GIT_CLOSE_PR, self)  # Git专用冲突图标
+        icon = IconWidget(Icon.GIT_PR_CLOSED, self)  # Git专用冲突图标
         icon.setFixedSize(24, 24)
         layout.addWidget(icon)
         
