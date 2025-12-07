@@ -722,23 +722,11 @@ class RepoInterface(ScrollArea):
         self.repoBtn.setFlyout(repoMenu)
         header_layout.addWidget(self.repoBtn)
         
-        # 最近仓库按钮（打开抽屉）
-        self.historyBtn = TransparentToolButton(FluentIcon.HISTORY, self)
-        self.historyBtn.setToolTip("最近仓库")
-        self.historyBtn.installEventFilter(ToolTipFilter(self.historyBtn, 500, ToolTipPosition.TOP))
-        self.historyBtn.clicked.connect(self._show_recent_repos_drawer)
-        header_layout.addWidget(self.historyBtn)
-        
-        # 创建最近仓库抽屉
-        self._setup_recent_repos_drawer()
-        
         # 分隔线 1
         self._add_separator(header_layout)
         
-        # 第二组：临时保存
-        stash_btn = TransparentToolButton(Icon.GIT_PR_DRAFT, self)
-        stash_btn.setToolTip("临时保存 (Stash)")
-        stash_btn.installEventFilter(ToolTipFilter(stash_btn, 500, ToolTipPosition.TOP))
+        # 第二组：临时保存（图标+文本）
+        stash_btn = TransparentPushButton("暂存", self, Icon.GIT_PR_DRAFT)
         stash_btn.clicked.connect(self._on_open_stash)
         header_layout.addWidget(stash_btn)
         
@@ -760,12 +748,21 @@ class RepoInterface(ScrollArea):
         # 分隔线 3
         self._add_separator(header_layout)
         
-        # 第四组：远程仓库
-        remote_btn = TransparentToolButton(FluentIcon.CLOUD, self)
-        remote_btn.setToolTip("远程仓库 (Remote)")
-        remote_btn.installEventFilter(ToolTipFilter(remote_btn, 500, ToolTipPosition.TOP))
+        # 第四组：远程仓库（图标+文本）
+        remote_btn = TransparentPushButton("远程", self, FluentIcon.CLOUD)
         remote_btn.clicked.connect(self._on_manage_remotes)
         header_layout.addWidget(remote_btn)
+        
+        # 分隔线 4
+        self._add_separator(header_layout)
+        
+        # 最右边：最近仓库按钮（打开抽屉）
+        self.historyBtn = TransparentPushButton("历史", self, FluentIcon.HISTORY)
+        self.historyBtn.clicked.connect(self._show_recent_repos_drawer)
+        header_layout.addWidget(self.historyBtn)
+        
+        # 创建最近仓库抽屉
+        self._setup_recent_repos_drawer()
 
         parent_layout.addWidget(header)
     
