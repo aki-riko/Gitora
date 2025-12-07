@@ -19,7 +19,7 @@ from qfluentwidgets import (
     SubtitleLabel, TransparentToolButton, MessageBox
 )
 from qfluentwidgetspro import (
-    StepProgressBar, TimeLineWidget, TimeLineCard, Splitter
+    TimeLineWidget, TimeLineCard, Splitter
 )
 
 from app.common.git_service import gitService, FileChange, FileStatus
@@ -398,7 +398,10 @@ class QuickActionPanel(QFrame):
 
     def __init__(self, parent=None):
         super().__init__(parent)
+        self._current_progress = 0
+        self._target_progress = 0
         self._setup_ui()
+        self._setup_timer()
 
     def _setup_ui(self):
         self.setObjectName("quickActionPanel")
@@ -425,13 +428,29 @@ class QuickActionPanel(QFrame):
         self.descLabel.setWordWrap(True)
         layout.addWidget(self.descLabel)
 
-        # 进度条
-        self.stepBar = StepProgressBar(self)
-        self.stepBar.addStep("暂存", FluentIcon.ADD_TO)
-        self.stepBar.addStep("提交", FluentIcon.ACCEPT)
-        self.stepBar.addStep("推送", FluentIcon.SEND)
-        self.stepBar.setCurrentStep(-1)  # 初始无进度
-        layout.addWidget(self.stepBar, 0, Qt.AlignmentFlag.AlignCenter)
+        # 进度条容器
+        progress_container = QWidget(self)
+        progress_layout = QVBoxLayout(progress_container)
+        progress_layout.setContentsMargins(0, 8, 0, 8)
+        progress_layout.setSpacing(8)
+        
+        # 平滑进度条
+        from qfluentwidgets import ProgressBar
+        self.progressBar = ProgressBar(self)
+        self.progressBar.setRange(0, 100)
+        self.progressBar.setValue(0)
+        self.progressBar.setFixedHeight(4)
+        progress_layout.addWidget(self.progressBar)
+        
+        # 状态文字
+        self.statusLabel = CaptionLabel("", self)
+        self.statusLabel.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        progress_layout.addWidget(self.statusLabel)
+        
+        # 初始隐藏进度区域
+        progress_container.setVisible(False)
+        self.progressContainer = progress_container
+        layout.addWidget(progress_container)
 
         # 提交信息
         self.messageEdit = LineEdit(self)
@@ -447,6 +466,12 @@ class QuickActionPanel(QFrame):
         layout.addWidget(self.quickBtn)
 
         layout.addStretch()
+    
+    def _setup_timer(self):
+        """设置平滑动画定时器"""
+        self._animation_timer = QTimer(self)
+        self._animation_timer.setInterval(30)  # 30ms刷新一次，约33fps
+        self._animation_timer.timeout.connect(self._animate_progress)
 
     def _on_quick_action(self):
         from datetime import datetime
@@ -455,15 +480,55 @@ class QuickActionPanel(QFrame):
             # 使用默认提交信息
             message = f"更新 {datetime.now().strftime('%Y-%m-%d %H:%M')}"
             self.messageEdit.setText(message)
+        
+        # 显示进度区域并开始
+        self.progressContainer.setVisible(True)
+        self._current_progress = 0
+        self._target_progress = 0
+        self.progressBar.setValue(0)
         self.quickCommitPush.emit(message)
 
     def set_progress(self, step: int):
-        """设置进度 0=暂存, 1=提交, 2=推送"""
-        self.stepBar.setCurrentStep(step)
+        """设置进度阶段 0=暂存, 1=提交, 2=推送, 3=完成"""
+        # 根据步骤设置目标进度和状态文字
+        if step == 0:
+            self._target_progress = 30
+            self.statusLabel.setText("正在暂存变更...")
+        elif step == 1:
+            self._target_progress = 60
+            self.statusLabel.setText("正在提交...")
+        elif step == 2:
+            self._target_progress = 90
+            self.statusLabel.setText("正在推送到远程...")
+        else:
+            self._target_progress = 100
+            self.statusLabel.setText("完成！")
+        
+        # 启动平滑动画
+        if not self._animation_timer.isActive():
+            self._animation_timer.start()
+    
+    def _animate_progress(self):
+        """平滑更新进度条"""
+        if self._current_progress < self._target_progress:
+            # 计算步进值，越接近目标越慢，实现缓动效果
+            diff = self._target_progress - self._current_progress
+            step = max(1, diff // 5)  # 至少步进1
+            self._current_progress = min(self._current_progress + step, self._target_progress)
+            self.progressBar.setValue(int(self._current_progress))
+        
+        # 到达目标后停止动画
+        if self._current_progress >= self._target_progress:
+            self._animation_timer.stop()
 
     def reset(self):
         """重置状态"""
-        self.stepBar.setCurrentStep(-1)
+        self._animation_timer.stop()
+        self._current_progress = 0
+        self._target_progress = 0
+        self.progressBar.setValue(0)
+        self.statusLabel.setText("")
+        self.progressContainer.setVisible(False)
         self.messageEdit.clear()
 
 
@@ -1159,15 +1224,15 @@ class RepoInterface(ScrollArea):
 
     def _on_progress_updated(self, percent: int, msg: str):
         """进度更新"""
-        # 更新一键操作进度条
+        # 更新一键操作进度条：0=暂存, 1=提交, 2=推送, 3=完成
         if percent < 33:
-            self.quickPanel.set_progress(0)
+            self.quickPanel.set_progress(0)  # 暂存中
         elif percent < 66:
-            self.quickPanel.set_progress(1)
+            self.quickPanel.set_progress(1)  # 提交中
         elif percent < 100:
-            self.quickPanel.set_progress(2)
+            self.quickPanel.set_progress(2)  # 推送中
         else:
-            self.quickPanel.set_progress(2)
+            self.quickPanel.set_progress(3)  # 完成
     
     def _show_remote_config_guide(self):
         """显示远程仓库配置向导"""
