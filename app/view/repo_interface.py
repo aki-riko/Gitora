@@ -1219,8 +1219,8 @@ class RepoInterface(ScrollArea):
     def _on_quick_finished(self, success: bool, msg: str):
         """一键操作完成"""
         self.quickPanel.quickBtn.setEnabled(True)
-        if success:
-            self.quickPanel.reset()
+        # 无论成功失败都重置进度条
+        self.quickPanel.reset()
 
     def _on_progress_updated(self, percent: int, msg: str):
         """进度更新"""
