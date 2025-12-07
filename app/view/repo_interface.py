@@ -619,6 +619,7 @@ class RecentReposDrawerContent(QWidget):
                 repo_name = os.path.basename(repo_path)
                 btn = TransparentPushButton(repo_name, self, FluentIcon.FOLDER)
                 btn.setToolTip(repo_path)
+                btn.setCursor(Qt.CursorShape.PointingHandCursor)
                 btn.installEventFilter(ToolTipFilter(btn, 300, ToolTipPosition.LEFT))
                 btn.clicked.connect(lambda checked, p=repo_path: self.repoSelected.emit(p))
                 self.listLayout.insertWidget(i, btn)
