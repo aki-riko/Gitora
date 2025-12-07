@@ -8,6 +8,10 @@ import subprocess
 import webbrowser
 from pathlib import Path
 
+from .logger import get_logger
+
+logger = get_logger("GitInstaller")
+
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import QUrl
 from PySide6.QtGui import QDesktopServices
@@ -26,6 +30,7 @@ class GitInstaller:
         测试模式：
             设置环境变量GITESS_TEST_NO_GIT=1模拟Git未安装
         """
+        logger.info("检查Git安装状态")
         # 测试模式：模拟Git未安装
         if os.getenv('GITESS_TEST_NO_GIT') == '1':
             return False, "测试模式: 模拟Git未安装"
@@ -40,11 +45,15 @@ class GitInstaller:
             )
             if result.returncode == 0:
                 version = result.stdout.strip()
+                logger.info(f"Git已安装: {version}")
                 return True, version
+            logger.warning("Git命令执行失败")
             return False, ""
         except FileNotFoundError:
+            logger.warning("Git未安装")
             return False, "Git未安装"
         except Exception as e:
+            logger.exception(f"Git检测异常: {e}")
             return False, str(e)
     
     @staticmethod

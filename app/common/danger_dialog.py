@@ -11,6 +11,10 @@ from qfluentwidgets import (
     PushButton, FluentIcon
 )
 
+from .logger import get_logger
+
+logger = get_logger("DangerDialog")
+
 
 class DangerConfirmDialog(MessageBoxBase):
     """危险操作确认对话框（带倒计时）"""

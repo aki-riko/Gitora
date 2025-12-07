@@ -14,6 +14,9 @@ from qfluentwidgets import (
 from qfluentwidgetspro import TimeLineWidget, TimeLineCard, InfoBarIcon
 
 from ..common.git_service import gitService, CommitInfo
+from ..common.logger import get_logger
+
+logger = get_logger("FileHistoryDialog")
 
 
 class FileCommitCard(TimeLineCard):

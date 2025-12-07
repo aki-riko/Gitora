@@ -13,6 +13,9 @@ from qfluentwidgets import (
 )
 
 from ..common.git_service import gitService
+from ..common.logger import get_logger
+
+logger = get_logger("TagInterface")
 
 
 class CreateTagDialog(Dialog):

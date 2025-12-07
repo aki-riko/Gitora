@@ -6,7 +6,10 @@ from PySide6.QtCore import QLocale
 from qfluentwidgets import (qconfig, QConfig, ConfigItem, OptionsConfigItem, BoolValidator,
                             OptionsValidator, Theme, FolderValidator, ConfigSerializer)
 
+from .logger import get_logger
 from .setting import CONFIG_FILE
+
+logger = get_logger("Config")
 
 class Language(Enum):
     """ Language enumeration """

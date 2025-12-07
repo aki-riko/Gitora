@@ -17,6 +17,9 @@ from ..common.setting import HELP_URL, FEEDBACK_URL, AUTHOR, VERSION, YEAR
 from ..common.signal_bus import signalBus
 from ..common.style_sheet import StyleSheet
 from ..common.git_service import gitService
+from ..common.logger import get_logger
+
+logger = get_logger("SettingInterface")
 
 
 class SettingCardGroup(CardGroup):

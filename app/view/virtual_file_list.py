@@ -16,6 +16,9 @@ from qfluentwidgets import (
 from qfluentwidgetspro import RoundListWidget
 
 from app.common.git_service import FileChange, FileStatus
+from app.common.logger import get_logger
+
+logger = get_logger("VirtualFileList")
 
 
 # 自定义数据角色

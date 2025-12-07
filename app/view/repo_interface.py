@@ -26,6 +26,9 @@ from app.common.git_service import gitService, FileChange, FileStatus
 from app.common.style_sheet import StyleSheet
 from app.common.icon import Icon
 from app.view.virtual_file_list import VirtualFileList
+from app.common.logger import get_logger
+
+logger = get_logger("RepoInterface")
 
 
 class FileChangeCard(CardWidget):
@@ -156,8 +159,18 @@ class FileChangeCard(CardWidget):
         """查看代码作者（异步）"""
         from app.common.async_helper import AsyncTask
         
+        def on_error(error_msg):
+            InfoBar.error(
+                "Blame失败",
+                error_msg,
+                parent=self.window(),
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000
+            )
+        
         AsyncTask.run(
             func=lambda: gitService.blame(self.file_change.path),
+            on_error=on_error,
             progress_title='请稍候',
             progress_content=f'正在分析代码作者: {self.file_change.path}',
             success_title='分析完成',
@@ -1209,9 +1222,19 @@ class RepoInterface(ScrollArea):
             # 延迟100ms显示，确保进度环关闭动画完成
             QTimer.singleShot(100, show_dialog)
         
+        def on_error(error_msg):
+            InfoBar.error(
+                "获取失败",
+                error_msg,
+                parent=self,
+                position=InfoBarPosition.BOTTOM_RIGHT,
+                duration=3000
+            )
+        
         AsyncTask.run(
             func=gitService.get_remote_info,
             on_success=on_success,
+            on_error=on_error,
             progress_title='请稍候',
             progress_content='正在获取远程仓库信息...',
             parent=self

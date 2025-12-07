@@ -4,6 +4,10 @@
 """
 import json
 from pathlib import Path
+
+from .logger import get_logger
+
+logger = get_logger("RecentRepos")
 from .setting import CONFIG_FOLDER
 
 
@@ -25,7 +29,8 @@ class RecentReposManager:
             with open(self.file_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
                 return data.get('repos', [])
-        except Exception:
+        except Exception as e:
+            logger.warning(f"读取最近仓库失败: {e}")
             return []
     
     def _save(self):
@@ -33,8 +38,8 @@ class RecentReposManager:
         try:
             with open(self.file_path, 'w', encoding='utf-8') as f:
                 json.dump({'repos': self._repos}, f, ensure_ascii=False, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.error(f"保存最近仓库失败: {e}")
     
     def add(self, repo_path: str):
         """添加仓库到最近列表"""

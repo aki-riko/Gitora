@@ -20,6 +20,9 @@ from ..common.config import cfg
 from ..common.icon import Icon
 from ..common.signal_bus import signalBus
 from ..common import resource
+from ..common.logger import get_logger
+
+logger = get_logger("MainWindow")
 
 
 class MainWindow(MSFluentWindow):
@@ -27,6 +30,7 @@ class MainWindow(MSFluentWindow):
 
     def __init__(self):
         super().__init__()
+        logger.info("初始化主窗口")
         self.initWindow()
 
         # 创建界面
@@ -52,6 +56,7 @@ class MainWindow(MSFluentWindow):
     
     def _on_operation_started(self, msg: str):
         """操作开始 - 显示进度环"""
+        logger.info(f"Git操作开始: {msg}")
         from qfluentwidgetspro import ProgressInfoBar
         from qfluentwidgets import InfoBarPosition
         from PySide6.QtCore import Qt
@@ -60,8 +65,8 @@ class MainWindow(MSFluentWindow):
         if hasattr(self, '_progress_bar') and self._progress_bar:
             try:
                 self._progress_bar.close()
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"关闭进度环失败: {e}")
         
         # 显示新的进度环
         self._progress_bar = ProgressInfoBar.create(
@@ -75,6 +80,11 @@ class MainWindow(MSFluentWindow):
     
     def _on_operation_finished(self, success: bool, msg: str):
         """操作完成 - 更新进度环状态"""
+        if success:
+            logger.info(f"Git操作成功: {msg}")
+        else:
+            logger.error(f"Git操作失败: {msg}")
+        
         if hasattr(self, '_progress_bar') and self._progress_bar:
             try:
                 if success:
@@ -85,8 +95,8 @@ class MainWindow(MSFluentWindow):
                     self._progress_bar.setTitle('失败')
                     self._progress_bar.setContent(msg)
                     self._progress_bar.error(duration=3000)
-            except:
-                pass
+            except Exception as e:
+                logger.warning(f"更新进度环失败: {e}")
 
     def initNavigation(self):
         # 仓库界面（首页）

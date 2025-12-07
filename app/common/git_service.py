@@ -12,6 +12,10 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, QThread, QMutex, QMutexLocker
 
+from .logger import get_logger
+
+logger = get_logger("GitService")
+
 
 class FileStatus(Enum):
     """文件状态枚举"""
@@ -92,6 +96,8 @@ class GitWorker(QThread):
         self.timeout = timeout  # 超时时间（秒）
 
     def run(self):
+        cmd_str = ' '.join(self.cmd)
+        logger.debug(f"[GitWorker] 执行Git命令: {cmd_str}")
         try:
             # 根据命令类型设置超时
             # 网络操作（push/pull/fetch）使用传入的timeout
@@ -106,14 +112,21 @@ class GitWorker(QThread):
                 timeout=self.timeout,  # 添加超时控制
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
+            success = result.returncode == 0
+            if success:
+                logger.debug(f"[GitWorker] 命令执行成功: {cmd_str}")
+            else:
+                logger.warning(f"[GitWorker] 命令执行失败: {cmd_str}, stderr: {result.stderr}")
             self.finished.emit(
-                result.returncode == 0,
+                success,
                 result.stdout,
                 result.stderr
             )
         except subprocess.TimeoutExpired:
+            logger.error(f"[GitWorker] 命令超时: {cmd_str}, timeout={self.timeout}s")
             self.finished.emit(False, "", f"操作超时（{self.timeout}秒），可能是网络问题或仓库过大")
         except Exception as e:
+            logger.exception(f"[GitWorker] 命令执行异常: {cmd_str}, error: {e}")
             self.finished.emit(False, "", str(e))
 
 
@@ -138,18 +151,23 @@ class GitService(QObject):
 
     def set_repo_path(self, path: str) -> bool:
         """设置仓库路径"""
+        logger.info(f"设置仓库路径: {path}")
         if not path or not os.path.isdir(path):
+            logger.warning(f"路径无效: {path}")
             return False
 
         # 检查目录权限（读取+执行）
         if not os.access(path, os.R_OK | os.X_OK):
+            logger.warning(f"目录权限不足: {path}")
             return False
 
         git_dir = os.path.join(path, '.git')
         if not os.path.isdir(git_dir):
+            logger.warning(f"不是Git仓库: {path}")
             return False
 
         self._repo_path = path
+        logger.info(f"仓库路径设置成功: {path}")
         self.statusChanged.emit()
         return True
     
@@ -223,10 +241,13 @@ class GitService(QObject):
             )
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
+            logger.error(f"Git命令超时: {' '.join(args)}, timeout={timeout}s")
             return False, "", f"操作超时（{timeout}秒）"
         except FileNotFoundError:
+            logger.error("Git未安装或不在PATH中")
             return False, "", "Git未安装或不在PATH中"
         except Exception as e:
+            logger.exception(f"Git命令异常: {' '.join(args)}, error: {e}")
             return False, "", str(e)
 
     def _run_git_async(self, args: list[str], callback: Callable[[bool, str, str], None], timeout: int = None):
@@ -655,6 +676,22 @@ class GitService(QObject):
                 callback(success, msg)
 
         self._run_git_async(args, on_finished)
+    
+    def set_upstream(self, local_branch: str, remote: str, remote_branch: str) -> tuple[bool, str]:
+        """设置分支的上游跟踪关系（同步）
+        
+        Args:
+            local_branch: 本地分支名
+            remote: 远程仓库名
+            remote_branch: 远程分支名
+        
+        Returns:
+            (success, message)
+        """
+        args = ['branch', '--set-upstream-to', f'{remote}/{remote_branch}', local_branch]
+        success, stdout, stderr = self._run_git_sync(args)
+        msg = stdout if success else (stderr or "设置上游分支失败")
+        return success, msg
 
     def pull(self, remote: str = "origin", branch: str = "", rebase: bool = False, callback: Callable[[bool, str], None] = None):
         """拉取远程变更（异步）
@@ -695,6 +732,19 @@ class GitService(QObject):
                 callback(success, msg)
 
         self._run_git_async(['fetch', remote], on_finished)
+    
+    def fetch_sync(self, remote: str = "origin") -> tuple[bool, str]:
+        """获取远程更新（同步）
+        
+        Args:
+            remote: 远程仓库名
+        
+        Returns:
+            (success, message)
+        """
+        success, stdout, stderr = self._run_git_sync(['fetch', remote], timeout=120)
+        msg = stdout if success else (stderr or "获取失败")
+        return success, msg
 
     # ==================== 分支操作 ====================
 

@@ -9,6 +9,10 @@ from PySide6.QtGui import QColor
 
 from qfluentwidgets import Dialog, BodyLabel
 
+from ..common.logger import get_logger
+
+logger = get_logger("ConflictViewerDialog")
+
 
 class ConflictViewerDialog(Dialog):
     """冲突内容查看对话框"""

@@ -5,8 +5,12 @@
 """
 from typing import Callable, Any
 from PySide6.QtCore import QThread, Signal, Qt
-from qfluentwidgets import InfoBarPosition
 from qfluentwidgetspro import ProgressInfoBar
+from qfluentwidgets import InfoBar, InfoBarPosition
+
+from .logger import get_logger
+
+logger = get_logger("AsyncHelper")
 
 
 class AsyncWorker(QThread):
@@ -21,10 +25,13 @@ class AsyncWorker(QThread):
         self.kwargs = kwargs
     
     def run(self):
+        logger.debug(f"[AsyncWorker] 开始执行异步任务: {self.func.__name__}")
         try:
             result = self.func(*self.args, **self.kwargs)
+            logger.debug(f"[AsyncWorker] 异步任务执行成功: {self.func.__name__}")
             self.finished.emit(result)
         except Exception as e:
+            logger.exception(f"[AsyncWorker] 异步任务执行失败: {self.func.__name__}, error: {e}")
             self.error.emit(str(e))
 
 
@@ -40,6 +47,8 @@ class AsyncTask:
         progress_content: str = "正在处理...",
         success_title: str = "成功",
         success_content: str = "操作完成",
+        error_title: str = "错误",
+        error_content: str = None,
         show_progress: bool = True,
         parent=None,
         *args,
@@ -56,6 +65,8 @@ class AsyncTask:
             progress_content: 进度环内容
             success_title: 成功标题
             success_content: 成功内容
+            error_title: 错误标题
+            error_content: 错误内容
             show_progress: 是否显示进度环
             parent: 父窗口
             *args, **kwargs: 传递给func的参数
@@ -89,10 +100,13 @@ class AsyncTask:
         
         # 错误回调 - 处理异常
         def on_failed(error_msg):
+            logger.error(f"[AsyncTask] 异步任务失败: {progress_title}, error: {error_msg}")
+            # 关闭进度环，不显示错误状态（因为 .error() 会显示通知）
             if progress_bar:
-                progress_bar.setTitle('错误')
-                progress_bar.setContent(error_msg)
-                progress_bar.error(duration=3000)
+                progress_bar.close()
+            
+            # 错误通知完全由调用者的 on_error 回调处理
+            # 这样避免重复通知，并且让调用者有更多控制权
             
             if on_error:
                 on_error(error_msg)
@@ -109,6 +123,7 @@ class AsyncTask:
             worker.finished.connect(lambda: parent._async_workers.remove(worker) if worker in parent._async_workers else None)
             worker.error.connect(lambda: parent._async_workers.remove(worker) if worker in parent._async_workers else None)
         
+        logger.info(f"[AsyncTask] 启动异步任务: {progress_title} - {progress_content}")
         worker.start()
         return worker
 
@@ -129,6 +144,7 @@ class SimpleAsyncTask:
         Returns:
             AsyncWorker实例
         """
+        logger.debug(f"[SimpleAsyncTask] 启动简单异步任务: {func.__name__}")
         worker = AsyncWorker(func, *args, **kwargs)
         
         if on_finished:

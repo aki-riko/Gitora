@@ -20,6 +20,9 @@ from qfluentwidgets import (
 from app.common.git_service import gitService, BranchInfo
 from app.common.style_sheet import StyleSheet
 from app.common.icon import Icon
+from app.common.logger import get_logger
+
+logger = get_logger("BranchInterface")
 
 
 class BranchCard(CardWidget):

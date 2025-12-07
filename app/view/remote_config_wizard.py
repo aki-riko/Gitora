@@ -15,6 +15,9 @@ from qfluentwidgetspro import GuideWindow
 
 from ..common.git_service import gitService
 from .init_repo_guide import RemoteInterface
+from ..common.logger import get_logger
+
+logger = get_logger("RemoteConfigWizard")
 
 
 class WelcomeStep(QWidget):
@@ -107,7 +110,25 @@ class BranchConfigStep(QWidget):
         # 使用LineEdit而不是ComboBox，因为QFluentWidgets的ComboBox不支持setEditable
         self.remoteBranchEdit = LineEdit(self)
         self.remoteBranchEdit.setPlaceholderText("请输入远程分支名称，如：main、master")
-        self.remoteBranchEdit.setText("main")
+        
+        # 智能检测远程分支：优先使用当前分支，其次是 master，最后是 main
+        default_remote_branch = "main"  # 默认值
+        current_branch = gitService.get_current_branch()
+        if current_branch:
+            # 使用当前分支名作为默认远程分支
+            default_remote_branch = current_branch
+            logger.info(f"使用当前分支作为默认远程分支: {default_remote_branch}")
+        else:
+            # 如果没有当前分支，检查是否有 master 分支
+            branches = gitService.get_branches()
+            local_branch_names = [b.name for b in branches if not b.is_remote]
+            if 'master' in local_branch_names:
+                default_remote_branch = "master"
+                logger.info("检测到 master 分支，使用 master 作为默认远程分支")
+            else:
+                logger.info("使用 main 作为默认远程分支")
+        
+        self.remoteBranchEdit.setText(default_remote_branch)
         layout.addWidget(self.remoteBranchEdit)
         
         layout.addStretch()
@@ -219,15 +240,26 @@ class RemoteConfigWizard(GuideWindow):
         
         # 获取已存在的远程列表
         self.existing_remotes = []
+        self.existing_remote_url = None
         remotes = gitService.get_remote_info()
         if remotes:
             self.existing_remotes = [name for name, _ in remotes]
+            # 如果存在 origin，获取其 URL
+            for name, url in remotes:
+                if name == 'origin':
+                    self.existing_remote_url = url
+                    logger.info(f"检测到已有远程仓库: {name} -> {url}")
+                    break
         
         # 创建步骤页面
         self.welcomePage = WelcomeStep()
         self.remoteInfoPage = RemoteInterface(existing_remotes=self.existing_remotes)  # 始终必填
         self.branchConfigPage = BranchConfigStep()
         self.confirmationPage = ConfirmationStep()
+        
+        # 如果存在已有远程仓库，自动填充
+        if self.existing_remote_url:
+            self._auto_fill_remote_info(self.existing_remote_url)
         
         # 添加页面
         self.addPage(self.welcomePage)
@@ -241,12 +273,97 @@ class RemoteConfigWizard(GuideWindow):
         
         # 连接验证信号来实时控制按钮状态
         self.remoteInfoPage.nameEdit.textChanged.connect(self._update_next_button)
-        self.remoteInfoPage.urlEdit.textChanged.connect(self._update_next_button)
+        self.remoteInfoPage.hostEdit.textChanged.connect(self._update_next_button)
+        self.remoteInfoPage.userEdit.textChanged.connect(self._update_next_button)
+        self.remoteInfoPage.repoEdit.textChanged.connect(self._update_next_button)
         self.branchConfigPage.localBranchCombo.currentTextChanged.connect(self._update_next_button)
         self.branchConfigPage.remoteBranchEdit.textChanged.connect(self._update_next_button)
         
         # 初始化按钮状态
         self._update_next_button()
+    
+    def _auto_fill_remote_info(self, url: str):
+        """自动填充远程仓库信息
+        
+        Args:
+            url: 远程仓库URL，支持 HTTPS 和 SSH 格式
+        """
+        import re
+        
+        logger.info(f"开始解析远程仓库URL: {url}")
+        
+        # 解析 SSH 格式
+        # ssh://git@host:port/user/repo.git
+        ssh_pattern_full = r'^ssh://([^@]+)@([^:]+):(\d+)/(.+)/([^/]+?)(?:\.git)?$'
+        # git@host:user/repo.git
+        ssh_pattern_short = r'^([^@]+)@([^:]+):(.+)/([^/]+?)(?:\.git)?$'
+        # 解析 HTTPS 格式: https://github.com/user/repo.git
+        https_pattern = r'^https?://([^/]+)/(.+?)/(.+?)(?:\.git)?$'
+        
+        protocol = None
+        host = None
+        port = None
+        user = None
+        repo = None
+        
+        # 尝试匹配 SSH 完整格式: ssh://git@host:port/user/repo.git
+        match = re.match(ssh_pattern_full, url)
+        if match:
+            protocol = 'git'
+            ssh_user = match.group(1)  # git
+            host = match.group(2)
+            port = match.group(3)
+            user = match.group(4)
+            repo = match.group(5)
+            logger.info(f"SSH完整格式解析: host={host}, port={port}, user={user}, repo={repo}")
+        else:
+            # 尝试匹配 SSH 简写格式: git@host:user/repo.git
+            match = re.match(ssh_pattern_short, url)
+            if match:
+                protocol = 'git'
+                ssh_user = match.group(1)  # git
+                host = match.group(2)
+                port = '22'  # 默认端口
+                path = match.group(3)
+                repo = match.group(4)
+                # 从路径中提取用户名（取最后一个/之前的部分）
+                path_parts = path.split('/')
+                if len(path_parts) >= 1:
+                    user = path_parts[-1] if len(path_parts) == 1 else '/'.join(path_parts[:-1]) if len(path_parts) > 1 else path_parts[0]
+                else:
+                    user = path
+                logger.info(f"SSH简写格式解析: host={host}, port={port}, user={user}, repo={repo}")
+            else:
+                # 尝试匹配 HTTPS 格式
+                match = re.match(https_pattern, url)
+                if match:
+                    protocol = 'https'
+                    host = match.group(1)
+                    user = match.group(2)
+                    repo = match.group(3)
+                    logger.info(f"HTTPS格式解析: host={host}, user={user}, repo={repo}")
+        
+        # 填充到界面
+        if protocol and host and user and repo:
+            # 设置协议类型
+            self.remoteInfoPage.protocolSegmented.setCurrentItem(protocol)
+            self.remoteInfoPage._on_protocol_changed(protocol)
+            
+            # 填充字段
+            self.remoteInfoPage.hostEdit.setText(host)
+            self.remoteInfoPage.userEdit.setText(user)
+            self.remoteInfoPage.repoEdit.setText(repo)
+            
+            # 如果是 SSH 且有端口，填充端口
+            if protocol == 'git' and port:
+                self.remoteInfoPage.sshPortEdit.setText(port)
+            
+            logger.info("远程仓库信息已自动填充")
+            
+            # 触发验证
+            self.remoteInfoPage._validate_inputs()
+        else:
+            logger.warning(f"无法解析远程仓库URL: {url}")
     
     def _update_next_button(self):
         """实时更新下一步按钮状态"""
@@ -298,6 +415,13 @@ class RemoteConfigWizard(GuideWindow):
     
     def _on_finish(self):
         """完成配置"""
+        # 防止重复点击
+        if hasattr(self, '_is_configuring') and self._is_configuring:
+            logger.warning("配置正在进行中，忽略重复点击")
+            return
+        
+        self._is_configuring = True
+        
         from app.common.async_helper import AsyncTask
         
         # 获取配置信息
@@ -316,34 +440,121 @@ class RemoteConfigWizard(GuideWindow):
                 if not success:
                     raise Exception(f"添加远程仓库失败: {msg}")
             
-            # 2. 设置分支跟踪
+            # 2. 先fetch远程分支信息
+            success, msg = gitService.fetch_sync(remote=remote_name)
+            if not success:
+                raise Exception(f"Fetch远程分支失败: {msg}\n\n请检查:\n1. 远程仓库URL是否正确\n2. 网络连接是否正常\n3. SSH密钥或凭据是否配置正确")
+            
+            # 3. 检查本地分支是否存在，如果不存在则创建
+            current_branch = gitService.get_current_branch()
+            branches = gitService.get_branches()
+            local_branches = [b.name for b in branches if not b.is_remote]
+            
+            if local_branch not in local_branches:
+                # 本地分支不存在，创建并checkout
+                success, msg = gitService.create_branch(local_branch, checkout=True)
+                if not success:
+                    raise Exception(f"创建本地分支失败: {msg}")
+            elif current_branch != local_branch:
+                # 本地分支存在但不是当前分支，切换过去
+                success, msg = gitService.checkout_branch(local_branch)
+                if not success:
+                    raise Exception(f"切换分支失败: {msg}")
+            
+            # 4. 检查远程分支是否存在（使用更可靠的方式）
+            # 使用 git ls-remote 直接查询远程分支
+            success, stdout, stderr = gitService._run_git_sync(['ls-remote', '--heads', remote_name])
+            logger.info(f"git ls-remote 结果: success={success}, stdout={repr(stdout)}, stderr={repr(stderr)}")
+            
+            if not success:
+                logger.warning(f"无法查询远程分支: {stderr}")
+                # 如果 ls-remote 失败，尝试使用 get_branches
+                branches = gitService.get_branches()
+                remote_branches = [b.name for b in branches if b.is_remote]
+                logger.info(f"使用 get_branches 获取远程分支: {remote_branches}")
+            else:
+                # 解析 ls-remote 输出
+                remote_branches = []
+                for line in stdout.strip().split('\n'):
+                    if line:
+                        # 格式: <hash>\trefs/heads/<branch>
+                        parts = line.split('\t')
+                        if len(parts) == 2 and parts[1].startswith('refs/heads/'):
+                            branch_name = parts[1].replace('refs/heads/', '')
+                            remote_branches.append(f"{remote_name}/{branch_name}")
+                logger.info(f"解析到的远程分支: {remote_branches}")
+            
+            target_remote_branch = f"{remote_name}/{remote_branch}"
+            
+            if target_remote_branch not in remote_branches:
+                # 远程分支不存在
+                available_branches = [b for b in remote_branches if b.startswith(f"{remote_name}/")]
+                if available_branches:
+                    # 有其他分支，但目标分支不存在，提示用户
+                    branches_str = "\n  - ".join(available_branches)
+                    error_msg = (
+                        f"远程分支 '{target_remote_branch}' 不存在。\n\n"
+                        f"可用的远程分支：\n  - {branches_str}\n\n"
+                        f"请返回上一步，选择正确的远程分支名称。"
+                    )
+                    raise Exception(error_msg)
+                else:
+                    # 远程仓库是空的（刚创建），这是正常情况
+                    # 不设置 upstream，返回特殊标记让用户手动推送创建分支
+                    logger.info(f"远程仓库 '{remote_name}' 是空的，需要首次推送创建分支")
+                    return "empty_remote"
+            
+            # 5. 设置分支跟踪（仅当远程分支存在时）
             success, msg = gitService.set_upstream(local_branch, remote_name, remote_branch)
             if not success:
-                raise Exception(f"设置分支跟踪失败: {msg}")
-            
-            # 3. 尝试fetch验证连接
-            try:
-                gitService.fetch(remote=remote_name)
-            except Exception as e:
-                # fetch失败不阻止配置完成，只是警告
-                print(f"警告: fetch失败 - {e}")
+                # 如果还是失败，给出警告
+                logger.warning(f"设置上游分支失败: {msg}")
+                return "upstream_warning"
             
             return True
         
         def on_success(result):
             """配置成功"""
-            InfoBar.success(
-                "配置完成",
-                f"远程仓库 '{remote_name}' 已配置完成",
-                parent=self.parent() if self.parent() else self,
-                position=InfoBarPosition.BOTTOM_RIGHT,
-                duration=3000
-            )
+            # 重置配置状态
+            self._is_configuring = False
+            
+            if result == "empty_remote":
+                # 远程仓库是空的，需要首次推送
+                InfoBar.success(
+                    "配置完成",
+                    f"远程仓库 '{remote_name}' 已添加。\n"
+                    f"远程仓库为空，请点击「推送」按钮进行首次推送。",
+                    parent=self.parent() if self.parent() else self,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=5000
+                )
+            elif result == "upstream_warning":
+                # 远程仓库配置成功，但上游分支设置失败
+                InfoBar.warning(
+                    "配置部分完成",
+                    f"远程仓库 '{remote_name}' 已添加，但上游分支设置失败。\n\n"
+                    f"请手动运行: git push -u {remote_name} {local_branch}",
+                    parent=self.parent() if self.parent() else self,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=5000
+                )
+            else:
+                # 完全成功
+                InfoBar.success(
+                    "配置完成",
+                    f"远程仓库 '{remote_name}' 已配置完成",
+                    parent=self.parent() if self.parent() else self,
+                    position=InfoBarPosition.BOTTOM_RIGHT,
+                    duration=3000
+                )
             self.configCompleted.emit()
             self.close()
         
         def on_error(e):
             """配置失败"""
+            # 重置配置状态
+            self._is_configuring = False
+            
             InfoBar.error(
                 "配置失败",
                 str(e),

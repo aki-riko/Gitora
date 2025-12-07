@@ -22,7 +22,12 @@ if PRO_LICENSE:
     setLicense(PRO_LICENSE)
 
 from app.common.config import cfg
+from app.common.logger import Logger, get_logger
 from app.view.main_window import MainWindow
+
+# 初始化日志系统（必须在所有其他导入之前）
+Logger.setup()
+logger = get_logger("Main")
 
 
 # enable dpi scale
@@ -31,6 +36,7 @@ if cfg.get(cfg.dpiScale) != "Auto":
     os.environ["QT_SCALE_FACTOR"] = str(cfg.get(cfg.dpiScale))
 
 # create application
+logger.info("创建QApplication")
 app = QApplication(sys.argv)
 app.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
 
@@ -49,8 +55,11 @@ app.installTranslator(galleryTranslator)
 from app.common.git_installer import gitInstaller
 from PySide6.QtWidgets import QWidget
 
+logger.info("检测Git安装状态")
 installed, version = gitInstaller.check_git_installed()
+logger.info(f"Git安装状态: {installed}, 版本: {version}")
 if not installed:
+    logger.warning("Git未安装，显示安装引导")
     temp_widget = QWidget()
     temp_widget.resize(800, 600)
     temp_widget.show()
@@ -63,7 +72,16 @@ if not installed:
     sys.exit(0)
 
 # create main window
+logger.info("创建主窗口")
 w = MainWindow()
 w.show()
+logger.info("主窗口已显示")
 
-app.exec()
+try:
+    logger.info("进入事件循环")
+    app.exec()
+except Exception as e:
+    logger.exception(f"应用程序异常退出: {e}")
+    raise
+finally:
+    logger.info("应用程序退出")

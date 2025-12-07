@@ -14,6 +14,9 @@ from qfluentwidgets import (
 from qfluentwidgetspro import GuideWindow
 
 from ..common.git_service import gitService
+from ..common.logger import get_logger
+
+logger = get_logger("InitRepoGuide")
 
 
 class WelcomeInterface(QWidget):
@@ -142,13 +145,13 @@ class RemoteInterface(QWidget):
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(80, 60, 80, 60)
-        layout.setSpacing(20)
+        layout.setContentsMargins(60, 40, 60, 40)
+        layout.setSpacing(12)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
         self.titleLabel = TitleLabel("添加远程仓库", self)
-        setFont(self.titleLabel, 28, QFont.Weight.Bold)
+        setFont(self.titleLabel, 24, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
@@ -160,7 +163,7 @@ class RemoteInterface(QWidget):
         self.hintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
         layout.addWidget(self.hintLabel)
         
-        layout.addSpacing(20)
+        layout.addSpacing(12)
         
         # 远程名称
         self.nameLabel = BodyLabel("远程名称: *", self)
@@ -172,104 +175,187 @@ class RemoteInterface(QWidget):
         self.nameEdit.textChanged.connect(self._validate_inputs)
         layout.addWidget(self.nameEdit)
         
-        layout.addSpacing(12)
+        layout.addSpacing(8)
         
-        # 远程URL
-        self.urlLabel = BodyLabel("远程URL: *", self)
-        layout.addWidget(self.urlLabel)
+        # 协议选择
+        from qfluentwidgets import SegmentedWidget
+        self.protocolLabel = BodyLabel("协议类型: *", self)
+        layout.addWidget(self.protocolLabel)
         
-        self.urlEdit = LineEdit(self)
-        self.urlEdit.setPlaceholderText("如: https://github.com/user/repo.git 或 git@github.com:user/repo.git")
-        self.urlEdit.setClearButtonEnabled(True)
-        self.urlEdit.textChanged.connect(self._validate_inputs)
-        layout.addWidget(self.urlEdit)
+        self.protocolSegmented = SegmentedWidget(self)
+        self.protocolSegmented.addItem("https", "HTTPS", lambda: self._on_protocol_changed("https"))
+        self.protocolSegmented.addItem("git", "SSH", lambda: self._on_protocol_changed("git"))
+        self.protocolSegmented.setCurrentItem("https")
+        layout.addWidget(self.protocolSegmented)
         
-        # SSH格式说明
-        self.sshHintLabel = BodyLabel(
-            "🔑 支持HTTPS和SSH两种格式",
-            self
-        )
-        self.sshHintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
-        layout.addWidget(self.sshHintLabel)
+        layout.addSpacing(8)
         
-        # 显示已存在的远程列表
-        if self.existing_remotes:
-            self.existingLabel = BodyLabel(
-                f"📋 已存在的远程: {', '.join(self.existing_remotes)}",
-                self
-            )
-            self.existingLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
-            layout.addWidget(self.existingLabel)
+        # 第1行：主机名 + SSH端口（一行显示）
+        host_port_layout = QHBoxLayout()
+        host_port_layout.setSpacing(12)
         
-        # 实时验证反馈
-        layout.addSpacing(12)
-        self.validationLabel = BodyLabel("", self)
-        self.validationLabel.setWordWrap(True)
-        layout.addWidget(self.validationLabel)
+        # 主机名
+        host_container = QVBoxLayout()
+        host_container.setSpacing(4)
+        self.hostLabel = BodyLabel("主机名: *", self)
+        self.hostEdit = LineEdit(self)
+        self.hostEdit.setPlaceholderText("如: github.com")
+        self.hostEdit.setClearButtonEnabled(True)
+        host_container.addWidget(self.hostLabel)
+        host_container.addWidget(self.hostEdit)
+        host_port_layout.addLayout(host_container, 3)
+        
+        # SSH端口（仅SSH显示）
+        port_container = QVBoxLayout()
+        port_container.setSpacing(4)
+        self.sshPortLabel = BodyLabel("SSH端口:", self)
+        self.sshPortEdit = LineEdit(self)
+        self.sshPortEdit.setText("22")
+        self.sshPortEdit.setPlaceholderText("默认: 22")
+        self.sshPortEdit.setClearButtonEnabled(True)
+        port_container.addWidget(self.sshPortLabel)
+        port_container.addWidget(self.sshPortEdit)
+        host_port_layout.addLayout(port_container, 1)
+        
+        layout.addLayout(host_port_layout)
+        
+        # 初始隐藏SSH端口
+        self.sshPortLabel.hide()
+        self.sshPortEdit.hide()
+        
+        layout.addSpacing(8)
+        
+        # 第2行：用户名 + 仓库名（一行显示）
+        user_repo_layout = QHBoxLayout()
+        user_repo_layout.setSpacing(12)
+        
+        # 用户名
+        user_container = QVBoxLayout()
+        user_container.setSpacing(4)
+        self.userLabel = BodyLabel("用户名: *", self)
+        self.userEdit = LineEdit(self)
+        self.userEdit.setPlaceholderText("如: username")
+        self.userEdit.setClearButtonEnabled(True)
+        user_container.addWidget(self.userLabel)
+        user_container.addWidget(self.userEdit)
+        user_repo_layout.addLayout(user_container, 1)
+        
+        # 仓库名
+        repo_container = QVBoxLayout()
+        repo_container.setSpacing(4)
+        self.repoLabel = BodyLabel("仓库名: *", self)
+        from qfluentwidgetspro import LabelLineEdit
+        self.repoEdit = LabelLineEdit(self)
+        self.repoEdit.setPlaceholderText("如: repository")
+        self.repoEdit.setSuffix(".git")
+        self.repoEdit.setClearButtonEnabled(True)
+        repo_container.addWidget(self.repoLabel)
+        repo_container.addWidget(self.repoEdit)
+        user_repo_layout.addLayout(repo_container, 1)
+        
+        layout.addLayout(user_repo_layout)
+        
+        layout.addSpacing(8)
+        
+        # URL预览（紧凑显示）
+        self.urlPreviewLabel = BodyLabel("", self)
+        self.urlPreviewLabel.setTextColor(QColor(0, 120, 212), QColor(0, 153, 255))
+        self.urlPreviewLabel.setWordWrap(True)
+        layout.addWidget(self.urlPreviewLabel)
         
         layout.addStretch()
         
-        # 初始验证
-        self._validate_inputs()
+        # 所有UI元素创建完成后，再连接信号
+        self.hostEdit.textChanged.connect(self._update_url_preview)
+        self.userEdit.textChanged.connect(self._update_url_preview)
+        self.repoEdit.textChanged.connect(self._update_url_preview)
+        self.sshPortEdit.textChanged.connect(self._update_url_preview)
+        
+        # 初始更新预览
+        self._update_url_preview()
+    
+    def _on_protocol_changed(self, protocol: str):
+        """协议类型变化时的处理"""
+        # 显示/隐藏SSH端口
+        if protocol == "git":
+            self.sshPortLabel.show()
+            self.sshPortEdit.show()
+        else:
+            self.sshPortLabel.hide()
+            self.sshPortEdit.hide()
+        
+        # 更新URL预览
+        self._update_url_preview()
+    
+    def _update_url_preview(self):
+        """更新URL预览"""
+        protocol = self.protocolSegmented.currentItem()
+        host = self.hostEdit.text().strip()
+        user = self.userEdit.text().strip()
+        repo = self.repoEdit.text().strip()
+        port = self.sshPortEdit.text().strip() or "22"
+        
+        if not host or not user or not repo:
+            self.urlPreviewLabel.setText("📋 预览: 请填写完整信息")
+            self.urlPreviewLabel.setTextColor(QColor(150, 150, 150), QColor(150, 150, 150))
+            return
+        
+        # 组合路径（repoEdit只包含仓库名，需要添加.git后缀）
+        repo_with_suffix = f"{repo}.git" if repo and not repo.endswith('.git') else repo
+        path = f"{user}/{repo_with_suffix}"
+        
+        # 根据协议类型组合URL
+        if protocol == "https":
+            url = f"https://{host}/{path}"
+        else:  # git (SSH)
+            if port != "22":
+                url = f"ssh://git@{host}:{port}/{path}"
+            else:
+                url = f"git@{host}:{path}"
+        
+        self.urlPreviewLabel.setText(f"📋 {url}")
+        self.urlPreviewLabel.setTextColor(QColor(0, 120, 212), QColor(0, 153, 255))
     
     def _validate_inputs(self):
-        """实时验证输入"""
+        """验证输入是否完整"""
         name = self.nameEdit.text().strip()
-        url = self.urlEdit.text().strip()
+        host = self.hostEdit.text().strip()
+        user = self.userEdit.text().strip()
+        repo = self.repoEdit.text().strip()
         
-        # 移除错误提示，禁用按钮已经足够提示用户
-        if not name or not url or not self._is_valid_git_url(url):
-            self.validationLabel.setText("")  # 清空提示
-            return False
-        elif name in self.existing_remotes:
-            self.validationLabel.setText(f"⚠️ 远程名称 '{name}' 已存在，将会覆盖URL")
-            self.validationLabel.setTextColor(QColor(255, 152, 0), QColor(255, 152, 0))
-            return True
-        else:
-            self.validationLabel.setText("✅ 信息填写完整")
-            self.validationLabel.setTextColor(QColor(76, 175, 80), QColor(76, 175, 80))
-            return True
-    
-    def _is_valid_git_url(self, url: str) -> bool:
-        """验证Git URL格式"""
-        if not url:
-            return False
-        
-        # HTTPS: https://github.com/user/repo.git
-        if url.startswith('https://') or url.startswith('http://'):
-            # 基本检查：至少包含域名和路径
-            parts = url.split('/')
-            return len(parts) >= 4 and '.' in parts[2]
-        
-        # SSH: git@github.com:user/repo.git
-        if url.startswith('git@') or url.startswith('ssh://'):
-            # SSH格式检查
-            if url.startswith('git@'):
-                # git@host:path 格式
-                return ':' in url and len(url.split(':')) == 2 and '/' in url.split(':')[1]
-            else:
-                # ssh://git@host/path 格式
-                return len(url.split('/')) >= 4
-        
-        # Git协议: git://github.com/user/repo.git
-        if url.startswith('git://'):
-            parts = url.split('/')
-            return len(parts) >= 4
-        
-        # 本地路径或文件URL
-        if url.startswith('file://') or url.startswith('/'):
-            return True
-        
-        return False
+        return bool(name and host and user and repo)
     
     def get_remote_info(self) -> tuple[str, str]:
-        """获取远程仓库信息"""
-        return self.nameEdit.text().strip(), self.urlEdit.text().strip()
+        """获取远程仓库信息（自动组合URL）"""
+        name = self.nameEdit.text().strip()
+        protocol = self.protocolSegmented.currentItem()
+        host = self.hostEdit.text().strip()
+        user = self.userEdit.text().strip()
+        repo = self.repoEdit.text().strip()
+        port = self.sshPortEdit.text().strip() or "22"
+        
+        # 组合路径（repoEdit只包含仓库名，需要添加.git后缀）
+        repo_with_suffix = f"{repo}.git" if repo and not repo.endswith('.git') else repo
+        path = f"{user}/{repo_with_suffix}"
+        
+        # 根据协议类型组合URL
+        if protocol == "https":
+            url = f"https://{host}/{path}"
+        else:  # git (SSH)
+            if port != "22":
+                url = f"ssh://git@{host}:{port}/{path}"
+            else:
+                url = f"git@{host}:{path}"
+        
+        return name, url
     
     def is_valid(self) -> bool:
         """验证是否可以继续下一步"""
-        name, url = self.get_remote_info()
-        return bool(name and url)
+        name = self.nameEdit.text().strip()
+        host = self.hostEdit.text().strip()
+        user = self.userEdit.text().strip()
+        repo = self.repoEdit.text().strip()
+        return bool(name and host and user and repo)
 
 
 class OptionalRemoteInterface(QWidget):
@@ -281,13 +367,13 @@ class OptionalRemoteInterface(QWidget):
     
     def _setup_ui(self):
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(80, 60, 80, 60)
-        layout.setSpacing(20)
+        layout.setContentsMargins(60, 40, 60, 40)
+        layout.setSpacing(12)
         layout.setAlignment(Qt.AlignmentFlag.AlignTop)
         
         # 标题
         self.titleLabel = TitleLabel("添加远程仓库", self)
-        setFont(self.titleLabel, 28, QFont.Weight.Bold)
+        setFont(self.titleLabel, 24, QFont.Weight.Bold)
         layout.addWidget(self.titleLabel)
         
         # 说明
@@ -308,7 +394,7 @@ class OptionalRemoteInterface(QWidget):
         self.skipHintLabel.setTextColor(QColor(255, 152, 0), QColor(255, 152, 0))  # 橙色
         layout.addWidget(self.skipHintLabel)
         
-        layout.addSpacing(20)
+        layout.addSpacing(12)
         
         # 远程名称
         self.nameLabel = BodyLabel("远程名称:", self)
@@ -319,30 +405,164 @@ class OptionalRemoteInterface(QWidget):
         self.nameEdit.setPlaceholderText("通常使用 origin")
         layout.addWidget(self.nameEdit)
         
-        layout.addSpacing(12)
+        layout.addSpacing(8)
         
-        # 远程URL
-        self.urlLabel = BodyLabel("远程URL:", self)
-        layout.addWidget(self.urlLabel)
+        # 协议选择
+        from qfluentwidgets import SegmentedWidget
+        self.protocolLabel = BodyLabel("协议类型:", self)
+        layout.addWidget(self.protocolLabel)
         
-        self.urlEdit = LineEdit(self)
-        self.urlEdit.setPlaceholderText("如: https://github.com/user/repo.git 或 git@github.com:user/repo.git")
-        self.urlEdit.setClearButtonEnabled(True)
-        layout.addWidget(self.urlEdit)
+        self.protocolSegmented = SegmentedWidget(self)
+        self.protocolSegmented.addItem("https", "HTTPS", lambda: self._on_protocol_changed("https"))
+        self.protocolSegmented.addItem("git", "SSH", lambda: self._on_protocol_changed("git"))
+        self.protocolSegmented.setCurrentItem("https")
+        layout.addWidget(self.protocolSegmented)
         
-        # SSH格式说明
-        self.sshHintLabel = BodyLabel(
-            "🔑 支持HTTPS和SSH两种格式",
-            self
-        )
-        self.sshHintLabel.setTextColor(QColor(100, 100, 100), QColor(216, 216, 216))
-        layout.addWidget(self.sshHintLabel)
+        layout.addSpacing(8)
+        
+        # 第1行：主机名 + SSH端口
+        host_port_layout = QHBoxLayout()
+        host_port_layout.setSpacing(12)
+        
+        host_container = QVBoxLayout()
+        host_container.setSpacing(4)
+        self.hostLabel = BodyLabel("主机名:", self)
+        self.hostEdit = LineEdit(self)
+        self.hostEdit.setPlaceholderText("如: github.com")
+        self.hostEdit.setClearButtonEnabled(True)
+        host_container.addWidget(self.hostLabel)
+        host_container.addWidget(self.hostEdit)
+        host_port_layout.addLayout(host_container, 3)
+        
+        port_container = QVBoxLayout()
+        port_container.setSpacing(4)
+        self.sshPortLabel = BodyLabel("SSH端口:", self)
+        self.sshPortEdit = LineEdit(self)
+        self.sshPortEdit.setText("22")
+        self.sshPortEdit.setPlaceholderText("默认: 22")
+        self.sshPortEdit.setClearButtonEnabled(True)
+        port_container.addWidget(self.sshPortLabel)
+        port_container.addWidget(self.sshPortEdit)
+        host_port_layout.addLayout(port_container, 1)
+        
+        layout.addLayout(host_port_layout)
+        
+        # 初始隐藏SSH端口
+        self.sshPortLabel.hide()
+        self.sshPortEdit.hide()
+        
+        layout.addSpacing(8)
+        
+        # 第2行：用户名 + 仓库名
+        user_repo_layout = QHBoxLayout()
+        user_repo_layout.setSpacing(12)
+        
+        user_container = QVBoxLayout()
+        user_container.setSpacing(4)
+        self.userLabel = BodyLabel("用户名:", self)
+        self.userEdit = LineEdit(self)
+        self.userEdit.setPlaceholderText("如: username")
+        self.userEdit.setClearButtonEnabled(True)
+        user_container.addWidget(self.userLabel)
+        user_container.addWidget(self.userEdit)
+        user_repo_layout.addLayout(user_container, 1)
+        
+        repo_container = QVBoxLayout()
+        repo_container.setSpacing(4)
+        self.repoLabel = BodyLabel("仓库名:", self)
+        from qfluentwidgetspro import LabelLineEdit
+        self.repoEdit = LabelLineEdit(self)
+        self.repoEdit.setPlaceholderText("如: repository")
+        self.repoEdit.setSuffix(".git")
+        self.repoEdit.setClearButtonEnabled(True)
+        repo_container.addWidget(self.repoLabel)
+        repo_container.addWidget(self.repoEdit)
+        user_repo_layout.addLayout(repo_container, 1)
+        
+        layout.addLayout(user_repo_layout)
+        
+        layout.addSpacing(8)
+        
+        # URL预览
+        self.urlPreviewLabel = BodyLabel("", self)
+        self.urlPreviewLabel.setTextColor(QColor(0, 120, 212), QColor(0, 153, 255))
+        self.urlPreviewLabel.setWordWrap(True)
+        layout.addWidget(self.urlPreviewLabel)
         
         layout.addStretch()
+        
+        # 连接信号
+        self.hostEdit.textChanged.connect(self._update_url_preview)
+        self.userEdit.textChanged.connect(self._update_url_preview)
+        self.repoEdit.textChanged.connect(self._update_url_preview)
+        self.sshPortEdit.textChanged.connect(self._update_url_preview)
+        
+        # 初始更新预览
+        self._update_url_preview()
+    
+    def _on_protocol_changed(self, protocol: str):
+        """协议类型变化时的处理"""
+        if protocol == "git":
+            self.sshPortLabel.show()
+            self.sshPortEdit.show()
+        else:
+            self.sshPortLabel.hide()
+            self.sshPortEdit.hide()
+        
+        self._update_url_preview()
+    
+    def _update_url_preview(self):
+        """更新URL预览"""
+        protocol = self.protocolSegmented.currentItem()
+        host = self.hostEdit.text().strip()
+        user = self.userEdit.text().strip()
+        repo = self.repoEdit.text().strip()
+        port = self.sshPortEdit.text().strip() or "22"
+        
+        if not host or not user or not repo:
+            self.urlPreviewLabel.setText("📋 预览: 请填写完整信息")
+            self.urlPreviewLabel.setTextColor(QColor(150, 150, 150), QColor(150, 150, 150))
+            return
+        
+        # 组合路径（repoEdit只包含仓库名，需要添加.git后缀）
+        repo_with_suffix = f"{repo}.git" if repo and not repo.endswith('.git') else repo
+        path = f"{user}/{repo_with_suffix}"
+        
+        # 根据协议类型组合URL
+        if protocol == "https":
+            url = f"https://{host}/{path}"
+        else:  # git (SSH)
+            if port != "22":
+                url = f"ssh://git@{host}:{port}/{path}"
+            else:
+                url = f"git@{host}:{path}"
+        
+        self.urlPreviewLabel.setText(f"📋 {url}")
+        self.urlPreviewLabel.setTextColor(QColor(0, 120, 212), QColor(0, 153, 255))
     
     def get_remote_info(self) -> tuple[str, str]:
-        """获取远程仓库信息"""
-        return self.nameEdit.text().strip(), self.urlEdit.text().strip()
+        """获取远程仓库信息（自动组合URL）"""
+        name = self.nameEdit.text().strip()
+        protocol = self.protocolSegmented.currentItem()
+        host = self.hostEdit.text().strip()
+        user = self.userEdit.text().strip()
+        repo = self.repoEdit.text().strip()
+        port = self.sshPortEdit.text().strip() or "22"
+        
+        # 组合路径（repoEdit只包含仓库名，需要添加.git后缀）
+        repo_with_suffix = f"{repo}.git" if repo and not repo.endswith('.git') else repo
+        path = f"{user}/{repo_with_suffix}"
+        
+        # 根据协议类型组合URL
+        if protocol == "https":
+            url = f"https://{host}/{path}"
+        else:  # git (SSH)
+            if port != "22":
+                url = f"ssh://git@{host}:{port}/{path}"
+            else:
+                url = f"git@{host}:{path}"
+        
+        return name, url
 
 
 class FinalInterface(QWidget):
