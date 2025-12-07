@@ -540,6 +540,7 @@ class RecentReposDrawerContent(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setMinimumSize(280, 400)
+        self._all_repos = []  # 保存所有仓库用于搜索
         self._setup_ui()
     
     def _setup_ui(self):
@@ -559,47 +560,75 @@ class RecentReposDrawerContent(QWidget):
         title_layout.addWidget(self.closeBtn)
         layout.addLayout(title_layout)
         
-        # 仓库列表容器
-        self.listContainer = QWidget(self)
+        # 搜索框
+        self.searchEdit = LineEdit(self)
+        self.searchEdit.setPlaceholderText("搜索仓库...")
+        self.searchEdit.setClearButtonEnabled(True)
+        self.searchEdit.textChanged.connect(self._on_search)
+        layout.addWidget(self.searchEdit)
+        
+        # 仓库列表容器（使用滚动区域）
+        from qfluentwidgets import SmoothScrollArea
+        self.scrollArea = SmoothScrollArea(self)
+        self.scrollArea.setWidgetResizable(True)
+        self.scrollArea.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        
+        self.listContainer = QWidget()
         self.listLayout = QVBoxLayout(self.listContainer)
         self.listLayout.setContentsMargins(0, 0, 0, 0)
         self.listLayout.setSpacing(4)
-        layout.addWidget(self.listContainer)
+        self.listLayout.addStretch(1)
         
-        layout.addStretch(1)
+        self.scrollArea.setWidget(self.listContainer)
+        layout.addWidget(self.scrollArea, 1)
         
         # 底部清空按钮
         self.clearBtn = TransparentPushButton("清空列表", self, FluentIcon.DELETE)
         self.clearBtn.clicked.connect(self.clearRequested.emit)
         layout.addWidget(self.clearBtn)
     
-    def refresh(self):
-        """刷新仓库列表"""
-        from app.common.recent_repos import recentReposManager
+    def _on_search(self, text: str):
+        """搜索仓库"""
+        self._update_list(text.strip().lower())
+    
+    def _update_list(self, filter_text: str = ""):
+        """更新仓库列表"""
         import os
         
-        # 清空现有列表
-        while self.listLayout.count():
+        # 清空现有列表（保留最后的stretch）
+        while self.listLayout.count() > 1:
             item = self.listLayout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
         
-        recent_repos = recentReposManager.get_all()
+        # 过滤仓库
+        filtered_repos = self._all_repos
+        if filter_text:
+            filtered_repos = [p for p in self._all_repos 
+                           if filter_text in os.path.basename(p).lower() 
+                           or filter_text in p.lower()]
         
-        if not recent_repos:
-            empty_label = CaptionLabel("暂无最近打开的仓库", self)
+        if not filtered_repos:
+            empty_label = CaptionLabel("无匹配结果" if filter_text else "暂无最近打开的仓库", self)
             empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            self.listLayout.addWidget(empty_label)
+            self.listLayout.insertWidget(0, empty_label)
             self.clearBtn.setEnabled(False)
         else:
             self.clearBtn.setEnabled(True)
-            for repo_path in recent_repos:
+            for i, repo_path in enumerate(filtered_repos):
                 repo_name = os.path.basename(repo_path)
-                btn = PushButton(repo_name, self, FluentIcon.FOLDER)
+                btn = TransparentPushButton(repo_name, self, FluentIcon.FOLDER)
                 btn.setToolTip(repo_path)
                 btn.installEventFilter(ToolTipFilter(btn, 300, ToolTipPosition.LEFT))
                 btn.clicked.connect(lambda checked, p=repo_path: self.repoSelected.emit(p))
-                self.listLayout.addWidget(btn)
+                self.listLayout.insertWidget(i, btn)
+    
+    def refresh(self):
+        """刷新仓库列表"""
+        from app.common.recent_repos import recentReposManager
+        self._all_repos = recentReposManager.get_all()
+        self.searchEdit.clear()
+        self._update_list()
 
 
 class RepoInterface(ScrollArea):
@@ -826,10 +855,10 @@ class RepoInterface(ScrollArea):
 
     def _setup_recent_repos_drawer(self):
         """设置最近仓库抽屉"""
-        self._recentReposContent = RecentReposDrawerContent(self.window())
+        self._recentReposContent = RecentReposDrawerContent(self)
         self._recentReposDrawer = Drawer(
             self._recentReposContent, 
-            self.window(), 
+            self,  # 父类是仓库界面
             DrawerPosition.RIGHT
         )
         
