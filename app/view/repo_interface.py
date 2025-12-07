@@ -19,7 +19,7 @@ from qfluentwidgets import (
     SubtitleLabel, TransparentToolButton, MessageBox
 )
 from qfluentwidgetspro import (
-    TimeLineWidget, TimeLineCard, Splitter
+    TimeLineWidget, TimeLineCard, Splitter, Drawer, DrawerPosition
 )
 
 from app.common.git_service import gitService, FileChange, FileStatus
@@ -532,6 +532,76 @@ class QuickActionPanel(QFrame):
         self.messageEdit.clear()
 
 
+class RecentReposDrawerContent(QWidget):
+    """最近仓库抽屉内容"""
+    repoSelected = Signal(str)  # 选择仓库信号
+    clearRequested = Signal()   # 清空请求信号
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumSize(280, 400)
+        self._setup_ui()
+    
+    def _setup_ui(self):
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 12, 16, 16)
+        layout.setSpacing(12)
+        
+        # 标题栏
+        title_layout = QHBoxLayout()
+        title_label = SubtitleLabel("最近仓库", self)
+        title_layout.addWidget(title_label)
+        title_layout.addStretch(1)
+        
+        # 关闭按钮
+        self.closeBtn = TransparentToolButton(FluentIcon.CLOSE, self)
+        self.closeBtn.setFixedSize(32, 32)
+        title_layout.addWidget(self.closeBtn)
+        layout.addLayout(title_layout)
+        
+        # 仓库列表容器
+        self.listContainer = QWidget(self)
+        self.listLayout = QVBoxLayout(self.listContainer)
+        self.listLayout.setContentsMargins(0, 0, 0, 0)
+        self.listLayout.setSpacing(4)
+        layout.addWidget(self.listContainer)
+        
+        layout.addStretch(1)
+        
+        # 底部清空按钮
+        self.clearBtn = TransparentPushButton("清空列表", self, FluentIcon.DELETE)
+        self.clearBtn.clicked.connect(self.clearRequested.emit)
+        layout.addWidget(self.clearBtn)
+    
+    def refresh(self):
+        """刷新仓库列表"""
+        from app.common.recent_repos import recentReposManager
+        import os
+        
+        # 清空现有列表
+        while self.listLayout.count():
+            item = self.listLayout.takeAt(0)
+            if item.widget():
+                item.widget().deleteLater()
+        
+        recent_repos = recentReposManager.get_all()
+        
+        if not recent_repos:
+            empty_label = CaptionLabel("暂无最近打开的仓库", self)
+            empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            self.listLayout.addWidget(empty_label)
+            self.clearBtn.setEnabled(False)
+        else:
+            self.clearBtn.setEnabled(True)
+            for repo_path in recent_repos:
+                repo_name = os.path.basename(repo_path)
+                btn = PushButton(repo_name, self, FluentIcon.FOLDER)
+                btn.setToolTip(repo_path)
+                btn.installEventFilter(ToolTipFilter(btn, 300, ToolTipPosition.LEFT))
+                btn.clicked.connect(lambda checked, p=repo_path: self.repoSelected.emit(p))
+                self.listLayout.addWidget(btn)
+
+
 class RepoInterface(ScrollArea):
     """仓库界面 - 主界面"""
 
@@ -619,13 +689,18 @@ class RepoInterface(ScrollArea):
         repoMenu.addAction(Action(FluentIcon.FOLDER, "打开本地仓库", triggered=self._open_repo))
         repoMenu.addAction(Action(FluentIcon.DOWNLOAD, "克隆远程仓库", triggered=self._on_clone_repo))
         repoMenu.addAction(Action(FluentIcon.ADD, "初始化新仓库", triggered=self._on_init_repo))
-        repoMenu.addSeparator()
-        self.recentMenu = RoundMenu("最近仓库", repoMenu)
-        self.recentMenu.setIcon(FluentIcon.HISTORY)
-        repoMenu.addMenu(self.recentMenu)
-        self._update_recent_repos_menu()
         self.repoBtn.setFlyout(repoMenu)
         header_layout.addWidget(self.repoBtn)
+        
+        # 最近仓库按钮（打开抽屉）
+        self.historyBtn = TransparentToolButton(FluentIcon.HISTORY, self)
+        self.historyBtn.setToolTip("最近仓库")
+        self.historyBtn.installEventFilter(ToolTipFilter(self.historyBtn, 500, ToolTipPosition.TOP))
+        self.historyBtn.clicked.connect(self._show_recent_repos_drawer)
+        header_layout.addWidget(self.historyBtn)
+        
+        # 创建最近仓库抽屉
+        self._setup_recent_repos_drawer()
         
         # 分隔线 1
         self._add_separator(header_layout)
@@ -749,29 +824,29 @@ class RepoInterface(ScrollArea):
         gitService.statusChanged.connect(self.refresh_status)
         gitService.progressUpdated.connect(self._on_progress_updated)  # 仅用于一键操作进度条
 
-    def _update_recent_repos_menu(self):
-        """更新最近仓库菜单"""
-        from app.common.recent_repos import recentReposManager
+    def _setup_recent_repos_drawer(self):
+        """设置最近仓库抽屉"""
+        self._recentReposContent = RecentReposDrawerContent(self.window())
+        self._recentReposDrawer = Drawer(
+            self._recentReposContent, 
+            self.window(), 
+            DrawerPosition.RIGHT
+        )
         
-        self.recentMenu.clear()
-        recent_repos = recentReposManager.get_all()
-        
-        if not recent_repos:
-            empty_action = Action(FluentIcon.INFO, "暂无最近仓库")
-            empty_action.setEnabled(False)
-            self.recentMenu.addAction(empty_action)
-        else:
-            for repo_path in recent_repos:
-                import os
-                repo_name = os.path.basename(repo_path)
-                action = Action(FluentIcon.FOLDER, f"{repo_name}")
-                action.triggered.connect(lambda checked=False, p=repo_path: self._open_recent_repo(p))
-                self.recentMenu.addAction(action)
-            
-            self.recentMenu.addSeparator()
-            clear_action = Action(FluentIcon.DELETE, "清空列表")
-            clear_action.triggered.connect(self._clear_recent_repos)
-            self.recentMenu.addAction(clear_action)
+        # 连接信号
+        self._recentReposContent.closeBtn.clicked.connect(self._recentReposDrawer.collapse)
+        self._recentReposContent.repoSelected.connect(self._on_drawer_repo_selected)
+        self._recentReposContent.clearRequested.connect(self._clear_recent_repos)
+    
+    def _show_recent_repos_drawer(self):
+        """显示最近仓库抽屉"""
+        self._recentReposContent.refresh()
+        self._recentReposDrawer.expand()
+    
+    def _on_drawer_repo_selected(self, path: str):
+        """从抽屉选择仓库"""
+        self._recentReposDrawer.collapse()  # 关闭抽屉
+        self._open_recent_repo(path)
     
     def _open_recent_repo(self, path: str):
         """打开最近的仓库"""
@@ -807,7 +882,7 @@ class RepoInterface(ScrollArea):
         """清空最近仓库列表"""
         from app.common.recent_repos import recentReposManager
         recentReposManager.clear()
-        self._update_recent_repos_menu()
+        self._recentReposContent.refresh()  # 刷新抽屉内容
         InfoBar.success(
             title="成功",
             content="已清空最近仓库列表",
@@ -861,7 +936,6 @@ class RepoInterface(ScrollArea):
                     self.repoPathLabel.setText(elided_path)
                     self.repoPathLabel.setToolTip(path)
                     recentReposManager.add(path)
-                    self._update_recent_repos_menu()
                     
                     # 显示引导窗口
                     self._show_init_guide(path)
@@ -922,7 +996,6 @@ class RepoInterface(ScrollArea):
                 
                 # 添加到最近仓库列表
                 recentReposManager.add(path)
-                self._update_recent_repos_menu()
                 
                 # 显示进度条
                 progress_bar = ProgressInfoBar.create(
