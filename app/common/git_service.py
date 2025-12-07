@@ -658,12 +658,16 @@ class GitService(QObject):
         """
         self.operationStarted.emit("正在推送...")
 
-        args = ['push']
+        # 如果没有指定分支，获取当前分支
+        if not branch:
+            branch = self.get_current_branch()
+
+        # 始终使用 -u 设置上游分支（对新分支和已有分支都安全）
+        args = ['push', '-u']
         if force:
             args.append('--force')  # 强制推送
         args.append(remote)
-        if branch:
-            args.append(branch)
+        args.append(branch)
 
         def on_finished(success: bool, stdout: str, stderr: str):
             msg = "推送成功" if success else (stderr or "推送失败")
