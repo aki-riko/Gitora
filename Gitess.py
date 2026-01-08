@@ -12,8 +12,7 @@ import warnings
 # 过滤QFluentWidgets库的弃用警告（来自库内部，无法修复）
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*globalPos.*")
 
-from PySide6.QtCore import Qt, QTranslator, QLockFile, QDir
-from PySide6.QtGui import QFont
+from PySide6.QtCore import Qt, QTranslator, QSharedMemory
 from PySide6.QtWidgets import QApplication, QMessageBox
 from qfluentwidgets import FluentTranslator
 from qfluentwidgetspro import setLicense, ProTranslator
@@ -44,18 +43,17 @@ logger.info("创建QApplication")
 app = QApplication(sys.argv)
 app.setAttribute(Qt.AA_DontCreateNativeWidgetSiblings)
 
-# 单实例检查
+# 单实例检查（使用共享内存）
 logger.info("检查单实例")
-lock_file_path = QDir.temp().absoluteFilePath("gitess.lock")
-lock_file = QLockFile(lock_file_path)
-lock_file.setStaleLockTime(0)  # 禁用过期锁检测
+shared_memory = QSharedMemory("Gitess_SingleInstance_Key")
 
-if not lock_file.tryLock(100):  # 尝试获取锁，超时100ms
+if not shared_memory.create(1):  # 尝试创建1字节的共享内存
+    # 创建失败说明已有实例在运行
     logger.warning("检测到Gitess已在运行")
     QMessageBox.warning(
         None,
         "Gitess已在运行",
-        "Gitess已经在运行中，请勿重复启动。\n\n如果确认没有其他实例在运行，请删除临时文件：\n" + lock_file_path,
+        "Gitess已经在运行中，请勿重复启动。",
         QMessageBox.StandardButton.Ok
     )
     sys.exit(0)
