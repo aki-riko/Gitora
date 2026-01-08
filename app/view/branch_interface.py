@@ -14,7 +14,7 @@ from qfluentwidgets import (
     PrimaryPushButton, PushButton, TransparentPushButton, SplitPushButton,
     LineEdit, FluentIcon, InfoBar, InfoBarPosition, RoundMenu, Action,
     setFont, IconWidget, TitleLabel, SubtitleLabel, TransparentToolButton,
-    MessageBox, Dialog, ToolTipFilter, ToolTipPosition
+    MessageBox, MessageBoxBase, ToolTipFilter, ToolTipPosition
 )
 
 from app.common.git_service import gitService, BranchInfo
@@ -131,25 +131,30 @@ class BranchCard(CardWidget):
         self.checkoutClicked.emit(branch_name)
 
 
-class CreateBranchDialog(Dialog):
+class CreateBranchDialog(MessageBoxBase):
     """创建分支对话框"""
 
     def __init__(self, parent=None):
-        super().__init__(
-            title=self.tr("创建新分支"),
-            content=self.tr("输入新分支的名称"),
-            parent=parent
-        )
+        super().__init__(parent)
         self._setup_content()
 
     def _setup_content(self):
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("创建新分支"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 描述
+        self.descLabel = BodyLabel(self.tr("输入新分支的名称"), self)
+        self.viewLayout.addWidget(self.descLabel)
+        
         # 分支名输入框
         self.branchEdit = LineEdit(self)
         self.branchEdit.setPlaceholderText(self.tr("如: feature/new-feature"))
         self.branchEdit.setClearButtonEnabled(True)
-
-        # 添加到对话框
-        self.textLayout.addWidget(self.branchEdit)
+        self.viewLayout.addWidget(self.branchEdit)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(350)
 
     def get_branch_name(self) -> str:
         """获取分支名"""

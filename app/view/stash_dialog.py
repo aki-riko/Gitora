@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget
 
 from qfluentwidgets import (
-    Dialog, PushButton, TransparentPushButton, FluentIcon,
+    MessageBoxBase, SubtitleLabel, PushButton, TransparentPushButton, FluentIcon,
     InfoBar, InfoBarPosition, MessageBox, LineEdit,
     BodyLabel, CaptionLabel, StrongBodyLabel, CardWidget,
     ScrollArea, ToolTipFilter, ToolTipPosition
@@ -191,17 +191,25 @@ class StashItemCard(CardWidget):
             )
 
 
-class StashDialog(Dialog):
+class StashDialog(MessageBoxBase):
     """Stash管理对话框"""
     
     def __init__(self, parent=None):
-        super().__init__(self.tr("临时保存 (Stash)"), self.tr("保存当前修改，稍后恢复（类似草稿箱）"), parent)
+        super().__init__(parent)
         self._setup_ui()
         self.refresh_stash_list()
     
     def _setup_ui(self):
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("临时保存 (Stash)"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 描述
+        self.descLabel = BodyLabel(self.tr("保存当前修改，稍后恢复（类似草稿箱）"), self)
+        self.viewLayout.addWidget(self.descLabel)
+        
         # 设置对话框大小
-        self.setFixedSize(700, 500)
+        self.widget.setMinimumWidth(650)
         
         # 顶部操作栏
         top_layout = QHBoxLayout()
@@ -234,11 +242,11 @@ class StashDialog(Dialog):
         clear_btn.clicked.connect(self._on_clear_all)
         top_layout.addWidget(clear_btn)
         
-        self.textLayout.addLayout(top_layout)
+        self.viewLayout.addLayout(top_layout)
         
         # 保存列表容器
         list_label = BodyLabel(self.tr("保存列表:"), self)
-        self.textLayout.addWidget(list_label)
+        self.viewLayout.addWidget(list_label)
         
         # 滚动区域
         scroll = ScrollArea(self)
@@ -252,7 +260,7 @@ class StashDialog(Dialog):
         self.stashListLayout.addStretch()
         
         scroll.setWidget(self.stashListWidget)
-        self.textLayout.addWidget(scroll)
+        self.viewLayout.addWidget(scroll)
         
         # 修改按钮文本
         self.yesButton.setText(self.tr("关闭"))

@@ -7,29 +7,33 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QTextEdit
 from PySide6.QtGui import QColor
 
-from qfluentwidgets import Dialog, BodyLabel
+from qfluentwidgets import MessageBoxBase, SubtitleLabel, BodyLabel
 
 from ..common.logger import get_logger
 
 logger = get_logger("ConflictViewerDialog")
 
 
-class ConflictViewerDialog(Dialog):
+class ConflictViewerDialog(MessageBoxBase):
     """冲突内容查看对话框"""
     
     def __init__(self, file_path: str, content: str, parent=None):
-        super().__init__(self.tr("查看冲突内容"), "", parent)
+        super().__init__(parent)
         self.file_path = file_path
         self.content = content
         self._setup_ui()
     
     def _setup_ui(self):
-        # 设置对话框大小
-        self.setFixedSize(800, 600)
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("查看冲突内容"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(750)
         
         # 文件路径标签
         path_label = BodyLabel(self.tr("文件: ") + self.file_path, self)
-        self.textLayout.addWidget(path_label)
+        self.viewLayout.addWidget(path_label)
         
         # 说明标签
         hint_label = BodyLabel(
@@ -37,7 +41,7 @@ class ConflictViewerDialog(Dialog):
             self.tr("======= 和 >>>>>>> 之间是他们的版本"),
             self
         )
-        self.textLayout.addWidget(hint_label)
+        self.viewLayout.addWidget(hint_label)
         
         # 内容显示区域
         self.contentEdit = QTextEdit(self)
@@ -53,7 +57,8 @@ class ConflictViewerDialog(Dialog):
                 line-height: 1.5;
             }
         """)
-        self.textLayout.addWidget(self.contentEdit)
+        self.contentEdit.setFixedHeight(400)
+        self.viewLayout.addWidget(self.contentEdit)
         
         # 格式化显示内容（高亮冲突标记）
         self._format_content()

@@ -8,7 +8,7 @@ from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QFrame
 from qfluentwidgets import (
     ScrollArea, CardWidget, BodyLabel, CaptionLabel, StrongBodyLabel,
     PushButton, TransparentPushButton, FluentIcon, InfoBar, InfoBarPosition,
-    LineEdit, Dialog, MessageBox, IconWidget, SubtitleLabel, TextEdit,
+    LineEdit, MessageBoxBase, MessageBox, IconWidget, SubtitleLabel, TextEdit,
     ToolTipFilter, ToolTipPosition
 )
 
@@ -19,29 +19,36 @@ from ..common.logger import get_logger
 logger = get_logger("TagInterface")
 
 
-class CreateTagDialog(Dialog):
+class CreateTagDialog(MessageBoxBase):
     """创建Tag对话框"""
     
     def __init__(self, parent=None):
-        super().__init__(
-            title=self.tr("创建Tag"),
-            content=self.tr("输入Tag信息"),
-            parent=parent
-        )
+        super().__init__(parent)
         self._setup_content()
     
     def _setup_content(self):
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("创建Tag"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 描述
+        self.descLabel = BodyLabel(self.tr("输入Tag信息"), self)
+        self.viewLayout.addWidget(self.descLabel)
+        
         # Tag名称
         self.nameEdit = LineEdit(self)
         self.nameEdit.setPlaceholderText(self.tr("Tag名称，如: v1.0.0"))
         self.nameEdit.setClearButtonEnabled(True)
-        self.textLayout.addWidget(self.nameEdit)
+        self.viewLayout.addWidget(self.nameEdit)
         
         # Tag消息（可选）
         self.messageEdit = TextEdit(self)
         self.messageEdit.setPlaceholderText(self.tr("Tag消息（可选）\n如果填写，将创建附注Tag"))
         self.messageEdit.setFixedHeight(80)
-        self.textLayout.addWidget(self.messageEdit)
+        self.viewLayout.addWidget(self.messageEdit)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(350)
     
     def get_tag_info(self) -> tuple[str, str]:
         """获取Tag信息 (name, message)"""

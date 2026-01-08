@@ -6,7 +6,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QWidget
 
 from qfluentwidgets import (
-    Dialog, BodyLabel, CheckBox, ScrollArea,
+    MessageBoxBase, SubtitleLabel, BodyLabel, CheckBox, ScrollArea,
     InfoBar, InfoBarPosition, MessageBox
 )
 
@@ -16,37 +16,42 @@ from ..common.logger import get_logger
 logger = get_logger("CleanDialog")
 
 
-class CleanDialog(Dialog):
+class CleanDialog(MessageBoxBase):
     """清理未跟踪文件对话框"""
     
     def __init__(self, parent=None):
-        super().__init__(
-            title=self.tr("清理未跟踪文件"),
-            content=self.tr("删除所有未被Git跟踪的文件和目录"),
-            parent=parent
-        )
+        super().__init__(parent)
         self._setup_content()
         self._preview_files()
     
     def _setup_content(self):
-        self.setFixedSize(600, 500)
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("清理未跟踪文件"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 描述
+        self.descLabel = BodyLabel(self.tr("删除所有未被Git跟踪的文件和目录"), self)
+        self.viewLayout.addWidget(self.descLabel)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(550)
         
         # 警告
         warning = BodyLabel(self.tr("⚠️ 警告：此操作不可恢复！"), self)
-        self.textLayout.addWidget(warning)
+        self.viewLayout.addWidget(warning)
         
         # 选项
         self.includeDirCheckbox = CheckBox(self.tr("包括目录"), self)
         self.includeDirCheckbox.setChecked(True)
-        self.textLayout.addWidget(self.includeDirCheckbox)
+        self.viewLayout.addWidget(self.includeDirCheckbox)
         
         # 文件列表
         list_label = BodyLabel(self.tr("将被删除的文件："), self)
-        self.textLayout.addWidget(list_label)
+        self.viewLayout.addWidget(list_label)
         
         scroll = ScrollArea(self)
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(300)
+        scroll.setFixedHeight(250)
         
         self.fileListWidget = QWidget()
         self.fileListLayout = QVBoxLayout(self.fileListWidget)
@@ -54,7 +59,7 @@ class CleanDialog(Dialog):
         self.fileListLayout.setSpacing(4)
         
         scroll.setWidget(self.fileListWidget)
-        self.textLayout.addWidget(scroll)
+        self.viewLayout.addWidget(scroll)
         
         # 按钮
         self.yesButton.setText(self.tr("确认清理"))

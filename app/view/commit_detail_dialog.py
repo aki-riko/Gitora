@@ -7,7 +7,7 @@ from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QTextEdit, QWidget
 from PySide6.QtGui import QColor
 
 from qfluentwidgets import (
-    Dialog, BodyLabel, CaptionLabel, StrongBodyLabel, CardWidget,
+    MessageBoxBase, SubtitleLabel, BodyLabel, CaptionLabel, StrongBodyLabel, CardWidget,
     ScrollArea, FluentIcon, IconWidget
 )
 
@@ -17,25 +17,28 @@ from ..common.logger import get_logger
 logger = get_logger("CommitDetailDialog")
 
 
-class CommitDetailDialog(Dialog):
+class CommitDetailDialog(MessageBoxBase):
     """提交详情对话框"""
     
     def __init__(self, commit_hash: str, parent=None):
-        super().__init__(
-            title=self.tr("提交详情"),
-            content="",
-            parent=parent
-        )
+        super().__init__(parent)
         self.commit_hash = commit_hash
-        self.setFixedSize(900, 700)
         self._setup_content()
         self._load_commit_detail()
     
     def _setup_content(self):
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("提交详情"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(850)
+        
         # 创建滚动区域
         scroll = ScrollArea(self)
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("background: transparent; border: none;")
+        scroll.setFixedHeight(500)
         
         container = QWidget()
         layout = QVBoxLayout(container)
@@ -107,7 +110,7 @@ class CommitDetailDialog(Dialog):
         layout.addWidget(self.diffEdit)
         
         scroll.setWidget(container)
-        self.textLayout.addWidget(scroll)
+        self.viewLayout.addWidget(scroll)
         
         # 设置按钮
         self.yesButton.setText(self.tr("关闭"))

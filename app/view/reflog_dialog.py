@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QWidget
 
 from qfluentwidgets import (
-    Dialog, BodyLabel, CaptionLabel, StrongBodyLabel, CardWidget,
+    MessageBoxBase, SubtitleLabel, BodyLabel, CaptionLabel, StrongBodyLabel, CardWidget,
     PushButton, TransparentPushButton, FluentIcon, InfoBar, InfoBarPosition,
     MessageBox, ScrollArea
 )
@@ -82,25 +82,30 @@ class ReflogCard(CardWidget):
             )
 
 
-class ReflogDialog(Dialog):
+class ReflogDialog(MessageBoxBase):
     """Reflog引用日志对话框"""
     
     def __init__(self, parent=None):
-        super().__init__(self.tr("引用日志 (Reflog)"), self.tr("查看所有引用变更记录，可恢复丢失的提交"), parent)
+        super().__init__(parent)
         self._setup_ui()
         self._load_reflog()
     
     def _setup_ui(self):
-        self.setFixedSize(800, 600)
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("引用日志 (Reflog)"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(750)
         
         # 说明
         hint = BodyLabel(self.tr("引用日志 (Reflog) 记录了所有引用的变更历史，即使提交被删除也能找回"), self)
-        self.textLayout.addWidget(hint)
+        self.viewLayout.addWidget(hint)
         
         # 滚动区域
         scroll = ScrollArea(self)
         scroll.setWidgetResizable(True)
-        scroll.setFixedHeight(450)
+        scroll.setFixedHeight(400)
         
         self.reflogWidget = QWidget()
         self.reflogLayout = QVBoxLayout(self.reflogWidget)
@@ -109,7 +114,7 @@ class ReflogDialog(Dialog):
         self.reflogLayout.addStretch()
         
         scroll.setWidget(self.reflogWidget)
-        self.textLayout.addWidget(scroll)
+        self.viewLayout.addWidget(scroll)
         
         # 按钮
         self.yesButton.setText(self.tr("关闭"))

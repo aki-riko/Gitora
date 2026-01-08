@@ -5,7 +5,7 @@
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout
 from PySide6.QtGui import QColor
 from qfluentwidgets import (
-    Dialog, LineEdit, BodyLabel, InfoBar, InfoBarPosition
+    MessageBoxBase, SubtitleLabel, LineEdit, BodyLabel, InfoBar, InfoBarPosition
 )
 
 from ..common.git_service import gitService
@@ -14,17 +14,28 @@ from ..common.logger import get_logger
 logger = get_logger("RemoteDialog")
 
 
-class RemoteDialog(Dialog):
+class RemoteDialog(MessageBoxBase):
     """远程仓库配置对话框"""
     
     def __init__(self, parent=None, is_new_repo=False):
-        title = self.tr("添加远程仓库") if is_new_repo else self.tr("配置远程仓库")
-        content = self.tr("请输入远程仓库信息（可选，稍后也可以配置）") if is_new_repo else self.tr("请输入远程仓库信息")
-        super().__init__(title, content, parent)
+        super().__init__(parent)
         self.is_new_repo = is_new_repo
         self._setup_content()
     
     def _setup_content(self):
+        # 标题
+        title = self.tr("添加远程仓库") if self.is_new_repo else self.tr("配置远程仓库")
+        self.titleLabel = SubtitleLabel(title, self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 描述
+        content = self.tr("请输入远程仓库信息（可选，稍后也可以配置）") if self.is_new_repo else self.tr("请输入远程仓库信息")
+        self.descLabel = BodyLabel(content, self)
+        self.viewLayout.addWidget(self.descLabel)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(500)
+        
         # 远程仓库名称
         name_layout = QHBoxLayout()
         name_label = BodyLabel(self.tr("远程名称:"), self)
@@ -34,7 +45,7 @@ class RemoteDialog(Dialog):
         self.nameEdit.setPlaceholderText(self.tr("通常使用 origin"))
         name_layout.addWidget(name_label)
         name_layout.addWidget(self.nameEdit)
-        self.textLayout.addLayout(name_layout)
+        self.viewLayout.addLayout(name_layout)
         
         # 协议选择
         from qfluentwidgets import SegmentedWidget
@@ -47,7 +58,7 @@ class RemoteDialog(Dialog):
         self.protocolSegmented.setCurrentItem("https")
         protocol_layout.addWidget(protocol_label)
         protocol_layout.addWidget(self.protocolSegmented)
-        self.textLayout.addLayout(protocol_layout)
+        self.viewLayout.addLayout(protocol_layout)
         
         # 第1行：主机名 + SSH端口
         host_port_layout = QHBoxLayout()
@@ -72,7 +83,7 @@ class RemoteDialog(Dialog):
         host_port_layout.addWidget(self.port_label)
         host_port_layout.addWidget(self.sshPortEdit, 1)
         
-        self.textLayout.addLayout(host_port_layout)
+        self.viewLayout.addLayout(host_port_layout)
         
         # 初始隐藏SSH端口
         self.port_label.hide()
@@ -102,7 +113,7 @@ class RemoteDialog(Dialog):
         user_repo_layout.addWidget(repo_label)
         user_repo_layout.addWidget(self.repoEdit, 1)
         
-        self.textLayout.addLayout(user_repo_layout)
+        self.viewLayout.addLayout(user_repo_layout)
         
         # URL预览
         preview_layout = QHBoxLayout()
@@ -112,12 +123,12 @@ class RemoteDialog(Dialog):
         self.urlPreviewLabel.setTextColor(QColor(0, 120, 212), QColor(0, 153, 255))
         preview_layout.addWidget(preview_label)
         preview_layout.addWidget(self.urlPreviewLabel)
-        self.textLayout.addLayout(preview_layout)
+        self.viewLayout.addLayout(preview_layout)
         
         if self.is_new_repo:
             skip_hint_label = BodyLabel(self.tr("💡 提示：如果暂时不配置，可以点击取消，稍后在设置中添加"), self)
             skip_hint_label.setWordWrap(True)
-            self.textLayout.addWidget(skip_hint_label)
+            self.viewLayout.addWidget(skip_hint_label)
         
         # 初始更新预览
         self._update_url_preview()

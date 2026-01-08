@@ -7,7 +7,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QVBoxLayout, QHBoxLayout, QTextEdit, QWidget
 
 from qfluentwidgets import (
-    Dialog, PushButton, TransparentPushButton, FluentIcon,
+    MessageBoxBase, SubtitleLabel, PushButton, TransparentPushButton, FluentIcon,
     InfoBar, InfoBarPosition, BodyLabel, CaptionLabel,
     StrongBodyLabel, CardWidget, ScrollArea
 )
@@ -28,26 +28,34 @@ class FileCommitCard(TimeLineCard):
         self.commit = commit
 
 
-class FileHistoryDialog(Dialog):
+class FileHistoryDialog(MessageBoxBase):
     """文件历史对话框"""
     
     def __init__(self, file_path: str, parent=None):
-        super().__init__(self.tr("文件历史"), self.tr("查看 %s 的提交历史") % file_path, parent)
+        super().__init__(parent)
         self.file_path = file_path
         self.commits = []
         self._setup_ui()
         self._load_history()
     
     def _setup_ui(self):
-        # 设置对话框大小
-        self.setFixedSize(900, 600)
+        # 标题
+        self.titleLabel = SubtitleLabel(self.tr("文件历史"), self)
+        self.viewLayout.addWidget(self.titleLabel)
+        
+        # 描述
+        self.descLabel = BodyLabel(self.tr("查看 %s 的提交历史") % self.file_path, self)
+        self.viewLayout.addWidget(self.descLabel)
+        
+        # 设置最小宽度
+        self.widget.setMinimumWidth(850)
         
         # 说明
         hint_label = BodyLabel(
             self.tr("点击提交记录查看该版本的文件内容，选择两个版本可以进行对比"),
             self
         )
-        self.textLayout.addWidget(hint_label)
+        self.viewLayout.addWidget(hint_label)
         
         # 主内容区（左右分割）
         content_layout = QHBoxLayout()
@@ -64,6 +72,7 @@ class FileHistoryDialog(Dialog):
         timeline_scroll = ScrollArea()
         timeline_scroll.setWidgetResizable(True)
         timeline_scroll.setFixedWidth(350)
+        timeline_scroll.setFixedHeight(350)
         
         timeline_container = QWidget()
         timeline_layout = QVBoxLayout(timeline_container)
@@ -112,11 +121,12 @@ class FileHistoryDialog(Dialog):
             }
         """)
         self.contentEdit.setPlaceholderText(self.tr("选择一个提交查看文件内容"))
+        self.contentEdit.setFixedHeight(350)
         right_layout.addWidget(self.contentEdit)
         
         content_layout.addWidget(right_widget, 1)
         
-        self.textLayout.addLayout(content_layout)
+        self.viewLayout.addLayout(content_layout)
         
         # 修改按钮文本
         self.yesButton.setText(self.tr("关闭"))
