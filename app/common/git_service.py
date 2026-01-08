@@ -314,12 +314,10 @@ class GitService(QObject):
                     changes.append(FileChange(path, status, True))
 
                 # 工作区有变更（未暂存）
+                # 注意：同一文件可能同时有暂存和未暂存的修改，两个都要显示
                 if work_status != ' ' and work_status != '?':
                     status = self._parse_status_char(work_status)
-                    # 检查是否已存在暂存版本
-                    existing = next((c for c in changes if c.path == path and c.staged), None)
-                    if not existing:
-                        changes.append(FileChange(path, status, False))
+                    changes.append(FileChange(path, status, False))
 
         return changes
 
