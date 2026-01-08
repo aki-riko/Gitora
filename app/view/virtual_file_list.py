@@ -264,29 +264,9 @@ class VirtualFileList(RoundListWidget):
             self.addItem(item)
     
     def _on_item_clicked(self, index: QModelIndex):
-        """处理点击事件"""
-        if not index.isValid():
-            return
-        
-        item = self.item(index.row())
-        if not item:
-            return
-        
-        path = item.data(FileRole.PathRole)
-        staged = item.data(FileRole.StagedRole)
-        
-        # 检查是否点击了按钮
-        pos = self.viewport().mapFromGlobal(QApplication.instance().overrideCursor().pos() if QApplication.instance().overrideCursor() else self.cursor().pos())
-        rect = self.visualRect(index)
-        button = self._delegate.getButtonAtPos(pos, rect, staged)
-        
-        if button == 'stage':
-            self.stageClicked.emit(path, not staged)
-        elif button == 'discard':
-            self.discardClicked.emit(path)
-        else:
-            # 选中文件
-            self.fileSelected.emit(path, staged)
+        """处理点击事件 - 仅用于文件选择，按钮点击在mousePressEvent中处理"""
+        # 按钮点击已在mousePressEvent中处理，这里不再重复处理
+        pass
     
     def _on_current_changed(self, current, previous):
         """当前项改变"""
