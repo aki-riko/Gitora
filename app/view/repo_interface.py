@@ -712,17 +712,12 @@ class RepoInterface(ScrollArea):
         # === 工具栏按钮组 ===
         # 使用分隔线和间距优化视觉分组
         
-        # 第一组：仓库操作
-        self.repoBtn = SplitPushButton(self.tr("打开仓库"), self, FluentIcon.FOLDER)
-        self.repoBtn.setToolTip(self.tr("打开本地Git仓库，或克隆/初始化新仓库"))
-        self.repoBtn.installEventFilter(ToolTipFilter(self.repoBtn, 500, ToolTipPosition.BOTTOM))
-        self.repoBtn.clicked.connect(self._open_repo)
-        repoMenu = RoundMenu(parent=self)
-        repoMenu.addAction(Action(FluentIcon.FOLDER, self.tr("打开本地仓库"), triggered=self._open_repo))
-        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, self.tr("克隆远程仓库"), triggered=self._on_clone_repo))
-        repoMenu.addAction(Action(FluentIcon.ADD, self.tr("初始化新仓库"), triggered=self._on_init_repo))
-        self.repoBtn.setFlyout(repoMenu)
-        header_layout.addWidget(self.repoBtn)
+        # 第一组：远程仓库（图标+文本）
+        remote_btn = TransparentPushButton(self.tr("远程 (Remote)"), self, FluentIcon.CLOUD)
+        remote_btn.setToolTip(self.tr("管理远程仓库地址"))
+        remote_btn.installEventFilter(ToolTipFilter(remote_btn, 500, ToolTipPosition.BOTTOM))
+        remote_btn.clicked.connect(self._on_manage_remotes)
+        header_layout.addWidget(remote_btn)
         
         # 分隔线 1
         self._add_separator(header_layout)
@@ -754,12 +749,17 @@ class RepoInterface(ScrollArea):
         # 分隔线 3
         self._add_separator(header_layout)
         
-        # 第四组：远程仓库（图标+文本）
-        remote_btn = TransparentPushButton(self.tr("远程 (Remote)"), self, FluentIcon.CLOUD)
-        remote_btn.setToolTip(self.tr("管理远程仓库地址"))
-        remote_btn.installEventFilter(ToolTipFilter(remote_btn, 500, ToolTipPosition.BOTTOM))
-        remote_btn.clicked.connect(self._on_manage_remotes)
-        header_layout.addWidget(remote_btn)
+        # 第四组：仓库操作
+        self.repoBtn = SplitPushButton(self.tr("打开仓库"), self, FluentIcon.FOLDER)
+        self.repoBtn.setToolTip(self.tr("打开本地Git仓库，或克隆/初始化新仓库"))
+        self.repoBtn.installEventFilter(ToolTipFilter(self.repoBtn, 500, ToolTipPosition.BOTTOM))
+        self.repoBtn.clicked.connect(self._open_repo)
+        repoMenu = RoundMenu(parent=self)
+        repoMenu.addAction(Action(FluentIcon.FOLDER, self.tr("打开本地仓库"), triggered=self._open_repo))
+        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, self.tr("克隆远程仓库"), triggered=self._on_clone_repo))
+        repoMenu.addAction(Action(FluentIcon.ADD, self.tr("初始化新仓库"), triggered=self._on_init_repo))
+        self.repoBtn.setFlyout(repoMenu)
+        header_layout.addWidget(self.repoBtn)
         
         # 分隔线 4
         self._add_separator(header_layout)
