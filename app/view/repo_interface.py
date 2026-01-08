@@ -1305,7 +1305,18 @@ class RepoInterface(ScrollArea):
 
     def _on_push(self):
         """推送"""
-        # 先检查远程仓库配置
+        # 先检查是否已打开仓库
+        if not gitService.repo_path:
+            InfoBar.warning(
+                title=self.tr("提示"),
+                content=self.tr("请先打开一个Git仓库"),
+                parent=self.window(),
+                position=InfoBarPosition.BOTTOM,
+                duration=2000
+            )
+            return
+        
+        # 检查远程仓库配置
         remotes = gitService.get_remote_info()
         if not remotes:
             # 无远程仓库，显示配置向导
