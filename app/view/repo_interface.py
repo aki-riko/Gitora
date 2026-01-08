@@ -755,9 +755,8 @@ class RepoInterface(ScrollArea):
         self.repoBtn.installEventFilter(ToolTipFilter(self.repoBtn, 500, ToolTipPosition.BOTTOM))
         self.repoBtn.clicked.connect(self._open_repo)
         repoMenu = RoundMenu(parent=self)
-        repoMenu.addAction(Action(FluentIcon.FOLDER, self.tr("打开本地仓库"), triggered=self._open_repo))
-        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, self.tr("克隆远程仓库"), triggered=self._on_clone_repo))
         repoMenu.addAction(Action(FluentIcon.ADD, self.tr("初始化新仓库"), triggered=self._on_init_repo))
+        repoMenu.addAction(Action(FluentIcon.DOWNLOAD, self.tr("克隆远程仓库"), triggered=self._on_clone_repo))
         self.repoBtn.setFlyout(repoMenu)
         header_layout.addWidget(self.repoBtn)
         
