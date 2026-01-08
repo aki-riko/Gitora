@@ -384,13 +384,18 @@ class GitService(QObject):
                     tracking = ""
                     ahead = behind = 0
 
-                    # 解析追踪信息
-                    if '[' in line:
-                        start = line.index('[')
-                        end = line.index(']')
-                        tracking_info = line[start+1:end]
+                    # 解析追踪信息 - 使用正则匹配commit hash后的[tracking]格式
+                    # 格式: branch_name hash [tracking:status] message
+                    # 需要跳过分支名中可能包含的方括号（如[fe]xxx）
+                    import re
+                    # 匹配 commit hash (7-40位十六进制) 后面的 [xxx] 追踪信息
+                    tracking_match = re.search(r'\s[a-f0-9]{7,40}\s+\[([^\]]+)\]', line)
+                    if tracking_match:
+                        tracking_info = tracking_match.group(1)
                         if ':' in tracking_info:
                             tracking = tracking_info.split(':')[0]
+                        else:
+                            tracking = tracking_info
 
                     branches.append(BranchInfo(
                         name=name,
