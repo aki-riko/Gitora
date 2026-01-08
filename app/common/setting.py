@@ -10,7 +10,7 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2025
 AUTHOR = "Apyrenia"
-VERSION = "v1.0.0"
+VERSION = "v1.0.1.1"
 APP_NAME = "Gitess"
 HELP_URL = "https://github.com/Gitess/Gitess"
 REPO_URL = "https://github.com/Gitess/Gitess"
