@@ -738,10 +738,10 @@ class RepoInterface(ScrollArea):
         self._add_separator(header_layout)
         
         # 第三组：同步操作（重点）
-        self.syncBtn = SplitPushButton(self.tr("同步"), self, FluentIcon.SYNC)
-        self.syncBtn.setToolTip(self.tr("拉取远程更新或推送本地提交\n点击主按钮拉取，下拉选择其他操作"))
+        self.syncBtn = SplitPushButton(self.tr("推送"), self, FluentIcon.SEND)
+        self.syncBtn.setToolTip(self.tr("推送本地提交到远程仓库\n点击主按钮推送，下拉选择其他操作"))
         self.syncBtn.installEventFilter(ToolTipFilter(self.syncBtn, 500, ToolTipPosition.BOTTOM))
-        self.syncBtn.clicked.connect(self._on_pull)
+        self.syncBtn.clicked.connect(self._on_push)
         syncMenu = RoundMenu(parent=self)
         syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, self.tr("拉取 (Pull)"), triggered=self._on_pull))
         syncMenu.addAction(Action(Icon.GIT_PULL_REQUEST, self.tr("拉取并变基 (Rebase)"), triggered=self._on_pull_rebase))
