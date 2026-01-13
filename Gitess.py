@@ -8,6 +8,8 @@ Author: Apyrenia
 import os
 import sys
 import warnings
+from ctypes import util
+import cffi
 
 # 过滤QFluentWidgets库的弃用警告（来自库内部，无法修复）
 warnings.filterwarnings("ignore", category=DeprecationWarning, message=".*globalPos.*")

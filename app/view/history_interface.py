@@ -617,12 +617,6 @@ class HistoryInterface(QWidget):
         
         self.updateHintBtn = PrimaryPushButton(self.tr("↑ 有新提交"), self)
         self.updateHintBtn.setFixedSize(120, 32)  # 限制宽度
-        self.updateHintBtn.setStyleSheet("""
-            PrimaryPushButton {
-                border-radius: 16px;  /* 药丸形状 */
-                padding: 4px 16px;
-            }
-        """)
         self.updateHintBtn.clicked.connect(self._on_update_hint_clicked)
         self.updateHintBtn.hide()
         hint_layout.addWidget(self.updateHintBtn)
