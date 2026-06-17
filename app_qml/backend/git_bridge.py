@@ -42,6 +42,29 @@ def _commit_to_dict(c: CommitInfo) -> dict:
     }
 
 
+def _branch_to_dict(b: BranchInfo) -> dict:
+    """BranchInfo dataclass -> QML 友好 dict"""
+    return {
+        "name": b.name,
+        "isCurrent": b.is_current,
+        "isRemote": b.is_remote,
+        "tracking": b.tracking,
+        "ahead": b.ahead,
+        "behind": b.behind,
+    }
+
+
+def _conflict_to_dict(c: ConflictInfo) -> dict:
+    """ConflictInfo dataclass -> QML 友好 dict"""
+    return {
+        "path": c.path,
+        "oursContent": c.ours_content,
+        "theirsContent": c.theirs_content,
+        "baseContent": c.base_content,
+        "hasConflictMarkers": c.has_conflict_markers,
+    }
+
+
 class GitBridge(QObject):
     """暴露给 QML 的 Git 后端门面"""
 
@@ -205,4 +228,120 @@ class GitBridge(QObject):
     @Slot(str, result="QVariantList")
     def cherryPick(self, commit_hash: str) -> list:
         ok, msg = self._svc.cherry_pick(commit_hash)
+        return [ok, msg]
+
+    # ==================== 分支 ====================
+    @Slot(result="QVariantList")
+    def getBranches(self) -> list:
+        return [_branch_to_dict(b) for b in self._svc.get_branches()]
+
+    @Slot(str, bool, result="QVariantList")
+    def createBranch(self, branch: str, checkout: bool) -> list:
+        ok, msg = self._svc.create_branch(branch, checkout)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def checkoutBranch(self, branch: str) -> list:
+        ok, msg = self._svc.checkout_branch(branch)
+        return [ok, msg]
+
+    @Slot(str, bool, result="QVariantList")
+    def deleteBranch(self, branch: str, force: bool) -> list:
+        ok, msg = self._svc.delete_branch(branch, force)
+        return [ok, msg]
+
+    @Slot(str)
+    def mergeBranch(self, branch: str):
+        """合并分支(异步);结果经 operationFinished 回传"""
+        self._svc.merge_branch(branch)
+
+    @Slot(result="QVariantList")
+    def pruneRemote(self) -> list:
+        ok, msg = self._svc.prune_remote()
+        return [ok, msg]
+
+    # ==================== 冲突 ====================
+    @Slot(result=bool)
+    def isMerging(self) -> bool:
+        return self._svc.is_merging()
+
+    @Slot(result="QVariantList")
+    def getConflicts(self) -> list:
+        return [_conflict_to_dict(c) for c in self._svc.get_conflicts()]
+
+    @Slot(str, result="QVariantList")
+    def resolveWithOurs(self, path: str) -> list:
+        ok, msg = self._svc.resolve_conflict_with_ours(path)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def resolveWithTheirs(self, path: str) -> list:
+        ok, msg = self._svc.resolve_conflict_with_theirs(path)
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def abortMerge(self) -> list:
+        ok, msg = self._svc.abort_merge()
+        return [ok, msg]
+
+    # ==================== Stash ====================
+    @Slot(result="QVariantList")
+    def stashList(self) -> list:
+        """stash 列表 -> [{id, message}, ...]"""
+        return [{"id": sid, "message": msg} for sid, msg in self._svc.stash_list()]
+
+    @Slot(str, result="QVariantList")
+    def stashSave(self, message: str) -> list:
+        ok, msg = self._svc.stash_save(message)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def stashPop(self, stash_id: str) -> list:
+        ok, msg = self._svc.stash_pop(stash_id)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def stashApply(self, stash_id: str) -> list:
+        ok, msg = self._svc.stash_apply(stash_id)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def stashDrop(self, stash_id: str) -> list:
+        ok, msg = self._svc.stash_drop(stash_id)
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def stashClear(self) -> list:
+        ok, msg = self._svc.stash_clear()
+        return [ok, msg]
+
+    # ==================== Tag ====================
+    @Slot(result="QVariantList")
+    def getTags(self) -> list:
+        """tag 列表 -> [{name, hash, message}, ...]"""
+        return [{"name": n, "hash": h, "message": m} for n, h, m in self._svc.get_tags()]
+
+    @Slot(str, str, result="QVariantList")
+    def createTag(self, name: str, message: str) -> list:
+        ok, msg = self._svc.create_tag(name, message)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def deleteTag(self, name: str) -> list:
+        ok, msg = self._svc.delete_tag(name)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def pushTag(self, name: str) -> list:
+        ok, msg = self._svc.push_tag(name)
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def pushAllTags(self) -> list:
+        ok, msg = self._svc.push_all_tags()
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def checkoutTag(self, name: str) -> list:
+        ok, msg = self._svc.checkout_tag(name)
         return [ok, msg]

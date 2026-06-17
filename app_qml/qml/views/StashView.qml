@@ -1,0 +1,122 @@
+// Stash 视图(阶段 3:迁移 stash_dialog.py,改为导航页)
+import QtQuick
+import QtQuick.Layouts
+
+import FluentQML as Fluent
+
+Item {
+    id: root
+    ListModel { id: stashModel }
+
+    function reload() {
+        stashModel.clear()
+        if (!GitBridge || !GitBridge.repoPath) return
+        var list = GitBridge.stashList()
+        for (var i = 0; i < list.length; i++) stashModel.append(list[i])
+    }
+
+    function _op(res) {
+        console.log("stash 操作:", res[0], res[1])
+        if (res[0]) root.reload()
+    }
+
+    Connections {
+        target: GitBridge
+        function onStatusChanged() { root.reload() }
+    }
+    Component.onCompleted: root.reload()
+
+    Fluent.ScrollArea {
+        anchors.fill: parent
+        Column {
+            id: stashCol
+            width: parent ? parent.width : 0
+            spacing: Fluent.Enums.spacing.l
+            topPadding: Fluent.Enums.spacing.xl
+            bottomPadding: Fluent.Enums.spacing.xl
+            leftPadding: Fluent.Enums.spacing.xxl
+            rightPadding: Fluent.Enums.spacing.xxl
+            readonly property real cw: width - Fluent.Enums.spacing.xxl * 2
+
+            Text {
+                text: "暂存 (Stash)"
+                font.pixelSize: Fluent.Enums.typography.displayLarge
+                font.bold: true
+                color: Fluent.Enums.textColor.primary
+                font.family: Fluent.Enums.fontFamily
+            }
+
+            // 保存操作栏
+            RowLayout {
+                width: parent.cw
+                spacing: Fluent.Enums.spacing.m
+                Fluent.LineEdit {
+                    id: stashMsgInput
+                    Layout.fillWidth: true
+                    placeholderText: "备注(可选)"
+                }
+                Fluent.Button {
+                    text: "保存当前修改"
+                    style: Fluent.Enums.button.style_primary
+                    onClicked: {
+                        root._op(GitBridge.stashSave(stashMsgInput.text))
+                        stashMsgInput.text = ""
+                    }
+                }
+                Fluent.Button {
+                    text: "清空所有"
+                    enabled: stashModel.count > 0
+                    onClicked: root._op(GitBridge.stashClear())
+                }
+            }
+
+            // 空状态
+            Text {
+                width: parent.cw
+                visible: stashModel.count === 0
+                text: "暂无保存记录"
+                color: Fluent.Enums.textColor.tertiary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
+                horizontalAlignment: Text.AlignHCenter
+                topPadding: Fluent.Enums.spacing.xxl
+            }
+
+            // stash 列表
+            Repeater {
+                model: stashModel
+                delegate: Fluent.Card {
+                    width: stashCol.cw
+                    height: stashRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                    RowLayout {
+                        id: stashRow
+                        anchors.fill: parent
+                        anchors.margins: Fluent.Enums.spacing.m
+                        spacing: Fluent.Enums.spacing.m
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+                            Text {
+                                text: model.id
+                                color: Fluent.Enums.accentColor
+                                font.family: "Consolas, monospace"
+                                font.pixelSize: Fluent.Enums.typography.caption
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: model.message
+                                color: Fluent.Enums.textColor.primary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.body
+                                elide: Text.ElideRight
+                            }
+                        }
+                        Fluent.Button { text: "应用"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.stashApply(model.id)) }
+                        Fluent.Button { text: "恢复"; onClicked: root._op(GitBridge.stashPop(model.id)) }
+                        Fluent.Button { text: "删除"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.stashDrop(model.id)) }
+                    }
+                }
+            }
+        }
+    }
+}

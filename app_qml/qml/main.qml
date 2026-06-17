@@ -17,7 +17,10 @@ QtObject {
     property var navItems: [
         { "text": "仓库", "icon": iconPath("Folder") },
         { "text": "历史", "icon": iconPath("History") },
-        { "text": "分支", "icon": iconPath("BranchFork") }
+        { "text": "分支", "icon": iconPath("BranchFork") },
+        { "text": "标签", "icon": iconPath("Tag") },
+        { "text": "暂存", "icon": iconPath("Archive") },
+        { "text": "冲突", "icon": iconPath("Warning") }
     ]
 
     property var bottomNavItems: [
@@ -27,7 +30,10 @@ QtObject {
     property var pagePaths: [
         Qt.resolvedUrl("views/RepoView.qml"),
         Qt.resolvedUrl("views/HistoryView.qml"),
-        Qt.resolvedUrl("views/PlaceholderView.qml"),
+        Qt.resolvedUrl("views/BranchView.qml"),
+        Qt.resolvedUrl("views/TagView.qml"),
+        Qt.resolvedUrl("views/StashView.qml"),
+        Qt.resolvedUrl("views/ConflictView.qml"),
         Qt.resolvedUrl("views/SettingsView.qml")
     ]
 
