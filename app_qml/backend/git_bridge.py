@@ -345,3 +345,78 @@ class GitBridge(QObject):
     def checkoutTag(self, name: str) -> list:
         ok, msg = self._svc.checkout_tag(name)
         return [ok, msg]
+
+    # ==================== 初始化 / 克隆 ====================
+    @Slot(str, result="QVariantList")
+    def initRepo(self, path: str) -> list:
+        ok, msg = self._svc.init(path)
+        return [ok, msg]
+
+    @Slot(str, str)
+    def clone(self, url: str, path: str):
+        """克隆(异步);结果经 operationFinished 回传"""
+        self._svc.clone(url, path)
+
+    # ==================== 用户信息 / 远程 ====================
+    @Slot(result="QVariantList")
+    def getUserInfo(self) -> list:
+        """全局用户配置 -> [name, email]"""
+        name, email = self._svc.get_user_info()
+        return [name, email]
+
+    @Slot(str, str, bool, result="QVariantList")
+    def setUserInfo(self, name: str, email: str, global_scope: bool) -> list:
+        ok, msg = self._svc.set_user_info(name, email, global_scope)
+        return [ok, msg]
+
+    @Slot(str, str, result="QVariantList")
+    def addRemote(self, name: str, url: str) -> list:
+        ok, msg = self._svc.add_remote(name, url)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def removeRemote(self, name: str) -> list:
+        ok, msg = self._svc.remove_remote(name)
+        return [ok, msg]
+
+    @Slot(str, str, result="QVariantList")
+    def setRemoteUrl(self, name: str, url: str) -> list:
+        ok, msg = self._svc.set_remote_url(name, url)
+        return [ok, msg]
+
+    @Slot(str, result=str)
+    def getRemoteUrl(self, name: str) -> str:
+        return self._svc.get_remote_url(name)
+
+    # ==================== 文件历史 ====================
+    @Slot(str, int, result="QVariantList")
+    def getFileHistory(self, path: str, count: int) -> list:
+        return [_commit_to_dict(c) for c in self._svc.get_file_history(path, count)]
+
+    @Slot(str, str, result=str)
+    def getFileContentAtCommit(self, path: str, commit_hash: str) -> str:
+        return self._svc.get_file_content_at_commit(path, commit_hash)
+
+    @Slot(str, str, str, result=str)
+    def diffFileBetweenCommits(self, path: str, c1: str, c2: str) -> str:
+        return self._svc.diff_file_between_commits(path, c1, c2)
+
+    # ==================== 提交详情 ====================
+    @Slot(str, result="QVariantMap")
+    def getCommitDetail(self, commit_hash: str) -> dict:
+        c = self._svc.get_commit_detail(commit_hash)
+        return _commit_to_dict(c) if c else {}
+
+    @Slot(str, result="QVariantList")
+    def getCommitFiles(self, commit_hash: str) -> list:
+        return [_file_change_to_dict(fc) for fc in self._svc.get_commit_files(commit_hash)]
+
+    @Slot(str, result=str)
+    def getCommitDiff(self, commit_hash: str) -> str:
+        return self._svc.get_commit_diff(commit_hash)
+
+    # ==================== Reflog ====================
+    @Slot(int, result="QVariantList")
+    def getReflog(self, count: int) -> list:
+        """reflog -> [{hash, ref, message}, ...]"""
+        return [{"hash": h, "ref": r, "message": m} for h, r, m in self._svc.get_reflog(count)]

@@ -5,6 +5,7 @@ import QtQuick.Layouts
 import QtQuick.Dialogs
 
 import FluentQML as Fluent
+import "../components"
 
 Item {
     id: root
@@ -70,6 +71,8 @@ Item {
             Item { Layout.fillWidth: true }
 
             Fluent.Button { text: "打开"; icon: Fluent.Enums.icon.folder; onClicked: folderDialog.open() }
+            Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
+            Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
             Fluent.Button { text: "拉取"; icon: Fluent.Enums.icon.arrow_download; onClicked: GitBridge.pull() }
             Fluent.Button { text: "推送"; icon: Fluent.Enums.icon.arrow_upload; onClicked: GitBridge.push() }
         }
@@ -254,5 +257,35 @@ Item {
             if (GitBridge.setRepoPath(path)) root.reload()
             else console.warn("不是有效的 Git 仓库: " + path)
         }
+    }
+
+    // 克隆对话框
+    CloneDialog {
+        id: cloneDialog
+        onCloneRequested: function(url, path) { GitBridge.clone(url, path) }
+    }
+
+    // 初始化:先选目录,再走引导
+    FolderDialog {
+        id: initFolderDialog
+        title: "选择要初始化的目录"
+        onAccepted: {
+            var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
+            var res = GitBridge.initRepo(path)
+            if (res[0]) {
+                GitBridge.setRepoPath(path)
+                initGuide.repoPath = path
+                initGuide.currentIndex = 0
+                initGuide.show()
+            } else {
+                console.warn("初始化失败:", res[1])
+            }
+        }
+    }
+
+    // 初始化引导(窗口)
+    InitRepoGuide {
+        id: initGuide
+        onCompleted: function(p) { root.reload() }
     }
 }

@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import FluentQML as Fluent
+import "../components"
 
 Item {
     id: root
@@ -246,12 +247,25 @@ Item {
                         Fluent.Button {
                             text: "Reset (mixed)"
                             style: Fluent.Enums.button.style_primary
-                            // 危险操作:阶段 4 接 DangerDialog 二次确认,当前先直接执行
-                            onClicked: root._op(GitBridge.resetToCommit(root.selectedCommit.hash, "mixed"))
+                            onClicked: {
+                                resetDanger.content = "将回滚到提交 " + root.selectedCommit.shortHash
+                                    + "\n(mixed 模式:保留工作区改动,重置暂存区)\n此操作会改变提交历史。"
+                                resetDanger._hash = root.selectedCommit.hash
+                                resetDanger.start()
+                            }
                         }
                     }
                 }
             }
         }
+    }
+
+    // 危险操作:reset 二次确认
+    DangerDialog {
+        id: resetDanger
+        title: "确认 Reset"
+        countdown: 3
+        property string _hash: ""
+        onConfirmed: root._op(GitBridge.resetToCommit(_hash, "mixed"))
     }
 }
