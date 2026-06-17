@@ -28,6 +28,7 @@ from PySide6.QtCore import QUrl  # noqa: E402
 
 from fluentqml import App  # noqa: E402
 from fluentqml.python.config import getConfigManager  # noqa: E402
+from fluentqml.python.providers import get_clipboard_helper  # noqa: E402
 
 from app_qml.backend.git_bridge import GitBridge  # noqa: E402
 
@@ -42,6 +43,7 @@ def main() -> int:
     ctx = engine.rootContext()
     ctx.setContextProperty("GitBridge", git_bridge)
     ctx.setContextProperty("ConfigManager", config_manager)
+    ctx.setContextProperty("ClipboardHelper", get_clipboard_helper())
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL

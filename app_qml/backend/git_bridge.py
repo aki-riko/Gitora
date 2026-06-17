@@ -29,6 +29,19 @@ def _file_change_to_dict(fc: FileChange) -> dict:
     }
 
 
+def _commit_to_dict(c: CommitInfo) -> dict:
+    """CommitInfo dataclass -> QML 友好 dict"""
+    return {
+        "hash": c.hash,
+        "shortHash": c.short_hash,
+        "author": c.author,
+        "email": c.email,
+        "date": c.date,
+        "message": c.message,
+        "branch": getattr(c, "branch", ""),
+    }
+
+
 class GitBridge(QObject):
     """暴露给 QML 的 Git 后端门面"""
 
@@ -87,3 +100,109 @@ class GitBridge(QObject):
     def gc(self):
         """垃圾回收(异步);结果经 operationStarted/operationFinished 信号回传"""
         self._svc.gc()
+
+    # ==================== 暂存 / 取消暂存 ====================
+    @Slot(str, result=bool)
+    def stageFile(self, path: str) -> bool:
+        return self._svc.stage_file(path)
+
+    @Slot(str, result=bool)
+    def unstageFile(self, path: str) -> bool:
+        return self._svc.unstage_file(path)
+
+    @Slot(result=bool)
+    def stageAll(self) -> bool:
+        return self._svc.stage_all()
+
+    @Slot(result=bool)
+    def unstageAll(self) -> bool:
+        return self._svc.unstage_all()
+
+    @Slot(str, result=bool)
+    def discardFile(self, path: str) -> bool:
+        return self._svc.discard_file(path)
+
+    # ==================== 差异 ====================
+    @Slot(str, bool, result=str)
+    def getDiff(self, path: str, staged: bool) -> str:
+        return self._svc.get_diff(path, staged)
+
+    # ==================== 提交 ====================
+    @Slot(str, result="QVariantList")
+    def commit(self, message: str) -> list:
+        ok, msg = self._svc.commit(message)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def amendCommit(self, message: str) -> list:
+        ok, msg = self._svc.amend_commit(message)
+        return [ok, msg]
+
+    # ==================== 远程同步(异步,经 operationFinished 回传) ====================
+    @Slot()
+    def push(self):
+        self._svc.push()
+
+    @Slot()
+    def pushForce(self):
+        self._svc.push(force=True)
+
+    @Slot()
+    def pull(self):
+        self._svc.pull()
+
+    @Slot()
+    def pullRebase(self):
+        self._svc.pull(rebase=True)
+
+    @Slot()
+    def fetch(self):
+        self._svc.fetch()
+
+    @Slot(str)
+    def quickCommitPush(self, message: str):
+        """一键提交推送(异步);结果经 operationStarted/progressUpdated/operationFinished 回传"""
+        self._svc.quick_commit_push(message)
+
+    @Slot(result="QVariantList")
+    def getRemoteInfo(self) -> list:
+        """远程列表 -> [{name, url}, ...]"""
+        return [{"name": name, "url": url} for name, url in self._svc.get_remote_info()]
+
+    # ==================== 提交历史 ====================
+    @Slot(int, int, bool, result="QVariantList")
+    def getLog(self, count: int, skip: int, fast_mode: bool) -> list:
+        """提交历史(分页) -> [{hash, shortHash, author, ...}, ...]"""
+        return [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast_mode)]
+
+    @Slot(result=bool)
+    def isLargeRepo(self) -> bool:
+        return self._svc.is_large_repo()
+
+    @Slot(str, str, int, result="QVariantList")
+    def searchCommits(self, query: str, search_type: str, count: int) -> list:
+        return [_commit_to_dict(c) for c in self._svc.search_commits(query, search_type, count)]
+
+    @Slot(str, result=int)
+    def getCommitCountAfter(self, commit_hash: str) -> int:
+        return self._svc.get_commit_count_after(commit_hash)
+
+    @Slot(str, result="QVariantList")
+    def checkoutCommit(self, commit_hash: str) -> list:
+        ok, msg = self._svc.checkout_branch(commit_hash)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def revertCommit(self, commit_hash: str) -> list:
+        ok, msg = self._svc.revert_commit(commit_hash)
+        return [ok, msg]
+
+    @Slot(str, str, result="QVariantList")
+    def resetToCommit(self, commit_hash: str, mode: str) -> list:
+        ok, msg = self._svc.reset_to_commit(commit_hash, mode)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def cherryPick(self, commit_hash: str) -> list:
+        ok, msg = self._svc.cherry_pick(commit_hash)
+        return [ok, msg]

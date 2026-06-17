@@ -26,7 +26,7 @@ QtObject {
 
     property var pagePaths: [
         Qt.resolvedUrl("views/RepoView.qml"),
-        Qt.resolvedUrl("views/PlaceholderView.qml"),
+        Qt.resolvedUrl("views/HistoryView.qml"),
         Qt.resolvedUrl("views/PlaceholderView.qml"),
         Qt.resolvedUrl("views/SettingsView.qml")
     ]
