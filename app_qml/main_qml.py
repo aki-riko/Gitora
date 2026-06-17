@@ -1,9 +1,10 @@
 # coding: utf-8
 """
-Gitess QML 版入口(阶段 0 脚手架)
+Gitess QML 版入口
 
-依赖方式:sys.path 引用本地 FluentQML 源码(D:/FluentQML)。
+依赖方式:sys.path 引用本地 FluentQML 源码(默认 D:/FluentQML,可用环境变量 FLUENTQML_ROOT 覆盖)。
 用 FluentQML 的 App 类启动,自动完成 DPI/消息处理器/register_types/addImportPath。
+QML 版基于 FluentQML(MIT),无 QFluentWidgets Pro / License 依赖。
 """
 import os
 import sys
@@ -36,6 +37,26 @@ from app_qml.backend.git_bridge import GitBridge  # noqa: E402
 def main() -> int:
     app = App(sys.argv)
     engine = app.engine
+
+    # 单实例检查(共享内存)
+    from PySide6.QtCore import QSharedMemory
+    shared = QSharedMemory("Gitess_QML_SingleInstance_Key")
+    if not shared.create(1):
+        from PySide6.QtWidgets import QMessageBox
+        QMessageBox.warning(None, "Gitess 已在运行", "Gitess 已经在运行中,请勿重复启动。")
+        return 0
+
+    # Git 安装检测
+    from app.common.git_installer import gitInstaller
+    installed, version = gitInstaller.check_git_installed()
+    if not installed:
+        from PySide6.QtWidgets import QMessageBox
+        url = gitInstaller.get_download_url()
+        QMessageBox.warning(
+            None, "未检测到 Git",
+            f"未检测到 Git 命令行工具,请先安装 Git。\n\n下载地址:\n{url}",
+        )
+        return 0
 
     # 注册后端到 QML
     git_bridge = GitBridge()
