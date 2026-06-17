@@ -420,3 +420,24 @@ class GitBridge(QObject):
     def getReflog(self, count: int) -> list:
         """reflog -> [{hash, ref, message}, ...]"""
         return [{"hash": h, "ref": r, "message": m} for h, r, m in self._svc.get_reflog(count)]
+
+    # ==================== 冲突文件内容 ====================
+    @Slot(str, result=str)
+    def readConflictFile(self, path: str) -> str:
+        """读取工作区冲突文件原始内容(带冲突标记);路径越界保护。"""
+        import os
+        repo = self._svc.repo_path
+        if not repo:
+            return ""
+        full_path = os.path.join(repo, path)
+        real_path = os.path.realpath(full_path)
+        repo_real = os.path.realpath(repo)
+        if not real_path.startswith(repo_real + os.sep):
+            logger.warning(f"拒绝读取仓库外路径: {path}")
+            return ""
+        try:
+            with open(real_path, "r", encoding="utf-8", errors="ignore") as f:
+                return f.read()
+        except OSError as e:
+            logger.warning(f"读取冲突文件失败 {path}: {e}")
+            return ""

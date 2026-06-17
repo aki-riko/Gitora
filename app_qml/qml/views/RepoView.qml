@@ -178,6 +178,12 @@ Item {
                                     visible: hover.hovered && !model.staged
                                     onClicked: GitBridge.discardFile(model.path)
                                 }
+                                Fluent.Button {
+                                    text: "历史"
+                                    style: Fluent.Enums.button.style_transparent
+                                    visible: hover.hovered
+                                    onClicked: fileHistoryDialog.openFor(model.path)
+                                }
                             }
                         }
                     }
@@ -288,4 +294,7 @@ Item {
         id: initGuide
         onCompleted: function(p) { root.reload() }
     }
+
+    // 文件历史
+    FileHistoryDialog { id: fileHistoryDialog }
 }

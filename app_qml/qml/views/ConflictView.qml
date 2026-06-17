@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import FluentQML as Fluent
+import "../components"
 
 Item {
     id: root
@@ -132,6 +133,12 @@ Item {
                                 }
                             }
                             Fluent.Button {
+                                text: "查看冲突"
+                                style: Fluent.Enums.button.style_transparent
+                                visible: model.hasConflictMarkers
+                                onClicked: conflictViewer.openFor(model.path)
+                            }
+                            Fluent.Button {
                                 text: "使用我们的"
                                 onClicked: root._op(GitBridge.resolveWithOurs(model.path))
                             }
@@ -146,4 +153,7 @@ Item {
             }
         }
     }
+
+    // 冲突内容查看
+    ConflictViewerDialog { id: conflictViewer }
 }
