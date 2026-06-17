@@ -87,6 +87,11 @@ Item {
                         font.family: Fluent.Enums.fontFamily
                     }
                     Item { Layout.fillWidth: true }
+                    Fluent.Button {
+                        text: "Reflog"
+                        icon: Fluent.Enums.icon.history
+                        onClicked: reflogDialog.openReflog()
+                    }
                     Fluent.LineEdit {
                         id: searchInput
                         Layout.preferredWidth: 240
@@ -233,6 +238,11 @@ Item {
                             onClicked: if (root.selectedCommit && ClipboardHelper) ClipboardHelper.copy(root.selectedCommit.hash)
                         }
                         Fluent.Button {
+                            text: "详情"
+                            style: Fluent.Enums.button.style_transparent
+                            onClicked: if (root.selectedCommit) commitDetailDialog.openFor(root.selectedCommit.hash)
+                        }
+                        Fluent.Button {
                             text: "Checkout"
                             onClicked: root._op(GitBridge.checkoutCommit(root.selectedCommit.hash))
                         }
@@ -267,5 +277,14 @@ Item {
         countdown: 3
         property string _hash: ""
         onConfirmed: root._op(GitBridge.resetToCommit(_hash, "mixed"))
+    }
+
+    // 提交详情
+    CommitDetailDialog { id: commitDetailDialog }
+
+    // 引用日志
+    ReflogDialog {
+        id: reflogDialog
+        onCheckoutRequested: function(h) { root._op(GitBridge.checkoutCommit(h)) }
     }
 }
