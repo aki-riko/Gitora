@@ -16,10 +16,11 @@ Item {
             spacing: Fluent.Enums.spacing.xl
             topPadding: Fluent.Enums.spacing.xl
             bottomPadding: Fluent.Enums.spacing.xl
-            leftPadding: Fluent.Enums.spacing.xxl
-            rightPadding: Fluent.Enums.spacing.xxl
+            leftPadding: sidePad
+            rightPadding: sidePad
+            property real sidePad: Math.max(Fluent.Enums.spacing.xxl, (width - 980) / 2)
 
-            readonly property real groupWidth: width - Fluent.Enums.spacing.xxl * 2
+            readonly property real groupWidth: width - sidePad * 2
 
             // 页面标题
             Text {

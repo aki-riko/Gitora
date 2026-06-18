@@ -42,9 +42,10 @@ Item {
             spacing: Fluent.Enums.spacing.l
             topPadding: Fluent.Enums.spacing.xl
             bottomPadding: Fluent.Enums.spacing.xl
-            leftPadding: Fluent.Enums.spacing.xxl
-            rightPadding: Fluent.Enums.spacing.xxl
-            readonly property real cw: width - Fluent.Enums.spacing.xxl * 2
+            property real sidePad: Math.max(Fluent.Enums.spacing.xxl, (width - 980) / 2)
+            leftPadding: sidePad
+            rightPadding: sidePad
+            readonly property real cw: width - sidePad * 2
 
             // 标题栏
             RowLayout {

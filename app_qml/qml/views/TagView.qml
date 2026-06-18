@@ -34,9 +34,11 @@ Item {
             spacing: Fluent.Enums.spacing.l
             topPadding: Fluent.Enums.spacing.xl
             bottomPadding: Fluent.Enums.spacing.xl
-            leftPadding: Fluent.Enums.spacing.xxl
-            rightPadding: Fluent.Enums.spacing.xxl
-            readonly property real cw: width - Fluent.Enums.spacing.xxl * 2
+            // 内容最大宽度受限,超宽屏左右留白(用 padding 让内容靠左但不贴边/不拉满)
+            property real sidePad: Math.max(Fluent.Enums.spacing.xxl, (width - 980) / 2)
+            leftPadding: sidePad
+            rightPadding: sidePad
+            readonly property real cw: width - sidePad * 2
 
             RowLayout {
                 width: parent.cw
