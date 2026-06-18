@@ -92,7 +92,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
-            splitPosition: 0.42
+            splitPosition: 0.35
 
             firstContent: Item {
                 anchors.fill: parent

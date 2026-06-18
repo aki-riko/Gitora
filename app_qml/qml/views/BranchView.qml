@@ -76,11 +76,11 @@ Item {
                     model: localModel
                     delegate: Fluent.Card {
                         width: parent ? parent.width : 0
-                        height: lbRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                        height: lbRow.implicitHeight + Fluent.Enums.spacing.l * 2
                         RowLayout {
                             id: lbRow
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.m
+                            anchors.margins: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Icon {
                                 icon: Fluent.Enums.icon.branch_fork
@@ -137,11 +137,11 @@ Item {
                     model: remoteModel
                     delegate: Fluent.Card {
                         width: parent ? parent.width : 0
-                        height: rbRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                        height: rbRow.implicitHeight + Fluent.Enums.spacing.l * 2
                         RowLayout {
                             id: rbRow
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.m
+                            anchors.margins: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Icon {
                                 icon: Fluent.Enums.icon.branch_fork

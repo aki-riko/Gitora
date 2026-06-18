@@ -79,11 +79,11 @@ Item {
                 model: tagModel
                 delegate: Fluent.Card {
                     width: tagCol.cw
-                    height: tagRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                    height: tagRow.implicitHeight + Fluent.Enums.spacing.l * 2
                     RowLayout {
                         id: tagRow
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.m
+                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         Fluent.Icon {
                             icon: Fluent.Enums.icon.tag

@@ -104,11 +104,11 @@ Item {
                     model: conflictModel
                     delegate: Fluent.Card {
                         width: parent ? parent.width : 0
-                        height: confRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                        height: confRow.implicitHeight + Fluent.Enums.spacing.l * 2
                         RowLayout {
                             id: confRow
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.m
+                            anchors.margins: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Icon {
                                 icon: Fluent.Enums.icon.document_error

@@ -88,11 +88,11 @@ Item {
                 model: stashModel
                 delegate: Fluent.Card {
                     width: stashCol.cw
-                    height: stashRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                    height: stashRow.implicitHeight + Fluent.Enums.spacing.l * 2
                     RowLayout {
                         id: stashRow
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.m
+                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         ColumnLayout {
                             Layout.fillWidth: true
