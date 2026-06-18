@@ -76,27 +76,19 @@ Item {
                 spacing: Fluent.Enums.spacing.m
 
                 // 标题 + 搜索
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Fluent.Enums.spacing.m
-                    Text {
-                        text: "历史"
-                        font.pixelSize: Fluent.Enums.typography.displayLarge
-                        font.bold: true
-                        color: Fluent.Enums.textColor.primary
-                        font.family: Fluent.Enums.fontFamily
+                PageHeader {
+                    title: "历史"
+                    subtitle: root.searchMode ? (commitModel.count + " 条搜索结果") : (commitModel.count + " 条提交")
+                    Fluent.LineEdit {
+                        id: searchInput
+                        width: 240
+                        placeholderText: "搜索提交(消息/作者)"
+                        onTextChanged: searchDebounce.restart()
                     }
-                    Item { Layout.fillWidth: true }
                     Fluent.Button {
                         text: "Reflog"
                         icon: Fluent.Enums.icon.history
                         onClicked: reflogDialog.openReflog()
-                    }
-                    Fluent.LineEdit {
-                        id: searchInput
-                        Layout.preferredWidth: 240
-                        placeholderText: "搜索提交(消息/作者)"
-                        onTextChanged: searchDebounce.restart()
                     }
                 }
 
@@ -106,71 +98,109 @@ Item {
                     onTriggered: root.doSearch(searchInput.text)
                 }
 
-                // 提交列表
-                ListView {
-                    id: commitList
+                // 提交列表(时间线视觉 + Fluent 滚动条)
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    clip: true
-                    spacing: Fluent.Enums.spacing.s
-                    model: commitModel
 
-                    onContentYChanged: {
-                        if (atYEnd && !root.loading && root.hasMore && !root.searchMode)
-                            root.loadMore()
+                    ListView {
+                        id: commitList
+                        anchors.fill: parent
+                        anchors.rightMargin: Fluent.Enums.spacing.m  // 给滚动条留位
+                        clip: true
+                        spacing: Fluent.Enums.spacing.s
+                        model: commitModel
+
+                        onContentYChanged: {
+                            if (atYEnd && !root.loading && root.hasMore && !root.searchMode)
+                                root.loadMore()
+                        }
+
+                        delegate: Item {
+                            width: commitList.width
+                            height: 64
+                            readonly property bool isSel: root.selectedCommit && root.selectedCommit.hash === model.hash
+
+                            // 时间线:左侧连接线 + 圆点
+                            Rectangle {
+                                x: 11; y: 0
+                                width: Fluent.Enums.border.normal
+                                height: parent.height + Fluent.Enums.spacing.s
+                                color: Fluent.Enums.stateColor.border
+                                visible: index < commitList.count - 1
+                            }
+                            Rectangle {
+                                x: 6; y: 24
+                                width: 12; height: 12; radius: 6
+                                color: parent.isSel ? Fluent.Enums.accentColor : Fluent.Enums.cardColor
+                                border.width: Fluent.Enums.border.normal
+                                border.color: Fluent.Enums.accentColor
+                                z: 1
+                            }
+
+                            // 提交卡片
+                            Rectangle {
+                                x: 28
+                                width: parent.width - 28
+                                height: 60
+                                radius: Fluent.Enums.radius.large
+                                color: parent.isSel
+                                       ? Fluent.Enums.stateColor.hover
+                                       : (cardHover.hovered ? Fluent.Enums.stateColor.hover : Fluent.Enums.cardColor)
+                                border.width: Fluent.Enums.border.normal
+                                border.color: parent.isSel ? Fluent.Enums.accentColor : Fluent.Enums.stateColor.border
+
+                                HoverHandler { id: cardHover }
+                                TapHandler {
+                                    onTapped: root.selectedCommit = {
+                                        "hash": model.hash, "shortHash": model.shortHash,
+                                        "author": model.author, "email": model.email,
+                                        "date": model.date, "message": model.message, "branch": model.branch
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    anchors.fill: parent
+                                    anchors.margins: Fluent.Enums.spacing.m
+                                    spacing: 2
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: model.message
+                                        color: Fluent.Enums.textColor.primary
+                                        font.family: Fluent.Enums.fontFamily
+                                        font.pixelSize: Fluent.Enums.typography.body
+                                        font.bold: true
+                                        elide: Text.ElideRight
+                                    }
+                                    RowLayout {
+                                        Layout.fillWidth: true
+                                        spacing: Fluent.Enums.spacing.m
+                                        Text {
+                                            text: model.shortHash
+                                            color: Fluent.Enums.accentColor
+                                            font.family: "Consolas, monospace"
+                                            font.pixelSize: Fluent.Enums.typography.caption
+                                        }
+                                        Text {
+                                            text: model.author + " · " + model.date
+                                            color: Fluent.Enums.textColor.tertiary
+                                            font.family: Fluent.Enums.fontFamily
+                                            font.pixelSize: Fluent.Enums.typography.caption
+                                            elide: Text.ElideRight
+                                            Layout.fillWidth: true
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
 
-                    delegate: Rectangle {
-                        width: commitList.width
-                        height: 64
-                        radius: Fluent.Enums.radius.large
-                        color: (root.selectedCommit && root.selectedCommit.hash === model.hash)
-                               ? Fluent.Enums.stateColor.hover
-                               : (cardHover.hovered ? Fluent.Enums.stateColor.hover : Fluent.Enums.cardColor)
-                        border.width: Fluent.Enums.border.normal
-                        border.color: Fluent.Enums.stateColor.border
-
-                        HoverHandler { id: cardHover }
-                        TapHandler {
-                            onTapped: root.selectedCommit = {
-                                "hash": model.hash, "shortHash": model.shortHash,
-                                "author": model.author, "email": model.email,
-                                "date": model.date, "message": model.message, "branch": model.branch
-                            }
-                        }
-
-                        ColumnLayout {
-                            anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.m
-                            spacing: 2
-                            Text {
-                                Layout.fillWidth: true
-                                text: model.message
-                                color: Fluent.Enums.textColor.primary
-                                font.family: Fluent.Enums.fontFamily
-                                font.pixelSize: Fluent.Enums.typography.body
-                                font.bold: true
-                                elide: Text.ElideRight
-                            }
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Fluent.Enums.spacing.m
-                                Text {
-                                    text: model.shortHash
-                                    color: Fluent.Enums.accentColor
-                                    font.family: "Consolas, monospace"
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                }
-                                Text {
-                                    text: model.author + " · " + model.date
-                                    color: Fluent.Enums.textColor.tertiary
-                                    font.family: Fluent.Enums.fontFamily
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                    elide: Text.ElideRight
-                                    Layout.fillWidth: true
-                                }
-                            }
-                        }
+                    // Fluent 风格滚动条
+                    Fluent.ScrollBar {
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        target: commitList
                     }
                 }
             }
@@ -188,13 +218,12 @@ Item {
                 border.color: Fluent.Enums.stateColor.border
 
                 // 空状态
-                Text {
+                Fluent.EmptyState {
                     anchors.centerIn: parent
                     visible: !root.selectedCommit
-                    text: "选择一个提交查看详情"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.subtitle
+                    icon: Fluent.Enums.icon.history
+                    title: "未选择提交"
+                    description: "从左侧时间线选择一个提交查看详情"
                 }
 
                 ColumnLayout {

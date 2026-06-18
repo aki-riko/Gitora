@@ -126,13 +126,17 @@ Item {
                     }
 
                     // 变更文件列表
-                    ListView {
-                        id: changeList
+                    Item {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        clip: true
-                        spacing: 2
-                        model: changeModel
+
+                        ListView {
+                            id: changeList
+                            anchors.fill: parent
+                            anchors.rightMargin: Fluent.Enums.spacing.m
+                            clip: true
+                            spacing: 2
+                            model: changeModel
                         delegate: Rectangle {
                             width: changeList.width
                             height: 40
@@ -185,6 +189,14 @@ Item {
                                     onClicked: fileHistoryDialog.openFor(model.path)
                                 }
                             }
+                        }
+                        }
+
+                        Fluent.ScrollBar {
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.bottom: parent.bottom
+                            target: changeList
                         }
                     }
 
