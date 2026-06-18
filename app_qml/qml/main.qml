@@ -53,6 +53,8 @@ QtObject {
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
             lazyLoading: false
+            // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
+            micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
         }
     }
 }
