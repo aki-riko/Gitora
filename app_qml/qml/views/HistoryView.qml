@@ -99,25 +99,25 @@ Item {
                 }
 
                 // 提交列表(时间线视觉 + Fluent 滚动条)
-                Item {
+                // 提交列表(Fluent.ListView 自带 Fluent 滚动条 + 时间线视觉)
+                Fluent.ListView {
+                    id: commitListView
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    framed: false
+                    model: commitModel
 
-                    ListView {
-                        id: commitList
-                        anchors.fill: parent
-                        anchors.rightMargin: Fluent.Enums.spacing.m  // 给滚动条留位
-                        clip: true
-                        spacing: Fluent.Enums.spacing.s
-                        model: commitModel
-
-                        onContentYChanged: {
-                            if (atYEnd && !root.loading && root.hasMore && !root.searchMode)
+                    Connections {
+                        target: commitListView.listView
+                        function onContentYChanged() {
+                            var lv = commitListView.listView
+                            if (lv.atYEnd && !root.loading && root.hasMore && !root.searchMode)
                                 root.loadMore()
                         }
+                    }
 
-                        delegate: Item {
-                            width: commitList.width
+                    delegate: Item {
+                            width: commitListView.listView ? commitListView.listView.width : 0
                             height: 64
                             readonly property bool isSel: root.selectedCommit && root.selectedCommit.hash === model.hash
 
@@ -127,7 +127,7 @@ Item {
                                 width: Fluent.Enums.border.normal
                                 height: parent.height + Fluent.Enums.spacing.s
                                 color: Fluent.Enums.stateColor.border
-                                visible: index < commitList.count - 1
+                                visible: index < commitListView.count - 1
                             }
                             Rectangle {
                                 x: 6; y: 24
@@ -194,17 +194,8 @@ Item {
                             }
                         }
                     }
-
-                    // Fluent 风格滚动条
-                    Fluent.ScrollBar {
-                        anchors.right: parent.right
-                        anchors.top: parent.top
-                        anchors.bottom: parent.bottom
-                        target: commitList
-                    }
                 }
             }
-        }
 
         secondContent: Item {
             anchors.fill: parent

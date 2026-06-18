@@ -125,22 +125,18 @@ Item {
                         }
                     }
 
-                    // 变更文件列表
-                    Item {
+                    // 变更文件列表(Fluent.ListView 自带 Fluent 滚动条)
+                    Fluent.ListView {
+                        id: changeListView
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-
-                        ListView {
-                            id: changeList
-                            anchors.fill: parent
-                            anchors.rightMargin: Fluent.Enums.spacing.m
-                            clip: true
-                            spacing: 2
-                            model: changeModel
+                        framed: false
+                        spacing: 2
+                        model: changeModel
                         delegate: Rectangle {
-                            width: changeList.width
+                            width: changeListView.listView ? changeListView.listView.width : 0
                             height: 40
-                            radius: Fluent.Enums.radius.micro
+                            radius: Fluent.Enums.radius.small
                             color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
 
                             HoverHandler { id: hover }
@@ -189,14 +185,6 @@ Item {
                                     onClicked: fileHistoryDialog.openFor(model.path)
                                 }
                             }
-                        }
-                        }
-
-                        Fluent.ScrollBar {
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.bottom: parent.bottom
-                            target: changeList
                         }
                     }
 
