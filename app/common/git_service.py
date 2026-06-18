@@ -352,8 +352,9 @@ class GitService(QObject):
                     continue
 
                 is_current = line.startswith('*')
-                # 去掉前导的 '* ' 或 '  '，使用lstrip避免Windows编码问题导致的空格丢失
-                line = line.lstrip('* ').strip()
+                # 去掉前导的 '* '(当前分支) / '+ '(worktree 检出的分支) / '  '
+                # 使用lstrip避免Windows编码问题导致的空格丢失
+                line = line.lstrip('*+ ').strip()
 
                 # 处理分离头指针状态: (HEAD detached at xxx)
                 if line.startswith('(HEAD'):

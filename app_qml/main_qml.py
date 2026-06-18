@@ -38,13 +38,14 @@ def main() -> int:
     app = App(sys.argv)
     engine = app.engine
 
-    # 单实例检查(共享内存)
-    from PySide6.QtCore import QSharedMemory
-    shared = QSharedMemory("Gitess_QML_SingleInstance_Key")
-    if not shared.create(1):
-        from PySide6.QtWidgets import QMessageBox
-        QMessageBox.warning(None, "Gitess 已在运行", "Gitess 已经在运行中,请勿重复启动。")
-        return 0
+    # 单实例检查(共享内存);自检模式跳过
+    if not os.environ.get("GITESS_QML_SELFTEST"):
+        from PySide6.QtCore import QSharedMemory
+        shared = QSharedMemory("Gitess_QML_SingleInstance_Key")
+        if not shared.create(1):
+            from PySide6.QtWidgets import QMessageBox
+            QMessageBox.warning(None, "Gitess 已在运行", "Gitess 已经在运行中,请勿重复启动。")
+            return 0
 
     # Git 安装检测
     from app.common.git_installer import gitInstaller

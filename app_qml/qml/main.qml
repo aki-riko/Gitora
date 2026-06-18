@@ -24,7 +24,7 @@ QtObject {
     ]
 
     property var bottomNavItems: [
-        { "text": "设置", "icon": iconPath("Settings"), "key": "SettingsPage" }
+        { "text": "设置", "icon": iconPath("Settings"), "key": "SettingsView" }
     ]
 
     property var pagePaths: [
