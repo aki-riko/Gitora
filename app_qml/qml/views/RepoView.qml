@@ -87,6 +87,35 @@ Item {
             elide: Text.ElideMiddle
         }
 
+        // ---------- 提交区(横跨全宽) ----------
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Fluent.Enums.spacing.m
+            Fluent.LineEdit {
+                id: commitInput
+                Layout.fillWidth: true
+                placeholderText: "提交信息"
+            }
+            Fluent.Button {
+                text: "提交"
+                style: Fluent.Enums.button.style_primary
+                enabled: commitInput.text.length > 0
+                onClicked: {
+                    var res = GitBridge.commit(commitInput.text)
+                    if (res[0]) commitInput.text = ""
+                    console.log("commit:", res[0], res[1])
+                }
+            }
+            Fluent.Button {
+                text: "一键提交推送"
+                enabled: commitInput.text.length > 0
+                onClicked: {
+                    GitBridge.quickCommitPush(commitInput.text)
+                    commitInput.text = ""
+                }
+            }
+        }
+
         // ---------- 主体分栏 ----------
         Fluent.SplitPane {
             Layout.fillWidth: true
@@ -203,35 +232,6 @@ Item {
                                         onClicked: fileHistoryDialog.openFor(model.path)
                                     }
                                 }
-                            }
-                        }
-                    }
-
-                    // 提交面板
-                    Fluent.LineEdit {
-                        id: commitInput
-                        Layout.fillWidth: true
-                        placeholderText: "提交信息"
-                    }
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Fluent.Enums.spacing.m
-                        Fluent.Button {
-                            text: "提交"
-                            style: Fluent.Enums.button.style_primary
-                            enabled: commitInput.text.length > 0
-                            onClicked: {
-                                var res = GitBridge.commit(commitInput.text)
-                                if (res[0]) commitInput.text = ""
-                                console.log("commit:", res[0], res[1])
-                            }
-                        }
-                        Fluent.Button {
-                            text: "一键提交推送"
-                            enabled: commitInput.text.length > 0
-                            onClicked: {
-                                GitBridge.quickCommitPush(commitInput.text)
-                                commitInput.text = ""
                             }
                         }
                     }
