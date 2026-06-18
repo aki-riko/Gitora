@@ -16,11 +16,12 @@ Item {
     property bool searchMode: false
     property var selectedCommit: null
 
-    ListModel { id: commitModel }
+    property var allCommits: []        // 已加载的提交(累积)
+    property var timelineItems: []      // 按日期分组的 Timeline items
 
     // ==================== 数据加载 ====================
     function resetAndLoad() {
-        commitModel.clear()
+        root.allCommits = []
         root.loadedCount = 0
         root.hasMore = true
         root.searchMode = false
@@ -33,19 +34,53 @@ Item {
         root.loading = true
         var fast = GitBridge.isLargeRepo()
         var batch = GitBridge.getLog(root.pageSize, root.loadedCount, fast)
-        for (var i = 0; i < batch.length; i++) commitModel.append(batch[i])
+        root.allCommits = root.allCommits.concat(batch)
         root.loadedCount += batch.length
         root.hasMore = batch.length === root.pageSize
         root.loading = false
+        rebuildTimeline()
     }
 
     function doSearch(query) {
         if (query === "") { resetAndLoad(); return }
         if (!GitBridge || !GitBridge.repoPath) return
         root.searchMode = true
-        commitModel.clear()
-        var results = GitBridge.searchCommits(query, "all", 100)
-        for (var i = 0; i < results.length; i++) commitModel.append(results[i])
+        root.allCommits = GitBridge.searchCommits(query, "all", 100)
+        rebuildTimeline()
+    }
+
+    // 提交日期 -> 分组标签(今天/昨天/本周/更早 + 日期)
+    function _dateGroup(dateStr) {
+        var d = (dateStr || "").substring(0, 10)  // "YYYY-MM-DD"
+        if (d === "") return "未知日期"
+        var today = new Date()
+        var pad = function(n) { return n < 10 ? "0" + n : "" + n }
+        var todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate())
+        var y = new Date(today.getTime() - 86400000)
+        var yStr = y.getFullYear() + "-" + pad(y.getMonth() + 1) + "-" + pad(y.getDate())
+        if (d === todayStr) return "今天"
+        if (d === yStr) return "昨天"
+        return d
+    }
+
+    // 把 allCommits 按日期分组成 Timeline.items
+    function rebuildTimeline() {
+        var groups = []
+        var indexByLabel = ({})
+        for (var i = 0; i < root.allCommits.length; i++) {
+            var c = root.allCommits[i]
+            var label = _dateGroup(c.date)
+            if (indexByLabel[label] === undefined) {
+                indexByLabel[label] = groups.length
+                groups.push({ "title": label, "status": "info", "cards": [] })
+            }
+            groups[indexByLabel[label]].cards.push({
+                "text": c.message,
+                "description": c.shortHash + " · " + c.author,
+                "commit": c
+            })
+        }
+        root.timelineItems = groups
     }
 
     Connections {
@@ -78,7 +113,7 @@ Item {
                 // 标题 + 搜索
                 PageHeader {
                     title: "历史"
-                    subtitle: root.searchMode ? (commitModel.count + " 条搜索结果") : (commitModel.count + " 条提交")
+                    subtitle: root.searchMode ? (root.allCommits.length + " 条搜索结果") : (root.allCommits.length + " 条提交")
                     Fluent.LineEdit {
                         id: searchInput
                         width: 240
@@ -98,104 +133,37 @@ Item {
                     onTriggered: root.doSearch(searchInput.text)
                 }
 
-                // 提交列表(时间线视觉 + Fluent 滚动条)
-                // 提交列表(Fluent.ListView 自带 Fluent 滚动条 + 时间线视觉)
-                Fluent.ListView {
-                    id: commitListView
+                // 提交时间线(按日期分组,用 Fluent.Timeline 封装)
+                Fluent.ScrollArea {
+                    id: timelineScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    framed: false
-                    model: commitModel
 
-                    Connections {
-                        target: commitListView.listView
-                        function onContentYChanged() {
-                            var lv = commitListView.listView
-                            if (lv.atYEnd && !root.loading && root.hasMore && !root.searchMode)
-                                root.loadMore()
+                    Column {
+                        width: timelineScroll.width - Fluent.Enums.spacing.l
+                        spacing: Fluent.Enums.spacing.m
+
+                        Fluent.Timeline {
+                            width: parent.width
+                            items: root.timelineItems
+                            onCardClickedData: function(groupIndex, cardIndex, cardData) {
+                                if (cardData && cardData.commit)
+                                    root.selectedCommit = cardData.commit
+                            }
                         }
-                    }
 
-                    delegate: Item {
-                            width: commitListView.listView ? commitListView.listView.width : 0
-                            height: 64
-                            readonly property bool isSel: root.selectedCommit && root.selectedCommit.hash === model.hash
-
-                            // 时间线:左侧连接线 + 圆点
-                            Rectangle {
-                                x: 11; y: 0
-                                width: Fluent.Enums.border.normal
-                                height: parent.height + Fluent.Enums.spacing.s
-                                color: Fluent.Enums.stateColor.border
-                                visible: index < commitListView.count - 1
-                            }
-                            Rectangle {
-                                x: 6; y: 24
-                                width: 12; height: 12; radius: 6
-                                color: parent.isSel ? Fluent.Enums.accentColor : Fluent.Enums.cardColor
-                                border.width: Fluent.Enums.border.normal
-                                border.color: Fluent.Enums.accentColor
-                                z: 1
-                            }
-
-                            // 提交卡片
-                            Rectangle {
-                                x: 28
-                                width: parent.width - 28
-                                height: 60
-                                radius: Fluent.Enums.radius.large
-                                color: parent.isSel
-                                       ? Fluent.Enums.stateColor.hover
-                                       : (cardHover.hovered ? Fluent.Enums.stateColor.hover : Fluent.Enums.cardColor)
-                                border.width: Fluent.Enums.border.normal
-                                border.color: parent.isSel ? Fluent.Enums.accentColor : Fluent.Enums.stateColor.border
-
-                                HoverHandler { id: cardHover }
-                                TapHandler {
-                                    onTapped: root.selectedCommit = {
-                                        "hash": model.hash, "shortHash": model.shortHash,
-                                        "author": model.author, "email": model.email,
-                                        "date": model.date, "message": model.message, "branch": model.branch
-                                    }
-                                }
-
-                                ColumnLayout {
-                                    anchors.fill: parent
-                                    anchors.margins: Fluent.Enums.spacing.m
-                                    spacing: 2
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: model.message
-                                        color: Fluent.Enums.textColor.primary
-                                        font.family: Fluent.Enums.fontFamily
-                                        font.pixelSize: Fluent.Enums.typography.body
-                                        font.bold: true
-                                        elide: Text.ElideRight
-                                    }
-                                    RowLayout {
-                                        Layout.fillWidth: true
-                                        spacing: Fluent.Enums.spacing.m
-                                        Text {
-                                            text: model.shortHash
-                                            color: Fluent.Enums.accentColor
-                                            font.family: "Consolas, monospace"
-                                            font.pixelSize: Fluent.Enums.typography.caption
-                                        }
-                                        Text {
-                                            text: model.author + " · " + model.date
-                                            color: Fluent.Enums.textColor.tertiary
-                                            font.family: Fluent.Enums.fontFamily
-                                            font.pixelSize: Fluent.Enums.typography.caption
-                                            elide: Text.ElideRight
-                                            Layout.fillWidth: true
-                                        }
-                                    }
-                                }
-                            }
+                        // 加载更多(分页;搜索模式下隐藏)
+                        Fluent.Button {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            visible: root.hasMore && !root.searchMode
+                            text: root.loading ? "加载中..." : "加载更多"
+                            enabled: !root.loading
+                            onClicked: root.loadMore()
                         }
                     }
                 }
             }
+        }
 
         secondContent: Item {
             anchors.fill: parent
