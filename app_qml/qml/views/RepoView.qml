@@ -125,64 +125,83 @@ Item {
                         }
                     }
 
-                    // 变更文件列表(Fluent.ListView 自带 Fluent 滚动条)
-                    Fluent.ListView {
-                        id: changeListView
+                    // 变更文件列表(卡片容器 + 空状态)
+                    Rectangle {
                         Layout.fillWidth: true
                         Layout.fillHeight: true
-                        framed: false
-                        spacing: 2
-                        model: changeModel
-                        delegate: Rectangle {
-                            width: changeListView.listView ? changeListView.listView.width : 0
-                            height: 40
-                            radius: Fluent.Enums.radius.small
-                            color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
+                        radius: Fluent.Enums.radius.large
+                        color: Fluent.Enums.cardColor
+                        border.width: Fluent.Enums.border.normal
+                        border.color: Fluent.Enums.stateColor.border
 
-                            HoverHandler { id: hover }
-                            TapHandler { onTapped: root.showDiff(model.path, model.staged) }
+                        // 空状态:工作区干净
+                        Fluent.EmptyState {
+                            anchors.centerIn: parent
+                            visible: changeModel.count === 0
+                            icon: Fluent.Enums.icon.checkmark_circle
+                            title: "工作区干净"
+                            description: "没有未提交的变更"
+                        }
 
-                            RowLayout {
-                                anchors.fill: parent
-                                anchors.leftMargin: Fluent.Enums.spacing.m
-                                anchors.rightMargin: Fluent.Enums.spacing.s
-                                spacing: Fluent.Enums.spacing.m
+                        Fluent.ListView {
+                            id: changeListView
+                            anchors.fill: parent
+                            anchors.margins: Fluent.Enums.spacing.xs
+                            visible: changeModel.count > 0
+                            framed: false
+                            spacing: 2
+                            model: changeModel
+                            delegate: Rectangle {
+                                width: changeListView.listView ? changeListView.listView.width : 0
+                                height: 40
+                                radius: Fluent.Enums.radius.small
+                                color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
 
-                                Text {
-                                    text: model.statusText
-                                    Layout.preferredWidth: 50
-                                    color: model.staged ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.tertiary
-                                    font.family: Fluent.Enums.fontFamily
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: model.path
-                                    color: Fluent.Enums.textColor.primary
-                                    font.family: Fluent.Enums.fontFamily
-                                    font.pixelSize: Fluent.Enums.typography.body
-                                    elide: Text.ElideMiddle
-                                }
-                                Fluent.Button {
-                                    text: model.staged ? "取消" : "暂存"
-                                    style: Fluent.Enums.button.style_transparent
-                                    visible: hover.hovered
-                                    onClicked: {
-                                        if (model.staged) GitBridge.unstageFile(model.path)
-                                        else GitBridge.stageFile(model.path)
+                                HoverHandler { id: hover }
+                                TapHandler { onTapped: root.showDiff(model.path, model.staged) }
+
+                                RowLayout {
+                                    anchors.fill: parent
+                                    anchors.leftMargin: Fluent.Enums.spacing.m
+                                    anchors.rightMargin: Fluent.Enums.spacing.s
+                                    spacing: Fluent.Enums.spacing.m
+
+                                    Text {
+                                        text: model.statusText
+                                        Layout.preferredWidth: 50
+                                        color: model.staged ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.tertiary
+                                        font.family: Fluent.Enums.fontFamily
+                                        font.pixelSize: Fluent.Enums.typography.caption
                                     }
-                                }
-                                Fluent.Button {
-                                    text: "丢弃"
-                                    style: Fluent.Enums.button.style_transparent
-                                    visible: hover.hovered && !model.staged
-                                    onClicked: GitBridge.discardFile(model.path)
-                                }
-                                Fluent.Button {
-                                    text: "历史"
-                                    style: Fluent.Enums.button.style_transparent
-                                    visible: hover.hovered
-                                    onClicked: fileHistoryDialog.openFor(model.path)
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: model.path
+                                        color: Fluent.Enums.textColor.primary
+                                        font.family: Fluent.Enums.fontFamily
+                                        font.pixelSize: Fluent.Enums.typography.body
+                                        elide: Text.ElideMiddle
+                                    }
+                                    Fluent.Button {
+                                        text: model.staged ? "取消" : "暂存"
+                                        style: Fluent.Enums.button.style_transparent
+                                        visible: hover.hovered
+                                        onClicked: {
+                                            if (model.staged) GitBridge.unstageFile(model.path)
+                                            else GitBridge.stageFile(model.path)
+                                        }
+                                    }
+                                    Fluent.Button {
+                                        text: "丢弃"
+                                        style: Fluent.Enums.button.style_transparent
+                                        visible: hover.hovered && !model.staged
+                                        onClicked: GitBridge.discardFile(model.path)
+                                    }
+                                    Fluent.Button {
+                                        text: "历史"
+                                        style: Fluent.Enums.button.style_transparent
+                                        visible: hover.hovered
+                                        onClicked: fileHistoryDialog.openFor(model.path)
+                                    }
                                 }
                             }
                         }
@@ -230,11 +249,21 @@ Item {
                     border.width: Fluent.Enums.border.normal
                     border.color: Fluent.Enums.stateColor.border
 
+                    // 空状态:未选择文件
+                    Fluent.EmptyState {
+                        anchors.centerIn: parent
+                        visible: root.selectedPath === ""
+                        icon: Fluent.Enums.icon.document
+                        title: "查看文件差异"
+                        description: "从左侧变更列表选择一个文件"
+                    }
+
                     Flickable {
                         id: diffFlick
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.m
+                        anchors.margins: Fluent.Enums.spacing.l
                         clip: true
+                        visible: root.selectedPath !== ""
                         contentWidth: diffView.paintedWidth
                         contentHeight: diffView.paintedHeight
 
@@ -247,7 +276,7 @@ Item {
                             font.family: "Consolas, Cascadia Code, monospace"
                             font.pixelSize: Fluent.Enums.typography.body
                             color: Fluent.Enums.textColor.primary
-                            text: root.selectedPath === "" ? "选择文件查看差异" : ""
+                            text: ""
                         }
                     }
                 }
