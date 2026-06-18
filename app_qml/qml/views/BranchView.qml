@@ -73,14 +73,56 @@ Item {
                 width: parent.cw
                 Repeater {
                     model: localModel
-                    delegate: BranchRow {
+                    delegate: Fluent.Card {
                         width: parent ? parent.width : 0
-                        bname: model.name
-                        isCurrent: model.isCurrent
-                        tracking: model.tracking
-                        ahead: model.ahead
-                        behind: model.behind
-                        isRemote: false
+                        height: lbRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                        RowLayout {
+                            id: lbRow
+                            anchors.fill: parent
+                            anchors.margins: Fluent.Enums.spacing.m
+                            spacing: Fluent.Enums.spacing.m
+                            Fluent.Icon {
+                                icon: Fluent.Enums.icon.branch_fork
+                                iconSize: Fluent.Enums.iconSize.l
+                                color: model.isCurrent ? Fluent.Enums.accentColor : Fluent.Enums.textColor.tertiary
+                            }
+                            ColumnLayout {
+                                Layout.fillWidth: true
+                                spacing: 0
+                                Text {
+                                    text: model.name + (model.isCurrent ? "  (当前)" : "")
+                                    color: Fluent.Enums.textColor.primary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.body
+                                    font.bold: model.isCurrent
+                                }
+                                Text {
+                                    Layout.fillWidth: true
+                                    text: {
+                                        var parts = []
+                                        if (model.tracking) parts.push("跟踪 " + model.tracking)
+                                        if (model.ahead > 0) parts.push("↑" + model.ahead)
+                                        if (model.behind > 0) parts.push("↓" + model.behind)
+                                        return parts.length > 0 ? parts.join("  ") : "本地分支"
+                                    }
+                                    color: Fluent.Enums.textColor.tertiary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.caption
+                                    elide: Text.ElideRight
+                                }
+                            }
+                            Fluent.Button {
+                                text: model.isCurrent ? "当前" : "切换"
+                                enabled: !model.isCurrent
+                                onClicked: root._op(GitBridge.checkoutBranch(model.name))
+                            }
+                            Fluent.Button {
+                                text: "删除"
+                                style: Fluent.Enums.button.style_transparent
+                                visible: !model.isCurrent
+                                onClicked: root._op(GitBridge.deleteBranch(model.name, false))
+                            }
+                        }
                     }
                 }
             }
@@ -92,39 +134,34 @@ Item {
                 visible: remoteModel.count > 0
                 Repeater {
                     model: remoteModel
-                    delegate: BranchRow {
+                    delegate: Fluent.Card {
                         width: parent ? parent.width : 0
-                        bname: model.name
-                        isRemote: true
+                        height: rbRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                        RowLayout {
+                            id: rbRow
+                            anchors.fill: parent
+                            anchors.margins: Fluent.Enums.spacing.m
+                            spacing: Fluent.Enums.spacing.m
+                            Fluent.Icon {
+                                icon: Fluent.Enums.icon.branch_fork
+                                iconSize: Fluent.Enums.iconSize.l
+                                color: Fluent.Enums.textColor.tertiary
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: model.name
+                                color: Fluent.Enums.textColor.primary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.body
+                            }
+                            Fluent.Button {
+                                text: "检出"
+                                onClicked: root._op(GitBridge.checkoutBranch(model.name))
+                            }
+                        }
                     }
                 }
             }
-        }
-    }
-
-    // 新建分支对话框(简化:用 inline LineEdit + 确认)
-    component BranchRow: Fluent.SettingsCard {
-        property string bname: ""
-        property bool isCurrent: false
-        property string tracking: ""
-        property int ahead: 0
-        property int behind: 0
-        property bool isRemote: false
-
-        title: bname + (isCurrent ? "  (当前)" : "")
-        content: {
-            if (isRemote) return "远程分支"
-            var parts = []
-            if (tracking) parts.push("跟踪 " + tracking)
-            if (ahead > 0) parts.push("↑" + ahead)
-            if (behind > 0) parts.push("↓" + behind)
-            return parts.length > 0 ? parts.join("  ") : "本地分支"
-        }
-        icon: Fluent.Enums.icon.branch_fork
-        type: Fluent.Enums.settingCard.type_push
-        buttonText: isRemote ? "检出" : (isCurrent ? "当前" : "切换")
-        onClicked: {
-            if (isRemote || !isCurrent) root._op(GitBridge.checkoutBranch(bname))
         }
     }
 
