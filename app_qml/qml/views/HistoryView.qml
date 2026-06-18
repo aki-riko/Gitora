@@ -139,6 +139,21 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
+                    // 滚动触底自动加载下一批
+                    onContentYChanged: {
+                        if (contentHeight > height
+                            && contentY + height >= contentHeight - 120
+                            && !root.loading && root.hasMore && !root.searchMode)
+                            root.loadMore()
+                    }
+
+                    // 首屏内容未填满视口时继续加载,保证可滚动
+                    onContentHeightChanged: {
+                        if (contentHeight > 0 && contentHeight <= height
+                            && !root.loading && root.hasMore && !root.searchMode)
+                            root.loadMore()
+                    }
+
                     Column {
                         width: timelineScroll.width - Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
@@ -152,13 +167,14 @@ Item {
                             }
                         }
 
-                        // 加载更多(分页;搜索模式下隐藏)
-                        Fluent.Button {
+                        // 加载状态提示
+                        Text {
                             anchors.horizontalCenter: parent.horizontalCenter
-                            visible: root.hasMore && !root.searchMode
-                            text: root.loading ? "加载中..." : "加载更多"
-                            enabled: !root.loading
-                            onClicked: root.loadMore()
+                            visible: root.loading
+                            text: "加载中..."
+                            color: Fluent.Enums.textColor.tertiary
+                            font.family: Fluent.Enums.fontFamily
+                            font.pixelSize: Fluent.Enums.typography.caption
                         }
                     }
                 }
