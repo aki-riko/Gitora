@@ -88,6 +88,8 @@ def main() -> int:
     # 启动后台扫描(延迟启动,不阻塞窗口显示)
     from PySide6.QtCore import QTimer as _QTimer
     _QTimer.singleShot(1500, repo_scanner.start)
+    # 退出时停止扫描线程,避免 QThread 销毁时仍在运行
+    app.aboutToQuit.connect(repo_scanner.shutdown)
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL

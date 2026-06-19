@@ -9,7 +9,7 @@ import os
 import string
 from typing import List, Optional
 
-from PySide6.QtCore import QObject, QThread, Signal, Slot
+from PySide6.QtCore import QObject, QThread, Signal, Slot, Property
 
 from app.common.logger import get_logger
 
@@ -89,7 +89,7 @@ class RepoScanner(QObject):
         self._worker: Optional[_ScanWorker] = None
         self._results: List[str] = []
 
-    @property
+    @Property(bool, notify=scanningChanged)
     def scanning(self) -> bool:
         return self._worker is not None and self._worker.isRunning()
 
@@ -119,6 +119,12 @@ class RepoScanner(QObject):
     def stop(self):
         if self._worker:
             self._worker.stop()
+
+    def shutdown(self):
+        """程序退出时调用:停止并等待扫描线程结束,避免 QThread 被销毁时仍在运行。"""
+        if self._worker and self._worker.isRunning():
+            self._worker.stop()
+            self._worker.wait(3000)  # 最多等 3s
 
     def _on_repo_found(self, path: str):
         self._results.append(path)

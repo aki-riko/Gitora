@@ -92,6 +92,8 @@ Item {
                     var items = []
                     for (var i = 0; i < pathList.length; i++)
                         items.push({ "text": pathList[i], "icon": Fluent.Enums.icon.folder })
+                    if (items.length === 0)
+                        items.push({ "text": (RepoScanner && RepoScanner.scanning) ? "正在扫描磁盘..." : "暂无最近仓库", "icon": Fluent.Enums.icon.info })
                     return items
                 }
                 function rebuildList() {
