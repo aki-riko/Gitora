@@ -9,7 +9,7 @@ import os
 import string
 from typing import List, Optional
 
-from PySide6.QtCore import QObject, QThread, Signal
+from PySide6.QtCore import QObject, QThread, Signal, Slot
 
 from app.common.logger import get_logger
 
@@ -87,28 +87,42 @@ class RepoScanner(QObject):
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._worker: Optional[_ScanWorker] = None
+        self._results: List[str] = []
 
     @property
     def scanning(self) -> bool:
         return self._worker is not None and self._worker.isRunning()
 
-    def start(self, roots: Optional[List[str]] = None):
+    @Slot(result="QVariantList")
+    def getResults(self) -> list:
+        """返回已扫描到的仓库列表(累积)。"""
+        return list(self._results)
+
+    @Slot()
+    @Slot("QVariantList")
+    def start(self, roots=None):
         """开始扫描;roots 为空则扫所有固定磁盘。"""
         if self.scanning:
             logger.info("扫描已在进行中,忽略重复请求")
             return
-        roots = roots or _list_fixed_drives()
+        roots = list(roots) if roots else _list_fixed_drives()
         logger.info(f"开始扫描 Git 仓库,根目录: {roots}")
+        self._results = []
         self._worker = _ScanWorker(roots, self)
-        self._worker.repoFound.connect(self.repoFound)
+        self._worker.repoFound.connect(self._on_repo_found)
         self._worker.finished.connect(self._on_finished)
         self._worker.progress.connect(self.scanProgress)
         self.scanningChanged.emit(True)
         self._worker.start()
 
+    @Slot()
     def stop(self):
         if self._worker:
             self._worker.stop()
+
+    def _on_repo_found(self, path: str):
+        self._results.append(path)
+        self.repoFound.emit(path)
 
     def _on_finished(self, count: int):
         logger.info(f"扫描完成,找到 {count} 个仓库")

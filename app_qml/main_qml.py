@@ -69,6 +69,9 @@ def main() -> int:
     ctx.setContextProperty("ConfigManager", config_manager)
     ctx.setContextProperty("ClipboardHelper", get_clipboard_helper())
     ctx.setContextProperty("RepoScanner", repo_scanner)
+    # 启动后台扫描(延迟启动,不阻塞窗口显示)
+    from PySide6.QtCore import QTimer as _QTimer
+    _QTimer.singleShot(1500, repo_scanner.start)
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL

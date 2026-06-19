@@ -75,28 +75,40 @@ Item {
                 text: "打开"
                 icon: Fluent.Enums.icon.folder
                 feature: Fluent.Enums.button.feature_split
-                // 主按钮:选目录;下拉:最近仓库 + 扫描全盘
-                property var recentList: []
+                // 主按钮:选目录;下拉:最近仓库 + 后台扫描到的仓库(去重)
+                property var pathList: []
                 menuItems: {
                     var items = []
-                    for (var i = 0; i < recentList.length; i++)
-                        items.push({ "text": recentList[i], "icon": Fluent.Enums.icon.folder })
-                    items.push({ "text": "🔍 扫描全盘 Git 仓库", "icon": Fluent.Enums.icon.search })
+                    for (var i = 0; i < pathList.length; i++)
+                        items.push({ "text": pathList[i], "icon": Fluent.Enums.icon.folder })
                     return items
                 }
-                function refreshRecent() {
-                    recentList = (GitBridge ? GitBridge.getRecentRepos() : [])
+                function rebuildList() {
+                    var seen = ({})
+                    var merged = []
+                    var recent = GitBridge ? GitBridge.getRecentRepos() : []
+                    var scanned = (typeof RepoScanner !== "undefined") ? RepoScanner.getResults() : []
+                    var all = recent.concat(scanned)
+                    for (var i = 0; i < all.length; i++) {
+                        var p = all[i]
+                        if (!seen[p]) { seen[p] = true; merged.push(p) }
+                    }
+                    pathList = merged
                 }
-                Component.onCompleted: refreshRecent()
+                Component.onCompleted: rebuildList()
                 onClicked: folderDialog.open()
                 onMenuItemClicked: function(index, text) {
-                    if (index === recentList.length) {
-                        // 最后一项 = 扫描全盘
-                        scanDialog.startScan()
-                    } else {
-                        // 打开最近仓库
-                        if (GitBridge.setRepoPath(recentList[index])) root.reload()
+                    if (index >= 0 && index < pathList.length) {
+                        if (GitBridge.setRepoPath(pathList[index])) {
+                            root.reload()
+                            rebuildList()
+                        }
                     }
+                }
+                // 扫描有新结果时刷新下拉
+                Connections {
+                    target: typeof RepoScanner !== "undefined" ? RepoScanner : null
+                    function onScanFinished(n) { openButton.rebuildList() }
                 }
             }
             Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
@@ -354,15 +366,4 @@ Item {
 
     // 文件历史
     FileHistoryDialog { id: fileHistoryDialog }
-
-    // 全盘扫描
-    RepoScanDialog {
-        id: scanDialog
-        onRepoChosen: function(path) {
-            if (GitBridge.setRepoPath(path)) {
-                root.reload()
-                openButton.refreshRecent()
-            }
-        }
-    }
 }
