@@ -36,6 +36,10 @@ Item {
             console.log("operation:", ok, msg)
             root.reload()
         }
+        function onRepoOpened(ok, pathOrErr) {
+            if (ok) openButton.rebuildList()
+            else console.warn("打开仓库失败:", pathOrErr)
+        }
     }
 
     Component.onCompleted: root.reload()
@@ -99,10 +103,7 @@ Item {
                 onClicked: folderDialog.open()
                 onMenuItemClicked: function(index, text) {
                     if (index >= 0 && index < pathList.length) {
-                        if (GitBridge.setRepoPath(pathList[index])) {
-                            root.reload()
-                            rebuildList()
-                        }
+                        GitBridge.openRepoAsync(pathList[index])
                     }
                 }
                 // 扫描有新结果时刷新下拉
@@ -329,8 +330,7 @@ Item {
         title: "选择 Git 仓库目录"
         onAccepted: {
             var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
-            if (GitBridge.setRepoPath(path)) root.reload()
-            else console.warn("不是有效的 Git 仓库: " + path)
+            GitBridge.openRepoAsync(path)
         }
     }
 
@@ -348,7 +348,7 @@ Item {
             var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
             var res = GitBridge.initRepo(path)
             if (res[0]) {
-                GitBridge.setRepoPath(path)
+                GitBridge.openRepoAsync(path)
                 initGuide.repoPath = path
                 initGuide.currentIndex = 0
                 initGuide.show()

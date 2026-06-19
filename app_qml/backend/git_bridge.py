@@ -74,6 +74,7 @@ class GitBridge(QObject):
     operationFinished = Signal(bool, str)
     progressUpdated = Signal(int, str)
     repoPathChanged = Signal(str)
+    repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -98,6 +99,29 @@ class GitBridge(QObject):
             recentReposManager.add(self._svc.repo_path or path)
             self.repoPathChanged.emit(self._svc.repo_path or "")
         return ok
+
+    @Slot(str)
+    def openRepoAsync(self, path: str):
+        """后台打开仓库,不阻塞主线程;完成后发 repoOpened(ok, path/err) +(成功时)statusChanged。"""
+        import threading
+
+        def work():
+            try:
+                ok = self._svc.set_repo_path(path)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"打开仓库失败 {path}: {e}")
+                ok = False
+            if ok:
+                from app.common.recent_repos import recentReposManager
+                recentReposManager.add(self._svc.repo_path or path)
+                # 信号跨线程 emit 是线程安全的(排队到主线程)
+                self.repoPathChanged.emit(self._svc.repo_path or "")
+                self.repoOpened.emit(True, self._svc.repo_path or path)
+                self.statusChanged.emit()
+            else:
+                self.repoOpened.emit(False, path)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(result="QVariantList")
     def getRecentRepos(self) -> list:

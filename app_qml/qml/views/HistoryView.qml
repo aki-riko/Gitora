@@ -138,6 +138,7 @@ Item {
                     id: timelineScroll
                     Layout.fillWidth: true
                     Layout.fillHeight: true
+                    orientation: Qt.Vertical   // 只竖向滚动,内容超宽换行不横滚
 
                     // 滚动触底自动加载下一批
                     onContentYChanged: {
