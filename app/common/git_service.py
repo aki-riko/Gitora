@@ -685,9 +685,24 @@ class GitService(QObject):
         """
         self.operationStarted.emit("正在推送...")
 
+        # 边界检查:远程不存在 / 当前无分支(空仓库/分离头)
+        remotes = self.get_remotes()
+        if remote not in remotes:
+            msg = f"未配置远程 '{remote}',请先在「分支」或克隆向导中添加远程仓库" if not remotes else f"远程 '{remote}' 不存在,可用: {', '.join(remotes)}"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
+
         # 如果没有指定分支，获取当前分支
         if not branch:
             branch = self.get_current_branch()
+        if not branch:
+            msg = "当前没有可推送的分支(空仓库或处于分离头指针状态,请先提交)"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
 
         # 始终使用 -u 设置上游分支（对新分支和已有分支都安全）
         args = ['push', '-u']
@@ -747,6 +762,15 @@ class GitService(QObject):
             callback: 完成回调
         """
         self.operationStarted.emit("正在拉取...")
+
+        # 边界检查:远程不存在
+        remotes = self.get_remotes()
+        if remote not in remotes:
+            msg = f"未配置远程 '{remote}',请先添加远程仓库" if not remotes else f"远程 '{remote}' 不存在,可用: {', '.join(remotes)}"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
 
         args = ['pull']
         if rebase:
@@ -1419,6 +1443,8 @@ class GitService(QObject):
                 cwd=path,
                 capture_output=True,
                 text=True,
+                encoding='utf-8',
+                errors='replace',
                 timeout=10,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
