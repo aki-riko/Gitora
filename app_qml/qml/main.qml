@@ -1,4 +1,4 @@
-// Gitess QML 版主窗口(阶段 0 脚手架)
+// Gitess QML 版主窗口
 import QtQuick
 
 import FluentQML as Fluent
@@ -55,6 +55,20 @@ QtObject {
             lazyLoading: true
             // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
             micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
+            // 创建启动屏幕,赋给 _splashInstance;内容加载完成后引擎自动 finish()
+            Component.onCompleted: {
+                this._splashInstance = root.splashComponent.createObject(this.contentItem)
+            }
+        }
+    }
+
+    // 启动屏幕
+    property Component splashComponent: Component {
+        Fluent.SplashScreen {
+            iconSource: root.iconPath("BranchFork")
+            title: root.windowTitle
+            subtitle: "正在加载..."
+            z: 9999
         }
     }
 }
