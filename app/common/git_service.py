@@ -207,8 +207,8 @@ class GitService(QObject):
                     fp = os.path.join(root, f)
                     if os.path.exists(fp):
                         git_size += os.path.getsize(fp)
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"计算仓库大小失败: {e}")
         
         return {
             'commit_count': commit_count,
@@ -666,6 +666,10 @@ class GitService(QObject):
 
     def amend_commit(self, message: str) -> tuple[bool, str]:
         """修改最后一次提交"""
+        # 空仓库无提交可改
+        has_head, _, _ = self._run_git_sync(['rev-parse', '--verify', 'HEAD'])
+        if not has_head:
+            return False, "当前没有可修改的提交(空仓库)"
         success, stdout, stderr = self._run_git_sync(['commit', '--amend', '-m', message])
         if success:
             self.statusChanged.emit()
@@ -793,6 +797,13 @@ class GitService(QObject):
         """获取远程更新（异步）"""
         self.operationStarted.emit("正在获取远程更新...")
 
+        if remote not in self.get_remotes():
+            msg = f"未配置远程 '{remote}',请先添加远程仓库"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
+
         def on_finished(success: bool, stdout: str, stderr: str):
             msg = "获取成功" if success else (stderr or "获取失败")
             self.operationFinished.emit(success, msg)
@@ -800,16 +811,18 @@ class GitService(QObject):
                 callback(success, msg)
 
         self._run_git_async(['fetch', remote], on_finished)
-    
+
     def fetch_sync(self, remote: str = "origin") -> tuple[bool, str]:
         """获取远程更新（同步）
-        
+
         Args:
             remote: 远程仓库名
-        
+
         Returns:
             (success, message)
         """
+        if remote not in self.get_remotes():
+            return False, f"未配置远程 '{remote}',请先添加远程仓库"
         success, stdout, stderr = self._run_git_sync(['fetch', remote], timeout=120)
         msg = stdout if success else (stderr or "获取失败")
         return success, msg
@@ -838,6 +851,10 @@ class GitService(QObject):
 
     def delete_branch(self, branch: str, force: bool = False) -> tuple[bool, str]:
         """删除分支"""
+        if not branch or not branch.strip():
+            return False, "未指定分支"
+        if branch == self.get_current_branch():
+            return False, "不能删除当前所在分支,请先切换到其他分支"
         args = ['branch', '-D' if force else '-d', branch]
         success, stdout, stderr = self._run_git_sync(args)
         if success:
@@ -867,6 +884,8 @@ class GitService(QObject):
         使用 git revert，会创建一个新的提交来撤销指定提交的更改。
         这是安全的操作，不会修改历史。
         """
+        if not commit_hash or not commit_hash.strip():
+            return False, "未指定提交"
         success, stdout, stderr = self._run_git_sync(['revert', '--no-edit', commit_hash])
         if success:
             self.statusChanged.emit()
@@ -887,7 +906,9 @@ class GitService(QObject):
         """
         if mode not in ("soft", "mixed", "hard"):
             return False, f"无效的回滚模式: {mode}"
-        
+        if not commit_hash or not commit_hash.strip():
+            return False, "未指定目标提交"
+
         success, stdout, stderr = self._run_git_sync(['reset', f'--{mode}', commit_hash])
         if success:
             self.statusChanged.emit()
@@ -1038,8 +1059,8 @@ class GitService(QObject):
                     content = f.read(1024 * 100)  # 最多读100KB
                     if '<<<<<<<' in content and '>>>>>>>' in content:
                         conflict.has_conflict_markers = True
-            except Exception:
-                pass
+            except Exception as e:
+                logger.debug(f"读取冲突文件失败 {file_change.path}: {e}")
             
             conflicts.append(conflict)
         
@@ -1116,6 +1137,8 @@ class GitService(QObject):
 
     def stash_pop(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """恢复stash并删除"""
+        if not self.stash_list():
+            return False, "没有可恢复的暂存"
         success, stdout, stderr = self._run_git_sync(['stash', 'pop', stash_id])
         if success:
             self.statusChanged.emit()
@@ -1124,6 +1147,8 @@ class GitService(QObject):
 
     def stash_apply(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """恢复stash但不删除"""
+        if not self.stash_list():
+            return False, "没有可应用的暂存"
         success, stdout, stderr = self._run_git_sync(['stash', 'apply', stash_id])
         if success:
             self.statusChanged.emit()
@@ -1250,6 +1275,8 @@ class GitService(QObject):
 
     def delete_remote_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
         """删除远程Tag"""
+        if remote not in self.get_remotes():
+            return False, f"未配置远程 '{remote}'"
         success, _, stderr = self._run_git_sync(['push', remote, '--delete', f'refs/tags/{name}'])
         if success:
             return True, f"已删除远程Tag: {name}"
@@ -1257,14 +1284,18 @@ class GitService(QObject):
 
     def push_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
         """推送Tag到远程"""
-        success, _, stderr = self._run_git_sync(['push', remote, name])
+        if remote not in self.get_remotes():
+            return False, f"未配置远程 '{remote}',请先添加远程仓库"
+        success, _, stderr = self._run_git_sync(['push', remote, name], timeout=120)
         if success:
             return True, f"已推送Tag: {name}"
         return False, stderr or "推送Tag失败"
 
     def push_all_tags(self, remote: str = "origin") -> tuple[bool, str]:
         """推送所有Tag到远程"""
-        success, _, stderr = self._run_git_sync(['push', remote, '--tags'])
+        if remote not in self.get_remotes():
+            return False, f"未配置远程 '{remote}',请先添加远程仓库"
+        success, _, stderr = self._run_git_sync(['push', remote, '--tags'], timeout=120)
         if success:
             return True, "已推送所有Tag"
         return False, stderr or "推送Tag失败"
@@ -1374,6 +1405,8 @@ class GitService(QObject):
 
     def cherry_pick(self, commit_hash: str) -> tuple[bool, str]:
         """应用指定提交到当前分支"""
+        if not commit_hash or not commit_hash.strip():
+            return False, "未指定提交"
         success, stdout, stderr = self._run_git_sync(['cherry-pick', commit_hash])
         if success:
             self.statusChanged.emit()
