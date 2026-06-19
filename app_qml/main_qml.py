@@ -14,10 +14,26 @@ import sys
 GITESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, GITESS_ROOT)
 
-# 2) FluentQML 本地源码根(可被环境变量覆盖,避免硬编码)
-FLUENTQML_ROOT = os.environ.get("FLUENTQML_ROOT", r"D:/FluentQML")
-if not os.path.isdir(os.path.join(FLUENTQML_ROOT, "fluentqml")):
-    print(f"[ERROR] 找不到 FluentQML 源码: {FLUENTQML_ROOT}")
+# 2) FluentQML 本地源码根(自动探测;FLUENTQML_ROOT 环境变量可覆盖)
+#    判据:该目录下存在 fluentqml/__init__.py(真包根)。
+def _find_fluentqml_root():
+    candidates = []
+    env = os.environ.get("FLUENTQML_ROOT")
+    if env:
+        candidates.append(env)
+    parent = os.path.dirname(GITESS_ROOT)          # Gitess 的父目录
+    candidates.append(os.path.join(parent, "fluentqml"))  # 兄弟: <parent>/fluentqml
+    candidates.append(parent)                       # 父目录本身就是 FluentQML 仓库根
+    candidates.append(r"D:/FluentQML/fluentqml")
+    candidates.append(r"D:/FluentQML")
+    for c in candidates:
+        if c and os.path.isfile(os.path.join(c, "fluentqml", "__init__.py")):
+            return c
+    return None
+
+FLUENTQML_ROOT = _find_fluentqml_root()
+if not FLUENTQML_ROOT:
+    print("[ERROR] 找不到 FluentQML 源码(需含 fluentqml/__init__.py)")
     print("        设置环境变量 FLUENTQML_ROOT 指向 FluentQML 仓库根目录")
     sys.exit(1)
 sys.path.insert(0, FLUENTQML_ROOT)
