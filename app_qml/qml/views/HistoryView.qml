@@ -32,21 +32,31 @@ Item {
         if (root.loading || !root.hasMore || root.searchMode) return
         if (!GitBridge || !GitBridge.repoPath) return
         root.loading = true
-        var fast = GitBridge.isLargeRepo()
-        var batch = GitBridge.getLog(root.pageSize, root.loadedCount, fast)
-        root.allCommits = root.allCommits.concat(batch)
-        root.loadedCount += batch.length
-        root.hasMore = batch.length === root.pageSize
-        root.loading = false
-        rebuildTimeline()
+        // 后台分页获取,结果经 logReady 回填
+        GitBridge.requestLog(root.pageSize, root.loadedCount)
     }
 
     function doSearch(query) {
         if (query === "") { resetAndLoad(); return }
         if (!GitBridge || !GitBridge.repoPath) return
         root.searchMode = true
-        root.allCommits = GitBridge.searchCommits(query, "all", 100)
-        rebuildTimeline()
+        GitBridge.requestSearch(query, "all")
+    }
+
+    Connections {
+        target: GitBridge
+        function onLogReady(skip, batch) {
+            if (root.searchMode) return
+            root.allCommits = root.allCommits.concat(batch)
+            root.loadedCount += batch.length
+            root.hasMore = batch.length === root.pageSize
+            root.loading = false
+            rebuildTimeline()
+        }
+        function onSearchReady(results) {
+            root.allCommits = results
+            rebuildTimeline()
+        }
     }
 
     // 提交日期 -> 分组标签(今天/昨天/本周/更早 + 日期)

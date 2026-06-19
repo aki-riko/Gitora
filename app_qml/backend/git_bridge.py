@@ -75,6 +75,10 @@ class GitBridge(QObject):
     progressUpdated = Signal(int, str)
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
+    statusReady = Signal("QVariantList")  # 后台状态就绪(变更列表)
+    branchReady = Signal(str)             # 后台当前分支就绪
+    logReady = Signal(int, "QVariantList")    # 后台提交分页就绪(skip, 批次)
+    searchReady = Signal("QVariantList")       # 后台搜索结果就绪
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -144,6 +148,23 @@ class GitBridge(QObject):
     def getStatus(self) -> list:
         """工作区变更列表 -> [{path, status, statusText, staged}, ...]"""
         return [_file_change_to_dict(fc) for fc in self._svc.get_status()]
+
+    @Slot()
+    def requestStatus(self):
+        """后台获取工作区状态,完成发 statusReady(list)+branchReady(str),不阻塞主线程。"""
+        import threading
+
+        def work():
+            try:
+                changes = [_file_change_to_dict(fc) for fc in self._svc.get_status()]
+                branch = self._svc.get_current_branch()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"获取状态失败: {e}")
+                changes, branch = [], ""
+            self.statusReady.emit(changes)
+            self.branchReady.emit(branch)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(result=str)
     def getCurrentBranch(self) -> str:
@@ -239,6 +260,37 @@ class GitBridge(QObject):
     def getLog(self, count: int, skip: int, fast_mode: bool) -> list:
         """提交历史(分页) -> [{hash, shortHash, author, ...}, ...]"""
         return [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast_mode)]
+
+    @Slot(int, int)
+    def requestLog(self, count: int, skip: int):
+        """后台分页获取提交,完成发 logReady(skip, list),不阻塞主线程。"""
+        import threading
+
+        def work():
+            try:
+                fast = self._svc.is_large_repo()
+                batch = [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast)]
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"获取提交历史失败: {e}")
+                batch = []
+            self.logReady.emit(skip, batch)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def requestSearch(self, query: str, search_type: str):
+        """后台搜索提交,完成发 searchReady(list)。"""
+        import threading
+
+        def work():
+            try:
+                results = [_commit_to_dict(c) for c in self._svc.search_commits(query, search_type, 100)]
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"搜索提交失败: {e}")
+                results = []
+            self.searchReady.emit(results)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(result=bool)
     def isLargeRepo(self) -> bool:

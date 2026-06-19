@@ -16,11 +16,13 @@ Item {
 
     // ==================== 数据加载 ====================
     function reload() {
-        branchLabel.text = (GitBridge && GitBridge.repoPath) ? GitBridge.getCurrentBranch() : ""
-        changeModel.clear()
-        if (!GitBridge || !GitBridge.repoPath) return
-        var list = GitBridge.getStatus()
-        for (var i = 0; i < list.length; i++) changeModel.append(list[i])
+        if (!GitBridge || !GitBridge.repoPath) {
+            branchLabel.text = ""
+            changeModel.clear()
+            return
+        }
+        // 后台获取,结果经 statusReady/branchReady 回填,不阻塞主线程
+        GitBridge.requestStatus()
     }
 
     function showDiff(path, staged) {
@@ -32,6 +34,11 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
+        function onStatusReady(list) {
+            changeModel.clear()
+            for (var i = 0; i < list.length; i++) changeModel.append(list[i])
+        }
+        function onBranchReady(branch) { branchLabel.text = branch }
         function onOperationFinished(ok, msg) {
             console.log("operation:", ok, msg)
             root.reload()
