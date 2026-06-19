@@ -94,8 +94,26 @@ class GitBridge(QObject):
     def setRepoPath(self, path: str) -> bool:
         ok = self._svc.set_repo_path(path)
         if ok:
+            from app.common.recent_repos import recentReposManager
+            recentReposManager.add(self._svc.repo_path or path)
             self.repoPathChanged.emit(self._svc.repo_path or "")
         return ok
+
+    @Slot(result="QVariantList")
+    def getRecentRepos(self) -> list:
+        """最近打开的仓库 -> [path, ...]"""
+        from app.common.recent_repos import recentReposManager
+        return recentReposManager.get_all()
+
+    @Slot(str)
+    def removeRecentRepo(self, path: str):
+        from app.common.recent_repos import recentReposManager
+        recentReposManager.remove(path)
+
+    @Slot()
+    def clearRecentRepos(self):
+        from app.common.recent_repos import recentReposManager
+        recentReposManager.clear()
 
     # ==================== 状态 ====================
     @Slot(result="QVariantList")

@@ -62,10 +62,13 @@ def main() -> int:
     # 注册后端到 QML
     git_bridge = GitBridge()
     config_manager = getConfigManager()
+    from app_qml.backend.repo_scanner import RepoScanner
+    repo_scanner = RepoScanner()
     ctx = engine.rootContext()
     ctx.setContextProperty("GitBridge", git_bridge)
     ctx.setContextProperty("ConfigManager", config_manager)
     ctx.setContextProperty("ClipboardHelper", get_clipboard_helper())
+    ctx.setContextProperty("RepoScanner", repo_scanner)
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL

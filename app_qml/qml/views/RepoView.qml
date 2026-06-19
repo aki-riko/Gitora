@@ -70,7 +70,35 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
-            Fluent.Button { text: "打开"; icon: Fluent.Enums.icon.folder; onClicked: folderDialog.open() }
+            Fluent.Button {
+                id: openButton
+                text: "打开"
+                icon: Fluent.Enums.icon.folder
+                feature: Fluent.Enums.button.feature_split
+                // 主按钮:选目录;下拉:最近仓库 + 扫描全盘
+                property var recentList: []
+                menuItems: {
+                    var items = []
+                    for (var i = 0; i < recentList.length; i++)
+                        items.push({ "text": recentList[i], "icon": Fluent.Enums.icon.folder })
+                    items.push({ "text": "🔍 扫描全盘 Git 仓库", "icon": Fluent.Enums.icon.search })
+                    return items
+                }
+                function refreshRecent() {
+                    recentList = (GitBridge ? GitBridge.getRecentRepos() : [])
+                }
+                Component.onCompleted: refreshRecent()
+                onClicked: folderDialog.open()
+                onMenuItemClicked: function(index, text) {
+                    if (index === recentList.length) {
+                        // 最后一项 = 扫描全盘
+                        scanDialog.startScan()
+                    } else {
+                        // 打开最近仓库
+                        if (GitBridge.setRepoPath(recentList[index])) root.reload()
+                    }
+                }
+            }
             Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
             Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
             Fluent.Button { text: "拉取"; icon: Fluent.Enums.icon.arrow_download; onClicked: GitBridge.pull() }
@@ -326,4 +354,15 @@ Item {
 
     // 文件历史
     FileHistoryDialog { id: fileHistoryDialog }
+
+    // 全盘扫描
+    RepoScanDialog {
+        id: scanDialog
+        onRepoChosen: function(path) {
+            if (GitBridge.setRepoPath(path)) {
+                root.reload()
+                openButton.refreshRecent()
+            }
+        }
+    }
 }
