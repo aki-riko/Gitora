@@ -34,6 +34,7 @@ Fluent.WindowsCore {
     width: 800
     height: 520
     windowColor: Fluent.Enums.backgroundColor
+    visible: false   // 默认隐藏,仅在 show() 时显示(否则作为子项声明会自动弹出)
 
     onCurrentIndexChanged: pageChanged(currentIndex)
 
