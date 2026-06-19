@@ -34,11 +34,15 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
-        function onStatusReady(list) {
+        function onStatusReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 过期/切仓库,丢弃
             changeModel.clear()
             for (var i = 0; i < list.length; i++) changeModel.append(list[i])
         }
-        function onBranchReady(branch) { branchLabel.text = branch }
+        function onBranchReady(repoPath, branch) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return
+            branchLabel.text = branch
+        }
         function onOperationFinished(ok, msg) {
             console.log("operation:", ok, msg)
             root.reload()

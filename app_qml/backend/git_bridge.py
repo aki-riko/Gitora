@@ -75,10 +75,10 @@ class GitBridge(QObject):
     progressUpdated = Signal(int, str)
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
-    statusReady = Signal("QVariantList")  # 后台状态就绪(变更列表)
-    branchReady = Signal(str)             # 后台当前分支就绪
-    logReady = Signal(int, "QVariantList")    # 后台提交分页就绪(skip, 批次)
-    searchReady = Signal("QVariantList")       # 后台搜索结果就绪
+    statusReady = Signal(str, "QVariantList")  # 后台状态就绪(repoPath, 变更列表)
+    branchReady = Signal(str, str)             # 后台当前分支就绪(repoPath, 分支)
+    logReady = Signal(str, int, "QVariantList")    # 后台提交分页就绪(repoPath, skip, 批次)
+    searchReady = Signal(str, "QVariantList")       # 后台搜索结果就绪(repoPath, 结果)
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -151,8 +151,9 @@ class GitBridge(QObject):
 
     @Slot()
     def requestStatus(self):
-        """后台获取工作区状态,完成发 statusReady(list)+branchReady(str),不阻塞主线程。"""
+        """后台获取工作区状态,完成发 statusReady(repoPath,list)+branchReady(repoPath,str)。"""
         import threading
+        repo = self._svc.repo_path or ""
 
         def work():
             try:
@@ -161,8 +162,8 @@ class GitBridge(QObject):
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取状态失败: {e}")
                 changes, branch = [], ""
-            self.statusReady.emit(changes)
-            self.branchReady.emit(branch)
+            self.statusReady.emit(repo, changes)
+            self.branchReady.emit(repo, branch)
 
         threading.Thread(target=work, daemon=True).start()
 
@@ -263,8 +264,9 @@ class GitBridge(QObject):
 
     @Slot(int, int)
     def requestLog(self, count: int, skip: int):
-        """后台分页获取提交,完成发 logReady(skip, list),不阻塞主线程。"""
+        """后台分页获取提交,完成发 logReady(repoPath, skip, list),不阻塞主线程。"""
         import threading
+        repo = self._svc.repo_path or ""
 
         def work():
             try:
@@ -273,14 +275,15 @@ class GitBridge(QObject):
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取提交历史失败: {e}")
                 batch = []
-            self.logReady.emit(skip, batch)
+            self.logReady.emit(repo, skip, batch)
 
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, str)
     def requestSearch(self, query: str, search_type: str):
-        """后台搜索提交,完成发 searchReady(list)。"""
+        """后台搜索提交,完成发 searchReady(repoPath, list)。"""
         import threading
+        repo = self._svc.repo_path or ""
 
         def work():
             try:
@@ -288,7 +291,7 @@ class GitBridge(QObject):
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"搜索提交失败: {e}")
                 results = []
-            self.searchReady.emit(results)
+            self.searchReady.emit(repo, results)
 
         threading.Thread(target=work, daemon=True).start()
 

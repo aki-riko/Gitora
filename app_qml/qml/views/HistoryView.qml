@@ -45,15 +45,18 @@ Item {
 
     Connections {
         target: GitBridge
-        function onLogReady(skip, batch) {
+        function onLogReady(repoPath, skip, batch) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 切仓库的过期请求,丢弃
             if (root.searchMode) return
+            if (skip !== root.loadedCount) return  // 偏移不匹配,过期分页
             root.allCommits = root.allCommits.concat(batch)
             root.loadedCount += batch.length
             root.hasMore = batch.length === root.pageSize
             root.loading = false
             rebuildTimeline()
         }
-        function onSearchReady(results) {
+        function onSearchReady(repoPath, results) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return
             root.allCommits = results
             rebuildTimeline()
         }
