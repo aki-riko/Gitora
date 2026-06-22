@@ -30,7 +30,34 @@ Item {
     function showDiff(path, staged) {
         root.selectedPath = path
         root.selectedStaged = staged
-        diffView.text = (GitBridge && path) ? GitBridge.getDiff(path, staged) : ""
+        var raw = (GitBridge && path) ? GitBridge.getDiff(path, staged) : ""
+        diffView.text = _diffToHtml(raw)
+    }
+
+    // diff 纯文本 -> 按行着色的 HTML(+绿/-红/@@蓝/文件头灰)
+    function _diffToHtml(raw) {
+        if (!raw) return ""
+        var isDark = (typeof ThemeManager !== "undefined") && ThemeManager.isDark
+        var cAdd = isDark ? "#4ec97a" : "#1a7f37"
+        var cDel = isDark ? "#f47067" : "#cf222e"
+        var cHunk = isDark ? "#6cb6ff" : "#0969da"
+        var cMeta = isDark ? "#8b949e" : "#8a8a8a"
+        var cNormal = isDark ? "#d0d0d0" : "#1f1f1f"
+        var lines = raw.split("\n")
+        var out = []
+        for (var i = 0; i < lines.length; i++) {
+            var ln = lines[i]
+            var esc = ln.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+            if (esc === "") esc = "&nbsp;"
+            var color = cNormal
+            if (ln.indexOf("+++") === 0 || ln.indexOf("---") === 0 || ln.indexOf("diff ") === 0 || ln.indexOf("index ") === 0)
+                color = cMeta
+            else if (ln.indexOf("@@") === 0) color = cHunk
+            else if (ln.charAt(0) === "+") color = cAdd
+            else if (ln.charAt(0) === "-") color = cDel
+            out.push('<span style="color:' + color + '">' + esc + '</span>')
+        }
+        return '<pre style="margin:0;font-family:Consolas,monospace">' + out.join("<br>") + '</pre>'
     }
 
     Connections {
@@ -346,6 +373,7 @@ Item {
                             width: diffFlick.width
                             readOnly: true
                             selectByMouse: true
+                            textFormat: TextEdit.RichText
                             wrapMode: TextEdit.NoWrap
                             font.family: "Consolas, Cascadia Code, monospace"
                             font.pixelSize: Fluent.Enums.typography.body
