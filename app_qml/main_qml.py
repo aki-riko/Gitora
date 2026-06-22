@@ -1,6 +1,6 @@
 # coding: utf-8
 """
-Gitess QML 版入口
+Gitora QML 版入口(基于 FluentQML 的 Git GUI)
 
 依赖方式:sys.path 引用本地 FluentQML 源码(默认 D:/FluentQML,可用环境变量 FLUENTQML_ROOT 覆盖)。
 用 FluentQML 的 App 类启动,自动完成 DPI/消息处理器/register_types/addImportPath。
@@ -57,10 +57,10 @@ def main() -> int:
     # 单实例检查(共享内存);自检模式跳过
     if not os.environ.get("GITESS_QML_SELFTEST"):
         from PySide6.QtCore import QSharedMemory
-        shared = QSharedMemory("Gitess_QML_SingleInstance_Key")
+        shared = QSharedMemory("Gitora_QML_SingleInstance_Key")
         if not shared.create(1):
             from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(None, "Gitess 已在运行", "Gitess 已经在运行中,请勿重复启动。")
+            QMessageBox.warning(None, "Gitora 已在运行", "Gitora 已经在运行中,请勿重复启动。")
             return 0
 
     # Git 安装检测

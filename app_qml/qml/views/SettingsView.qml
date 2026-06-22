@@ -122,7 +122,7 @@ Item {
 
                 Fluent.SettingsCard {
                     width: parent ? parent.width : 0
-                    title: "关于 Gitess"
+                    title: "关于 Gitora"
                     content: AppInfo ? ("版本 " + AppInfo.version + " · © " + AppInfo.year + " " + AppInfo.author) : ""
                     icon: Fluent.Enums.icon.info
                     type: Fluent.Enums.settingCard.type_hyperlink

@@ -1,6 +1,6 @@
-# Gitess QML 版(FluentQML)
+# Gitora(Gitess QML 版,基于 FluentQML)
 
-基于 [FluentQML](https://github.com/)(MIT)重写的 Gitess 前端,替代原 QWidget + QFluentWidgets Pro 版本,**无 License 依赖**。
+基于 [FluentQML](https://github.com/)(MIT)重写的 Git GUI,替代原 QWidget + QFluentWidgets Pro 版(Gitess),**无 License 依赖**。
 
 ## 与原版的关系
 

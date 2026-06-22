@@ -8,7 +8,7 @@ QtObject {
 
     readonly property int windowWidth: 1100
     readonly property int windowHeight: 720
-    readonly property string windowTitle: "Gitess"
+    readonly property string windowTitle: "Gitora"
 
     function iconPath(name) {
         return (typeof FluentIconsDir !== "undefined" ? FluentIconsDir : "") + name + ".svg"
