@@ -160,50 +160,35 @@ Item {
                     onTriggered: root.doSearch(searchInput.text)
                 }
 
-                // 提交时间线(按日期分组,用 Fluent.Timeline 封装)
-                Fluent.ScrollArea {
-                    id: timelineScroll
+                // 提交时间线(虚拟滚动,Timeline 自身 ListView 滚动+只渲染可见项,大列表不卡)
+                Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
-                    orientation: Qt.Vertical   // 只竖向滚动,内容超宽换行不横滚
 
-                    // 滚动触底自动加载下一批
-                    onContentYChanged: {
-                        if (contentHeight > height
-                            && contentY + height >= contentHeight - 120
-                            && !root.loading && root.hasMore && !root.searchMode)
-                            root.loadMore()
+                    Fluent.Timeline {
+                        anchors.fill: parent
+                        virtualized: true
+                        items: root.timelineItems
+                        onCardClickedData: function(groupIndex, cardIndex, cardData) {
+                            if (cardData && cardData.commit)
+                                root.selectedCommit = cardData.commit
+                        }
+                        onReachedEnd: {
+                            if (!root.loading && root.hasMore && !root.searchMode)
+                                root.loadMore()
+                        }
                     }
 
-                    // 首屏内容未填满视口时继续加载,保证可滚动
-                    onContentHeightChanged: {
-                        if (contentHeight > 0 && contentHeight <= height
-                            && !root.loading && root.hasMore && !root.searchMode)
-                            root.loadMore()
-                    }
-
-                    Column {
-                        width: timelineScroll.width - Fluent.Enums.spacing.l
-                        spacing: Fluent.Enums.spacing.m
-
-                        Fluent.Timeline {
-                            width: parent.width
-                            items: root.timelineItems
-                            onCardClickedData: function(groupIndex, cardIndex, cardData) {
-                                if (cardData && cardData.commit)
-                                    root.selectedCommit = cardData.commit
-                            }
-                        }
-
-                        // 加载状态提示
-                        Text {
-                            anchors.horizontalCenter: parent.horizontalCenter
-                            visible: root.loading
-                            text: "加载中..."
-                            color: Fluent.Enums.textColor.tertiary
-                            font.family: Fluent.Enums.fontFamily
-                            font.pixelSize: Fluent.Enums.typography.caption
-                        }
+                    // 加载状态提示(底部浮层)
+                    Text {
+                        anchors.bottom: parent.bottom
+                        anchors.horizontalCenter: parent.horizontalCenter
+                        anchors.bottomMargin: Fluent.Enums.spacing.s
+                        visible: root.loading
+                        text: "加载中..."
+                        color: Fluent.Enums.textColor.tertiary
+                        font.family: Fluent.Enums.fontFamily
+                        font.pixelSize: Fluent.Enums.typography.caption
                     }
                 }
             }
