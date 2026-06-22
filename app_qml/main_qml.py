@@ -14,29 +14,35 @@ import sys
 GITESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, GITESS_ROOT)
 
-# 2) FluentQML 本地源码根(自动探测;FLUENTQML_ROOT 环境变量可覆盖)
-#    判据:该目录下存在 fluentqml/__init__.py(真包根)。
-def _find_fluentqml_root():
+# 2) FluentQML 来源:优先用已安装的 pip 包(fqml,import 名 fluentqml);
+#    若未安装,回退到本地源码探测(开发用)。
+def _resolve_fluentqml_dir():
+    # 优先:已 pip 安装的 fqml(import fluentqml)
+    try:
+        import fluentqml as _f
+        return os.path.dirname(_f.__file__)  # site-packages/fluentqml
+    except ImportError:
+        pass
+    # 回退:本地源码(含 fluentqml/__init__.py 的仓库根)
     candidates = []
     env = os.environ.get("FLUENTQML_ROOT")
     if env:
         candidates.append(env)
-    parent = os.path.dirname(GITESS_ROOT)          # Gitess 的父目录
-    candidates.append(os.path.join(parent, "fluentqml"))  # 兄弟: <parent>/fluentqml
-    candidates.append(parent)                       # 父目录本身就是 FluentQML 仓库根
-    candidates.append(r"D:/FluentQML/fluentqml")
-    candidates.append(r"D:/FluentQML")
+    parent = os.path.dirname(GITESS_ROOT)
+    candidates += [os.path.join(parent, "fluentqml"), parent,
+                   r"D:/FluentQML/fluentqml", r"D:/FluentQML"]
     for c in candidates:
         if c and os.path.isfile(os.path.join(c, "fluentqml", "__init__.py")):
-            return c
+            sys.path.insert(0, c)
+            import fluentqml as _f
+            return os.path.dirname(_f.__file__)
     return None
 
-FLUENTQML_ROOT = _find_fluentqml_root()
-if not FLUENTQML_ROOT:
-    print("[ERROR] 找不到 FluentQML 源码(需含 fluentqml/__init__.py)")
-    print("        设置环境变量 FLUENTQML_ROOT 指向 FluentQML 仓库根目录")
+# FLUENTQML_PKG_DIR = .../fluentqml 包目录(其下含 FluentQML/qmldir 与 python/)
+FLUENTQML_PKG_DIR = _resolve_fluentqml_dir()
+if not FLUENTQML_PKG_DIR:
+    print("[ERROR] 找不到 FluentQML:请先 pip install fqml,或设 FLUENTQML_ROOT 指向源码仓库")
     sys.exit(1)
-sys.path.insert(0, FLUENTQML_ROOT)
 
 os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
 os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
@@ -101,12 +107,11 @@ def main() -> int:
         "feedbackUrl": FEEDBACK_URL,
     })
 
-    # 让 main.qml 能用字面量 import 解析 FluentQML 子目录
-    fqml = os.path.join(FLUENTQML_ROOT, "fluentqml")
-    engine.addImportPath(fqml)
+    # addImportPath 指向 fluentqml 包目录(其下 FluentQML/qmldir 提供 QML 模块)
+    engine.addImportPath(FLUENTQML_PKG_DIR)
 
-    # FluentQML 图标目录 URL(供 QML 拼接导航图标路径,Gitess 在 FluentQML 仓库外故不能用相对路径)
-    icons_dir = os.path.join(fqml, "FluentQML", "controls", "icons", "fluent")
+    # FluentQML 图标目录 URL(供 QML 拼接导航图标路径)
+    icons_dir = os.path.join(FLUENTQML_PKG_DIR, "FluentQML", "controls", "icons", "fluent")
     ctx.setContextProperty("FluentIconsDir", QUrl.fromLocalFile(icons_dir + os.sep).toString())
 
     # 应用 logo(窗口/任务栏图标),复用原版 app/resource/images/logo.png

@@ -1,11 +1,9 @@
-# Gitess QML 版依赖清单(基于 FluentQML,无 QFluentWidgets Pro / License)
+# Gitora(QML 版)依赖清单
 # 安装: pip install -r app_qml/requirements.txt
-#
-# 运行前需设置环境变量 FLUENTQML_ROOT 指向本地 FluentQML 仓库根目录(默认 D:/FluentQML)
 # 启动: python app_qml/main_qml.py
 
 # UI 框架
 PySide6>=6.5.0
 
-# FluentQML 通过 sys.path 引用本地源码(MIT),不经 pip 安装
-# 见 main_qml.py 的 FLUENTQML_ROOT 处理
+# FluentQML(pip 包名 fqml,import 名 fluentqml,MIT)
+fqml>=0.2.2
