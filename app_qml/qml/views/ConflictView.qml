@@ -144,12 +144,15 @@ Item {
                                 onClicked: conflictViewer.openFor(model.path)
                             }
                             Fluent.Button {
-                                text: "使用我们的"
+                                text: "本地优先"
+                                style: Fluent.Enums.button.style_filled
+                                level: Fluent.Enums.statusLevel.success
                                 onClicked: root._op(GitBridge.resolveWithOurs(model.path))
                             }
                             Fluent.Button {
-                                text: "使用他们的"
-                                style: Fluent.Enums.button.style_transparent
+                                text: "远程优先"
+                                style: Fluent.Enums.button.style_filled
+                                level: Fluent.Enums.statusLevel.warning
                                 onClicked: root._op(GitBridge.resolveWithTheirs(model.path))
                             }
                         }

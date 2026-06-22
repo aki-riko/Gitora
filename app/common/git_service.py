@@ -800,10 +800,17 @@ class GitService(QObject):
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
                 self.statusChanged.emit()
-            msg = "拉取成功" if success else (stderr or "拉取失败")
-            self.operationFinished.emit(success, msg)
+                self.operationFinished.emit(True, "拉取成功")
+            else:
+                detail = (stderr or stdout or "").strip()
+                # 合并冲突:git 把 CONFLICT/Automatic merge failed 输出到 stdout
+                if "CONFLICT" in detail or "Automatic merge failed" in detail:
+                    msg = "拉取产生合并冲突,请到「冲突」页解决"
+                else:
+                    msg = detail or "拉取失败"
+                self.operationFinished.emit(False, msg)
             if callback:
-                callback(success, msg)
+                callback(success, stdout if success else (stderr or stdout))
 
         self._run_git_async(args, on_finished)
 
@@ -1048,36 +1055,46 @@ class GitService(QObject):
     def get_conflicts(self) -> list[ConflictInfo]:
         """获取冲突文件列表"""
         conflicts = []
-        
-        # 获取所有未合并的文件（U状态）
-        changes = self.get_status()
-        conflict_files = [c for c in changes if c.status == FileStatus.UNMERGED]
-        
-        for file_change in conflict_files:
-            conflict = ConflictInfo(path=file_change.path)
-            
-            # 读取文件内容检查是否有冲突标记
+
+        # 直接解析 porcelain:冲突文件状态码为 DD/AU/UD/UA/DU/AA/UU(含 U,或双 A/D)
+        # 不能用 get_status(它对 XY 双状态位各 append 一次,冲突文件 UU 会被列两遍)
+        success, stdout, _ = self._run_git_sync(['status', '--porcelain=v1'])
+        if not success:
+            return []
+
+        conflict_codes = {"DD", "AU", "UD", "UA", "DU", "AA", "UU"}
+        seen = set()
+        for line in stdout.split('\n'):
+            if len(line) < 3:
+                continue
+            xy = line[:2]
+            if xy not in conflict_codes:
+                continue
+            path = line[3:].rstrip('\r\n')
+            if len(path) >= 2 and path[0] == '"' and path[-1] == '"':
+                path = path[1:-1]
+            if path in seen:
+                continue
+            seen.add(path)
+
+            conflict = ConflictInfo(path=path)
             try:
-                full_path = os.path.join(self._repo_path, file_change.path)
-                # 防止路径遍历攻击：验证路径在仓库内
+                full_path = os.path.join(self._repo_path, path)
                 real_path = os.path.realpath(full_path)
                 repo_real_path = os.path.realpath(self._repo_path)
                 if not real_path.startswith(repo_real_path + os.sep):
-                    continue  # 跳过不安全的路径
-                
-                # 限制文件大小，防止读取大文件卡顿
+                    continue
                 if os.path.exists(real_path):
-                    file_size = os.path.getsize(real_path)
-                    if file_size > 1024 * 1024:  # 超过1MB跳过
+                    if os.path.getsize(real_path) > 1024 * 1024:
+                        conflicts.append(conflict)
                         continue
-                
-                with open(real_path, 'r', encoding='utf-8', errors='ignore') as f:
-                    content = f.read(1024 * 100)  # 最多读100KB
-                    if '<<<<<<<' in content and '>>>>>>>' in content:
-                        conflict.has_conflict_markers = True
+                    with open(real_path, 'r', encoding='utf-8', errors='ignore') as f:
+                        content = f.read(1024 * 100)
+                        if '<<<<<<<' in content and '>>>>>>>' in content:
+                            conflict.has_conflict_markers = True
             except Exception as e:
-                logger.debug(f"读取冲突文件失败 {file_change.path}: {e}")
-            
+                logger.debug(f"读取冲突文件失败 {path}: {e}")
+
             conflicts.append(conflict)
         
         return conflicts
