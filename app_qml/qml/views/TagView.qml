@@ -16,8 +16,12 @@ Item {
     }
 
     function _op(res) {
-        console.log("tag 操作:", res[0], res[1])
-        if (res[0]) root.reload()
+        if (res[0]) {
+            Fluent.NotificationManager.toast.success(root, "成功", res[1] || "操作完成")
+            root.reload()
+        } else {
+            Fluent.NotificationManager.toast.error(root, "失败", res[1] || "操作失败")
+        }
     }
 
     Connections {

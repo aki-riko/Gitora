@@ -112,8 +112,12 @@ Item {
     }
 
     function _op(res) {
-        console.log("操作结果:", res[0], res[1])
-        if (res[0]) root.resetAndLoad()
+        if (res[0]) {
+            Fluent.NotificationManager.toast.success(root, "成功", res[1] || "操作完成")
+            root.resetAndLoad()
+        } else {
+            Fluent.NotificationManager.toast.error(root, "失败", res[1] || "操作失败")
+        }
     }
 
     Component.onCompleted: root.resetAndLoad()

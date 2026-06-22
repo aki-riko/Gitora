@@ -55,8 +55,12 @@ Item {
             branchLabel.text = branch
         }
         function onOperationFinished(ok, msg) {
-            console.log("operation:", ok, msg)
-            root.reload()
+            if (ok) {
+                Fluent.NotificationManager.toast.success(root, "成功", msg || "操作完成")
+                root.reload()
+            } else {
+                Fluent.NotificationManager.toast.error(root, "失败", msg || "操作失败")
+            }
         }
         function onRepoOpened(ok, pathOrErr) {
             if (ok) openButton.rebuildList()
@@ -167,8 +171,13 @@ Item {
                 enabled: commitInput.text.length > 0
                 onClicked: {
                     var res = GitBridge.commit(commitInput.text)
-                    if (res[0]) commitInput.text = ""
-                    console.log("commit:", res[0], res[1])
+                    if (res[0]) {
+                        commitInput.text = ""
+                        Fluent.NotificationManager.toast.success(root, "提交成功", res[1] || "")
+                        root.reload()
+                    } else {
+                        Fluent.NotificationManager.toast.error(root, "提交失败", res[1] || "")
+                    }
                 }
             }
             Fluent.Button {

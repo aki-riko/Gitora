@@ -136,18 +136,27 @@ Item {
     // ==================== 操作 ====================
     function _cleanFiles() {
         if (!GitBridge || !GitBridge.repoPath) {
-            console.warn("请先打开一个 Git 仓库")
+            Fluent.NotificationManager.toast.warning(root, "提示", "请先打开一个 Git 仓库")
             return
         }
         var res = GitBridge.clean(true)
-        console.log("clean:", res[0], res[1])
+        if (res[0]) Fluent.NotificationManager.toast.success(root, "清理完成", res[1] || "")
+        else Fluent.NotificationManager.toast.error(root, "清理失败", res[1] || "")
     }
 
     function _runGc() {
         if (!GitBridge || !GitBridge.repoPath) {
-            console.warn("请先打开一个 Git 仓库")
+            Fluent.NotificationManager.toast.warning(root, "提示", "请先打开一个 Git 仓库")
             return
         }
-        GitBridge.gc()
+        GitBridge.gc()  // 异步,结果经 operationFinished 反馈
+    }
+
+    Connections {
+        target: GitBridge
+        function onOperationFinished(ok, msg) {
+            if (ok) Fluent.NotificationManager.toast.success(root, "成功", msg || "操作完成")
+            else Fluent.NotificationManager.toast.error(root, "失败", msg || "操作失败")
+        }
     }
 }

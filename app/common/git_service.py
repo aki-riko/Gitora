@@ -291,14 +291,19 @@ class GitService(QObject):
             return []
 
         changes = []
-        for line in stdout.strip().split('\n'):
-            if not line:
+        # 注意:不能用 stdout.strip(),会删掉首行前导空格导致 porcelain 列偏移
+        # (" M file.txt" 的行首空格表示 index 状态为空,有意义)
+        for line in stdout.split('\n'):
+            if len(line) < 3:
                 continue
 
-            # 解析状态: XY PATH
+            # 解析状态: XY PATH (X=暂存区, Y=工作区, 第3字符起为路径)
             index_status = line[0]   # 暂存区状态
             work_status = line[1]    # 工作区状态
-            path = line[3:].strip()
+            path = line[3:].rstrip('\r\n')
+            # git 对含空格/特殊字符的路径会加双引号包裹,去掉
+            if len(path) >= 2 and path[0] == '"' and path[-1] == '"':
+                path = path[1:-1]
 
             # 处理重命名情况
             if ' -> ' in path:
