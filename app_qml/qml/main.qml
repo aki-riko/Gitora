@@ -49,6 +49,8 @@ QtObject {
         Fluent.Windows {
             width: root.windowWidth; height: root.windowHeight
             windowTitle: root.windowTitle
+            windowIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
+            windowIconColored: true   // logo.png 是彩色图,跳过单色染色
             navigationItems: root.navItems
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
@@ -65,7 +67,7 @@ QtObject {
     // 启动屏幕
     property Component splashComponent: Component {
         Fluent.SplashScreen {
-            iconSource: root.iconPath("BranchFork")
+            iconSource: typeof AppLogo !== "undefined" ? AppLogo : ""
             title: root.windowTitle
             subtitle: "正在加载..."
             z: 9999

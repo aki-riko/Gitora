@@ -109,6 +109,10 @@ def main() -> int:
     icons_dir = os.path.join(fqml, "FluentQML", "controls", "icons", "fluent")
     ctx.setContextProperty("FluentIconsDir", QUrl.fromLocalFile(icons_dir + os.sep).toString())
 
+    # 应用 logo(窗口/任务栏图标),复用原版 app/resource/images/logo.png
+    logo_path = os.path.join(GITESS_ROOT, "app", "resource", "images", "logo.png")
+    ctx.setContextProperty("AppLogo", QUrl.fromLocalFile(logo_path).toString() if os.path.isfile(logo_path) else "")
+
     # 加载主 QML
     qml_main = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "main.qml")
     engine.load(QUrl.fromLocalFile(qml_main))
