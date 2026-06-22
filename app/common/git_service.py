@@ -396,6 +396,11 @@ class GitService(QObject):
                             tracking = tracking_info.split(':')[0]
                         else:
                             tracking = tracking_info
+                        # 解析领先/落后数(格式如 "origin/main: ahead 2, behind 1")
+                        ahead_m = re.search(r'ahead\s+(\d+)', tracking_info)
+                        behind_m = re.search(r'behind\s+(\d+)', tracking_info)
+                        ahead = int(ahead_m.group(1)) if ahead_m else 0
+                        behind = int(behind_m.group(1)) if behind_m else 0
 
                     branches.append(BranchInfo(
                         name=name,
@@ -716,6 +721,8 @@ class GitService(QObject):
         args.append(branch)
 
         def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                self.statusChanged.emit()
             msg = "推送成功" if success else (stderr or "推送失败")
             self.operationFinished.emit(success, msg)
             if callback:
@@ -733,6 +740,8 @@ class GitService(QObject):
         args = ['push', '-u', remote, branch]
 
         def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                self.statusChanged.emit()
             msg = "推送成功" if success else (stderr or "推送失败")
             self.operationFinished.emit(success, msg)
             if callback:
@@ -805,6 +814,8 @@ class GitService(QObject):
             return
 
         def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                self.statusChanged.emit()
             msg = "获取成功" if success else (stderr or "获取失败")
             self.operationFinished.emit(success, msg)
             if callback:
@@ -913,9 +924,9 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             mode_desc = {
-                "soft": "保留所有修改在暂存区",
-                "mixed": "保留工作区修改",
-                "hard": "丢弃所有修改"
+                "soft": "HEAD 已移动,改动保留在暂存区和工作区",
+                "mixed": "HEAD 已移动,保留工作区改动,清空暂存区",
+                "hard": "已完全回滚,丢弃所有改动"
             }
             return True, f"已回滚到 {commit_hash[:7]}（{mode_desc[mode]}）"
         return False, stderr or "回滚失败"
@@ -1407,7 +1418,7 @@ class GitService(QObject):
         """应用指定提交到当前分支"""
         if not commit_hash or not commit_hash.strip():
             return False, "未指定提交"
-        success, stdout, stderr = self._run_git_sync(['cherry-pick', commit_hash])
+        success, stdout, stderr = self._run_git_sync(['cherry-pick', '--no-edit', commit_hash])
         if success:
             self.statusChanged.emit()
             return True, f"已应用提交 {commit_hash[:7]}"
