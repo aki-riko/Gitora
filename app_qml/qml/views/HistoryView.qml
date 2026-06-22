@@ -100,6 +100,7 @@ Item {
             groups[indexByLabel[label]].cards.push({
                 "text": c.message,
                 "description": c.shortHash + " · " + c.author,
+                "hash": c.hash,
                 "commit": c
             })
         }
@@ -169,6 +170,8 @@ Item {
                         anchors.fill: parent
                         virtualized: true
                         items: root.timelineItems
+                        selectedRole: "hash"
+                        selectedKey: root.selectedCommit ? root.selectedCommit.hash : undefined
                         onCardClickedData: function(groupIndex, cardIndex, cardData) {
                             if (cardData && cardData.commit)
                                 root.selectedCommit = cardData.commit
