@@ -1100,21 +1100,21 @@ class GitService(QObject):
         return conflicts
 
     def resolve_conflict_with_ours(self, file_path: str) -> tuple[bool, str]:
-        """使用我们的版本解决冲突"""
+        """采用本地版本解决冲突(--ours)"""
         success, stdout, stderr = self._run_git_sync(['checkout', '--ours', '--', file_path])
         if success:
             # 标记为已解决（添加到暂存区）
             self.stage_file(file_path)
-            return True, f"已使用我们的版本解决冲突: {file_path}"
+            return True, f"已采用本地版本: {file_path}"
         return False, stderr or "解决冲突失败"
 
     def resolve_conflict_with_theirs(self, file_path: str) -> tuple[bool, str]:
-        """使用他们的版本解决冲突"""
+        """采用远程版本解决冲突(--theirs)"""
         success, stdout, stderr = self._run_git_sync(['checkout', '--theirs', '--', file_path])
         if success:
             # 标记为已解决（添加到暂存区）
             self.stage_file(file_path)
-            return True, f"已使用他们的版本解决冲突: {file_path}"
+            return True, f"已采用远程版本: {file_path}"
         return False, stderr or "解决冲突失败"
 
     def abort_merge(self) -> tuple[bool, str]:
