@@ -19,6 +19,8 @@ Item {
         if (!GitBridge || !GitBridge.repoPath) {
             branchLabel.text = ""
             changeModel.clear()
+            root.selectedPath = ""
+            diffView.text = ""
             return
         }
         // 后台获取,结果经 statusReady/branchReady 回填,不阻塞主线程
@@ -37,7 +39,16 @@ Item {
         function onStatusReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 过期/切仓库,丢弃
             changeModel.clear()
-            for (var i = 0; i < list.length; i++) changeModel.append(list[i])
+            var stillThere = false
+            for (var i = 0; i < list.length; i++) {
+                changeModel.append(list[i])
+                if (list[i].path === root.selectedPath) stillThere = true
+            }
+            // 选中的文件已不在变更列表(已暂存/提交/切仓库)→ 清空 diff,避免显示过期内容
+            if (root.selectedPath !== "" && !stillThere) {
+                root.selectedPath = ""
+                diffView.text = ""
+            }
         }
         function onBranchReady(repoPath, branch) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return

@@ -25,6 +25,8 @@ Item {
         root.loadedCount = 0
         root.hasMore = true
         root.searchMode = false
+        root.loading = false
+        root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         loadMore()
     }
 
@@ -39,16 +41,23 @@ Item {
     function doSearch(query) {
         if (query === "") { resetAndLoad(); return }
         if (!GitBridge || !GitBridge.repoPath) return
+        // 进入搜索模式:清空累积状态,防止搜索结果混入普通列表
+        root.allCommits = []
+        root.loadedCount = 0
+        root.hasMore = false        // 搜索结果不分页
+        root.loading = false
         root.searchMode = true
+        root.selectedCommit = null
         GitBridge.requestSearch(query, "all")
     }
 
     Connections {
         target: GitBridge
         function onLogReady(repoPath, skip, batch) {
-            if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 切仓库的过期请求,丢弃
-            if (root.searchMode) return
-            if (skip !== root.loadedCount) return  // 偏移不匹配,过期分页
+            // 任何过期/不匹配分支都要解锁 loading,否则切仓库后再也无法加载
+            if (!GitBridge || repoPath !== GitBridge.repoPath) { root.loading = false; return }
+            if (root.searchMode) { root.loading = false; return }
+            if (skip !== root.loadedCount) { root.loading = false; return }
             root.allCommits = root.allCommits.concat(batch)
             root.loadedCount += batch.length
             root.hasMore = batch.length === root.pageSize
@@ -57,6 +66,7 @@ Item {
         }
         function onSearchReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
+            if (!root.searchMode) return  // 已退出搜索,丢弃过期搜索结果
             root.allCommits = results
             rebuildTimeline()
         }

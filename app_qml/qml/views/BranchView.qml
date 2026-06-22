@@ -31,7 +31,6 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
-        function onOperationFinished(ok, msg) { root.reload() }
     }
     Component.onCompleted: root.reload()
 
