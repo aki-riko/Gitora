@@ -25,8 +25,10 @@ GuideShell {
     onPageChanged: function(index) {
         if (index === 1 && guide.userName === "" && GitBridge) {
             var info = GitBridge.getUserInfo()
-            guide.userName = info[0]
-            guide.userEmail = info[1]
+            if (info && info.length >= 2) {
+                guide.userName = info[0] || ""
+                guide.userEmail = info[1] || ""
+            }
         }
     }
 

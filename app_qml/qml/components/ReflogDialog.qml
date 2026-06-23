@@ -17,7 +17,7 @@ Fluent.MessageBox {
     function openReflog() {
         reflogModel.clear()
         if (GitBridge && GitBridge.repoPath) {
-            var list = GitBridge.getReflog(100)
+            var list = GitBridge.getReflog(100) || []
             for (var i = 0; i < list.length; i++) reflogModel.append(list[i])
         }
         dlg.open()

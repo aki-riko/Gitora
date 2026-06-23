@@ -69,9 +69,11 @@ Item {
             var stillThere = false
             for (var i = 0; i < list.length; i++) {
                 changeModel.append(list[i])
-                if (list[i].path === root.selectedPath) stillThere = true
+                // 同时匹配 path 和 staged:暂存状态变了也算"已变",清空过期 diff
+                if (list[i].path === root.selectedPath && list[i].staged === root.selectedStaged)
+                    stillThere = true
             }
-            // 选中的文件已不在变更列表(已暂存/提交/切仓库)→ 清空 diff,避免显示过期内容
+            // 选中的文件已不在变更列表或暂存状态已变 → 清空 diff,避免显示过期内容
             if (root.selectedPath !== "" && !stillThere) {
                 root.selectedPath = ""
                 diffView.text = ""

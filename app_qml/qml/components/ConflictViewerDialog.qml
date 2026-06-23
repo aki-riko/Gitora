@@ -17,10 +17,12 @@ Fluent.MessageBox {
     function openFor(path) {
         dlg.title = "冲突内容 - " + path
         lineModel.clear()
-        var content = GitBridge.readConflictFile(path)
-        var lines = content.split("\n")
-        for (var i = 0; i < lines.length; i++)
-            lineModel.append({ "line": lines[i] })
+        var content = GitBridge.readConflictFile(path) || ""
+        if (content !== "") {
+            var lines = content.split("\n")
+            for (var i = 0; i < lines.length; i++)
+                lineModel.append({ "line": lines[i] })
+        }
         dlg.open()
     }
 

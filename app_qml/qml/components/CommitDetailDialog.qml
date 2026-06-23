@@ -16,13 +16,13 @@ Fluent.MessageBox {
 
     function openFor(hash) {
         dlg.commitHash = hash
-        var d = GitBridge.getCommitDetail(hash)
+        var d = GitBridge.getCommitDetail(hash) || ({})
         msgLabel.text = d.message || ""
         metaLabel.text = (d.shortHash || "") + "  ·  " + (d.author || "") + "  ·  " + (d.date || "")
         filesModel.clear()
-        var files = GitBridge.getCommitFiles(hash)
+        var files = GitBridge.getCommitFiles(hash) || []
         for (var i = 0; i < files.length; i++) filesModel.append(files[i])
-        diffArea.text = GitBridge.getCommitDiff(hash)
+        diffArea.text = GitBridge.getCommitDiff(hash) || ""
         dlg.open()
     }
 
