@@ -1,4 +1,4 @@
-// Gitess QML 版主窗口
+// Gitora QML 版主窗口
 import QtQuick
 
 import FluentQML as Fluent

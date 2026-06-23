@@ -125,9 +125,11 @@ Item {
                     title: "关于 Gitora"
                     content: AppInfo ? ("版本 " + AppInfo.version + " · © " + AppInfo.year + " " + AppInfo.author) : ""
                     icon: Fluent.Enums.icon.info
-                    type: Fluent.Enums.settingCard.type_hyperlink
+                    // 有项目地址才显示超链接,否则用普通按钮卡片(无按钮文字=纯展示)
+                    type: (AppInfo && AppInfo.helpUrl !== "") ? Fluent.Enums.settingCard.type_hyperlink : Fluent.Enums.settingCard.type_push
                     url: AppInfo ? AppInfo.helpUrl : ""
                     linkText: "项目主页"
+                    buttonText: ""
                 }
             }
         }

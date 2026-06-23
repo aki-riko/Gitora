@@ -21,8 +21,8 @@ wheels/
 *.egg
 
 # 用户数据（在系统目录，不在项目内）
-# Windows: %LOCALAPPDATA%\Gitess\
-# Linux/macOS: ~/.config/Gitess/
+# Windows: %LOCALAPPDATA%\Gitora\
+# Linux/macOS: ~/.config/Gitora/
 
 # IDE
 .vscode/

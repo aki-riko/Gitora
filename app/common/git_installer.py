@@ -103,11 +103,11 @@ class GitInstaller:
         install_cmd = GitInstaller.get_install_command()
         
         content = (
-            f"Gitess需要Git才能运行。\n\n"
+            f"Gitora需要Git才能运行。\n\n"
             f"安装方法：\n"
             f"{install_cmd}\n\n"
             f"点击“立即下载”将打开Git官方下载页面。\n"
-            f"安装完成后请重启Gitess。"
+            f"安装完成后请重启Gitora。"
         )
         
         box = MessageBox("Git未安装", content, parent)
@@ -151,7 +151,7 @@ class GitInstaller:
             )
             
             if result.returncode == 0:
-                return True, "Git安装成功，请重启Gitess"
+                return True, "Git安装成功，请重启Gitora"
             else:
                 return False, result.stderr or "安装失败"
                 
@@ -177,7 +177,7 @@ class GitInstaller:
         
         # Windows系统，提供自动安装选项
         content = (
-            "Gitess需要Git才能运行。\n\n"
+            "Gitora需要Git才能运行。\n\n"
             "检测到您使用Windows系统，可以：\n"
             "1. 一键自动安装（使用winget）\n"
             "2. 手动下载安装\n\n"

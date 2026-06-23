@@ -1,25 +1,27 @@
-# Gitora(Gitess QML 版,基于 FluentQML)
+# Gitora — 架构说明
 
-基于 [FluentQML](https://github.com/)(MIT)重写的 Git GUI,替代原 QWidget + QFluentWidgets Pro 版(Gitess),**无 License 依赖**。
+基于 [FluentQML](https://github.com/)(MIT,纯 QML 声明式 Fluent 组件库)构建的 Git GUI。本文件说明项目架构与设计,面向贡献者。
 
-## 与原版的关系
+## 架构分层
 
-- 原 QWidget 版:入口 `Gitess.py`,界面在 `app/view/`,依赖 QFluentWidgets Pro(需 License)。
-- QML 版(本目录):入口 `app_qml/main_qml.py`,界面在 `app_qml/qml/`,依赖 FluentQML(MIT)。
-- **后端复用**:两版共用 `app/common/git_service.py`(Git 命令逻辑零改动)。QML 版通过 `app_qml/backend/git_bridge.py` 把 GitService 包装成 QML 友好接口。
+- **界面层**(`app_qml/qml/`):纯 QML 声明式,`views/` 是各功能页面,`components/` 是可复用对话框/组件。
+- **对接层**(`app_qml/backend/`):`git_bridge.py` 把后端 `GitService` 包装成 QML 友好接口(dataclass→dict、`@Slot` 暴露、信号驱动异步);`repo_scanner.py` 后台全盘扫描仓库。
+- **后端层**(`app/common/`):`git_service.py` 封装全部 git 命令(subprocess + 输出解析),与 UI 解耦,可独立测试。
+- **入口**(`app_qml/main_qml.py`):创建 FluentQML App、注册后端到 QML 上下文、加载 `main.qml`。
+
+> 项目由早期的 QWidget + QFluentWidgets Pro 版本迁移而来,后端 `git_service.py` 是迁移中保留复用的核心资产。
 
 ## 运行
 
 ```bash
-# 1. 安装依赖
+# 1. 安装依赖(含 FluentQML: pip 包名 fqml >= 0.2.3)
 pip install -r app_qml/requirements.txt
 
-# 2. 设置 FluentQML 源码路径(默认 D:/FluentQML)
-set FLUENTQML_ROOT=D:\FluentQML
-
-# 3. 启动
+# 2. 启动
 python app_qml/main_qml.py
 ```
+
+> 开发时若要用本地 FluentQML 源码而非 pip 包,设环境变量 `FLUENTQML_ROOT` 指向源码目录(入口会优先 import 已装的 pip 包,本地源码仅作回退)。
 
 ## 目录结构
 

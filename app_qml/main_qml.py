@@ -10,7 +10,7 @@ import os
 import sys
 
 # ---- 路径注入 ----
-# 1) Gitess 项目根(让 app.common.* 可导入)
+# 1) Gitora 项目根(让 app.common.* 可导入)
 GITESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, GITESS_ROOT)
 

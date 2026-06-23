@@ -24,7 +24,7 @@ class Logger:
             return
         
         # 创建日志目录
-        log_dir = Path.home() / "AppData" / "Local" / "Gitess" / "logs"
+        log_dir = Path.home() / "AppData" / "Local" / "Gitora" / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
         
         # 日志文件路径
@@ -64,9 +64,9 @@ class Logger:
         cls._initialized = True
         
         # 记录启动日志
-        logger = cls.get_logger("Gitess")
+        logger = cls.get_logger("Gitora")
         logger.info("=" * 60)
-        logger.info("Gitess 启动")
+        logger.info("Gitora 启动")
         logger.info(f"日志文件: {log_file}")
         logger.info("=" * 60)
     
