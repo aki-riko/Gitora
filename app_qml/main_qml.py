@@ -68,17 +68,16 @@ def main() -> int:
     app = App(sys.argv)
     engine = app.engine
 
-    # 单实例检查(用 FluentQML 封装:Windows 用 Named Mutex,其他平台 QSharedMemory);
-    # 自检模式跳过。持有 instance 引用到进程结束,锁才不被释放。
+    # 单实例检查(FluentQML SingleInstance:Windows Named Mutex + 本地套接字 IPC);
+    # 自检模式跳过。第二实例会通知主实例激活窗口后静默退出,不弹框。
     app._single_instance = None
     if not os.environ.get("GITESS_QML_SELFTEST"):
         from fluentqml import SingleInstance
         instance = SingleInstance("io.github.aki-riko.gitora")
         if not instance.try_lock():
-            from PySide6.QtWidgets import QMessageBox
-            QMessageBox.warning(None, "Gitora 已在运行", "Gitora 已经在运行中,请勿重复启动。")
+            # 已有实例在运行:try_lock 内部已通知主实例激活窗口,这里直接退出
             return 0
-        app._single_instance = instance  # 防止被 GC,保持锁
+        app._single_instance = instance  # 防止被 GC,保持锁 + IPC 监听
 
     # Git 安装检测
     from app.common.git_installer import gitInstaller
@@ -139,6 +138,19 @@ def main() -> int:
     if not engine.rootObjects():
         print("[ERROR] 加载 main.qml 失败,检查组件路径或语法")
         return -1
+
+    # 单实例激活:第二实例启动时,主实例把窗口提到前台(调 main.qml 的 activateWindow)
+    if app._single_instance is not None:
+        root_obj = engine.rootObjects()[0]
+
+        def _on_activate():
+            try:
+                from PySide6.QtCore import QMetaObject
+                QMetaObject.invokeMethod(root_obj, "activateWindow")
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"激活窗口失败: {e}")
+
+        app._single_instance.activateRequested.connect(_on_activate)
 
     # headless 自检:设了 GITESS_QML_SELFTEST 则加载成功后定时退出
     if os.environ.get("GITESS_QML_SELFTEST"):

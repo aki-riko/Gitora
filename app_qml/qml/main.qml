@@ -1,5 +1,6 @@
 // Gitora QML 版主窗口
 import QtQuick
+import QtQuick.Window
 
 import FluentQML as Fluent
 
@@ -38,6 +39,17 @@ QtObject {
     ]
 
     property var windowInstance: null
+
+    // 供 Python 侧单实例 IPC 调用:把窗口提到前台(第二实例启动时激活已有窗口)
+    function activateWindow() {
+        if (!windowInstance) return
+        if (windowInstance.visibility === Window.Minimized || windowInstance.visibility === Window.Hidden)
+            windowInstance.showNormal()
+        else
+            windowInstance.show()
+        windowInstance.raise()
+        windowInstance.requestActivate()
+    }
 
     Component.onCompleted: {
         Fluent.Translator.setLanguage(Fluent.Enums.lang.zh_CN)
