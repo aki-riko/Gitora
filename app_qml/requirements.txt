@@ -8,4 +8,6 @@ PySide6>=6.5.0
 # FluentQML(pip 包名 fqml,import 名 fluentqml,MIT)
 # 0.2.5: Timeline virtualized + 懒加载切回不重载 + 异步孵化控制器(切页不掉帧)
 # 0.2.6: Card autoHeight 内容自撑开关
-fqml>=0.2.6
+# 0.2.7: SingleInstance 内置 IPC(第二实例激活已有窗口)
+# 0.2.9: Updater 通用更新组件(自动更新所需,最低版本)
+fqml>=0.2.9
