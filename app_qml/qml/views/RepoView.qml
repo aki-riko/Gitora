@@ -508,8 +508,10 @@ Item {
         function onDownloadProgress(received, total) {
             if (total > 0) {
                 var pct = Math.floor(received * 100 / total)
+                updateDownloadDialog.progress = pct  // 确定进度:进度环按百分比填充
                 updateDownloadDialog.content = pct + "%  (" + root._updFmtSize(received) + " / " + root._updFmtSize(total) + ")"
             } else {
+                updateDownloadDialog.progress = -1  // 总大小未知:转圈
                 updateDownloadDialog.content = root._updFmtSize(received) + " 已下载"
             }
         }
@@ -517,8 +519,9 @@ Item {
             updateDownloadDialog.accept()
             var args = AppInfo ? AppInfo.installerSilentArgs : ""
             var ok = Updater.runInstallerAndQuit(localPath, args)
+            // 提权失败(用户取消 UAC)或启动失败:提示手动安装(安装包已下载到本地)
             if (!ok)
-                Fluent.NotificationManager.toast.error(root, "安装失败", "无法启动安装程序,请手动安装")
+                Fluent.NotificationManager.toast.warning(root, "安装未开始", "已取消或需要管理员权限,安装包已下载到临时目录,可手动运行")
         }
         function onDownloadFailed(error) {
             updateDownloadDialog.reject()
@@ -537,6 +540,7 @@ Item {
 
     function _updStartDownload(url) {
         if (!Updater) return
+        updateDownloadDialog.progress = -1  // 开始时总大小未知,先转圈;收到进度后转确定
         updateDownloadDialog.content = "准备中…"
         updateDownloadDialog.open()
         Updater.downloadUpdate(url)

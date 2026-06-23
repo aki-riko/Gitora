@@ -22,8 +22,9 @@ DOC_URL = "https://github.com/aki-riko/Gitora#readme"
 UPDATE_REPO = "aki-riko/Gitora"
 # 从 release assets 中挑安装包的关键词(安装包名形如 Gitora-Setup-1.0.4.exe)
 UPDATE_ASSET_KEYWORD = "Setup"
-# 安装包静默安装参数(InnoSetup):静默 + 不重启系统 + 装完不弹完成页
-INSTALLER_SILENT_ARGS = "/VERYSILENT /NORESTART /SUPPRESSMSGBOXES"
+# 安装包启动参数:走可见安装向导(用户点下一步),由安装包自身 manifest 触发 UAC 提权。
+# 不用 /VERYSILENT 全静默——静默+提权在部分 UAC 配置下会卡死;可见向导更稳。
+INSTALLER_SILENT_ARGS = ""
 
 # 使用系统用户数据目录
 import os

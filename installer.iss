@@ -22,17 +22,26 @@ SetupIconFile=app\resource\images\logo.ico
 Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
+; 按系统 UI 语言自动选(中文系统→中文,英文系统→英文);auto=匹配上就不弹框直接用,
+; 仅在无匹配语言时才弹选择框。配合 LanguageDetectionMethod=uilanguage 实现"自动识别"。
+ShowLanguageDialog=auto
+LanguageDetectionMethod=uilanguage
 ; 64 位应用
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; 允许用户选择安装目录
 UninstallDisplayIcon={app}\{#MyAppExeName}
-; 自动更新:静默安装时若 Gitora 正在运行,自动关闭并在安装完成后重启
-; (配合 Updater.runInstallerAndQuit 的 /VERYSILENT 静默安装)
+; 安装到 Program Files 需管理员权限;manifest 标记 admin,启动时由 Windows 自动弹 UAC 提权
+PrivilegesRequired=admin
+; 自动更新:安装时若 Gitora 正在运行,自动关闭并在安装完成后重启
 CloseApplications=yes
 RestartApplications=yes
 
 [Languages]
+; 双语;中文 isl 跟随项目(installer/),无需装到 Inno 全局目录。
+; 按系统 UI 语言自动识别(见 [Setup] ShowLanguageDialog=auto + LanguageDetectionMethod):
+; 中文系统直接走中文向导、英文系统走英文,均不弹语言框;仅当系统语言两者都不匹配时才弹框。
+Name: "chinesesimplified"; MessagesFile: "installer\ChineseSimplified.isl"
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]

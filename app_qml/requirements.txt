@@ -13,4 +13,5 @@ PySide6>=6.5.0
 # 0.2.10: Updater 下载收尾加固(关文件前兜底读缓冲区)
 # 0.2.11: ConfirmDialog messageAlignment(更新说明左对齐)
 # 0.2.12: UpdateDialog 更新对话框组件(Markdown 渲染+滚动+边框)
-fqml>=0.2.12
+# 0.2.13: 安装改用 ShellExecute open(修提权卡死) + ProgressDialog 确定进度
+fqml>=0.2.13
