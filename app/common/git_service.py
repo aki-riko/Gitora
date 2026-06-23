@@ -195,7 +195,9 @@ class GitService(QObject):
         if not self._repo_path:
             return False, "", "未设置仓库路径"
 
-        cmd = ['git'] + args
+        # -c core.quotepath=false: 让 git 输出原始 UTF-8 文件名,
+        # 而非 \\344\\270\\255 八进制转义(否则中文/非ASCII 路径无法被后续命令使用)
+        cmd = ['git', '-c', 'core.quotepath=false'] + args
         try:
             result = subprocess.run(
                 cmd,
@@ -238,7 +240,7 @@ class GitService(QObject):
             else:
                 timeout = 30  # 本地操作30秒
 
-        cmd = ['git'] + args
+        cmd = ['git', '-c', 'core.quotepath=false'] + args
         worker = GitWorker(cmd, self._repo_path, timeout, self)
         worker.finished.connect(callback)
         worker.finished.connect(lambda: self._cleanup_worker(worker))
