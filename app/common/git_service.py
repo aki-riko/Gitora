@@ -512,8 +512,21 @@ class GitService(QObject):
         
         return commits
 
+    def _path_in_repo(self, file_path: str) -> bool:
+        """校验文件路径在仓库内(防 ../ 遍历或绝对路径越界)。"""
+        if not file_path or file_path.startswith('-'):
+            return False
+        try:
+            repo_real = os.path.realpath(self._repo_path)
+            target_real = os.path.realpath(os.path.join(self._repo_path, file_path))
+            return target_real == repo_real or target_real.startswith(repo_real + os.sep)
+        except Exception:
+            return False
+
     def get_diff(self, file_path: str, staged: bool = False) -> str:
         """获取文件差异"""
+        if not self._path_in_repo(file_path):
+            return ""
         args = ['diff']
         if staged:
             args.append('--cached')
@@ -805,8 +818,21 @@ class GitService(QObject):
 
     # ==================== 分支操作 ====================
 
+    @staticmethod
+    def _bad_ref(name: str) -> bool:
+        """校验 ref 名(分支/标签)是否非法:空、以 - 开头(会被 git 当选项)、含控制字符。
+        git ref 命名规范本就不允许以 - 开头,这里提前拦截防注入/误解析。"""
+        if not name or name.startswith('-'):
+            return True
+        # ref 名不能含空格/控制字符/git 特殊序列
+        if any(c in name for c in (' ', '\t', '\n', '\r', '~', '^', ':', '?', '*', '[', '\\')):
+            return True
+        return False
+
     def checkout_branch(self, branch: str) -> tuple[bool, str]:
         """切换分支"""
+        if self._bad_ref(branch):
+            return False, "非法的分支名"
         success, stdout, stderr = self._run_git_sync(['checkout', branch])
         if success:
             self.statusChanged.emit()
@@ -815,6 +841,8 @@ class GitService(QObject):
 
     def create_branch(self, branch: str, checkout: bool = True) -> tuple[bool, str]:
         """创建分支"""
+        if self._bad_ref(branch):
+            return False, "非法的分支名"
         if checkout:
             success, stdout, stderr = self._run_git_sync(['checkout', '-b', branch])
         else:
@@ -827,8 +855,8 @@ class GitService(QObject):
 
     def delete_branch(self, branch: str, force: bool = False) -> tuple[bool, str]:
         """删除分支"""
-        if not branch or not branch.strip():
-            return False, "未指定分支"
+        if self._bad_ref(branch):
+            return False, "非法的分支名"
         if branch == self.get_current_branch():
             return False, "不能删除当前所在分支,请先切换到其他分支"
         args = ['branch', '-D' if force else '-d', branch]
@@ -840,6 +868,11 @@ class GitService(QObject):
 
     def merge_branch(self, branch: str, callback: Callable[[bool, str], None] = None):
         """合并分支（异步）"""
+        if self._bad_ref(branch):
+            self.operationFinished.emit(False, "非法的分支名")
+            if callback:
+                callback(False, "非法的分支名")
+            return
         self.operationStarted.emit(f"正在合并分支 {branch}...")
         
         def on_finished(success: bool, stdout: str, stderr: str):
@@ -1197,11 +1230,15 @@ class GitService(QObject):
 
     def get_file_content_at_commit(self, file_path: str, commit_hash: str) -> str:
         """获取文件在指定提交的内容"""
+        if not self._path_in_repo(file_path):
+            return ""
         success, stdout, stderr = self._run_git_sync(['show', f'{commit_hash}:{file_path}'])
         return stdout if success else ""
 
     def diff_file_between_commits(self, file_path: str, commit1: str, commit2: str) -> str:
         """对比文件在两个提交之间的差异"""
+        if not self._path_in_repo(file_path):
+            return ""
         success, stdout, _ = self._run_git_sync(['diff', commit1, commit2, '--', file_path])
         return stdout if success else ""
 
@@ -1240,6 +1277,8 @@ class GitService(QObject):
             message: Tag消息（如果提供，创建附注Tag）
             commit: 目标提交（默认HEAD）
         """
+        if self._bad_ref(name):
+            return False, "非法的标签名"
         if message:
             # 附注Tag
             args = ['tag', '-a', name, '-m', message, commit]
@@ -1254,6 +1293,8 @@ class GitService(QObject):
 
     def delete_tag(self, name: str) -> tuple[bool, str]:
         """删除本地Tag"""
+        if self._bad_ref(name):
+            return False, "非法的标签名"
         success, _, stderr = self._run_git_sync(['tag', '-d', name])
         if success:
             return True, f"已删除Tag: {name}"
@@ -1261,6 +1302,8 @@ class GitService(QObject):
 
     def delete_remote_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
         """删除远程Tag"""
+        if self._bad_ref(name):
+            return False, "非法的标签名"
         if remote not in self.get_remotes():
             return False, f"未配置远程 '{remote}'"
         success, _, stderr = self._run_git_sync(['push', remote, '--delete', f'refs/tags/{name}'])
@@ -1270,6 +1313,8 @@ class GitService(QObject):
 
     def push_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
         """推送Tag到远程"""
+        if self._bad_ref(name):
+            return False, "非法的标签名"
         if remote not in self.get_remotes():
             return False, f"未配置远程 '{remote}',请先添加远程仓库"
         success, _, stderr = self._run_git_sync(['push', remote, name], timeout=120)
@@ -1288,6 +1333,8 @@ class GitService(QObject):
 
     def checkout_tag(self, name: str) -> tuple[bool, str]:
         """切换到Tag（分离头指针状态）"""
+        if self._bad_ref(name):
+            return False, "非法的标签名"
         success, _, stderr = self._run_git_sync(['checkout', name])
         if success:
             self.statusChanged.emit()
@@ -1296,8 +1343,30 @@ class GitService(QObject):
 
     # ==================== 远程仓库管理 ====================
 
+    @staticmethod
+    def _bad_url(url: str) -> bool:
+        """校验远程 URL 协议安全:只允许常见安全协议,拒绝 ext::/fd::/file:// 等
+        可执行命令或读本地文件的危险传输。"""
+        if not url or url.startswith('-'):
+            return True
+        u = url.strip().lower()
+        # git 的危险传输助手:ext::(执行任意命令)、fd::、file://(读本地)
+        for bad in ('ext::', 'fd::', 'file://'):
+            if u.startswith(bad):
+                return True
+        # 允许:http(s)://、git://、ssh://、scp 风格 user@host:path
+        if u.startswith(('http://', 'https://', 'git://', 'ssh://')):
+            return False
+        if '@' in url and ':' in url.split('@', 1)[1]:  # git@host:path
+            return False
+        return True  # 其他一律拒绝(含裸本地路径,克隆本地仓库走文件选择器另说)
+
     def add_remote(self, name: str, url: str) -> tuple[bool, str]:
         """添加远程仓库"""
+        if self._bad_ref(name):
+            return False, "非法的远程名"
+        if self._bad_url(url):
+            return False, "不支持或不安全的远程地址"
         success, _, stderr = self._run_git_sync(['remote', 'add', name, url])
         if success:
             return True, f"已添加远程仓库: {name}"
@@ -1409,8 +1478,13 @@ class GitService(QObject):
             path: 本地路径
             callback: 完成回调
         """
+        if self._bad_url(url):
+            self.operationFinished.emit(False, "不支持或不安全的远程地址")
+            if callback:
+                callback(False, "不支持或不安全的远程地址")
+            return
         self.operationStarted.emit("正在克隆仓库...")
-        
+
         args = ['clone', url, path, '--progress']
         
         def on_finished(success: bool, stdout: str, stderr: str):
