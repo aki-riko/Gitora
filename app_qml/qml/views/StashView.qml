@@ -9,10 +9,8 @@ Item {
     ListModel { id: stashModel }
 
     function reload() {
-        stashModel.clear()
-        if (!GitBridge || !GitBridge.repoPath) return
-        var list = GitBridge.stashList()
-        for (var i = 0; i < list.length; i++) stashModel.append(list[i])
+        if (!GitBridge || !GitBridge.repoPath) { stashModel.clear(); return }
+        GitBridge.requestStashList()  // 异步,结果经 stashListReady 回传
     }
 
     function _op(res) {
@@ -27,6 +25,10 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
+        function onStashListReady(list) {
+            stashModel.clear()
+            for (var i = 0; i < list.length; i++) stashModel.append(list[i])
+        }
     }
     Component.onCompleted: root.reload()
 

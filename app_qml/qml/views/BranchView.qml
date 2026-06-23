@@ -12,15 +12,11 @@ Item {
     ListModel { id: remoteModel }
 
     function reload() {
-        localModel.clear()
-        remoteModel.clear()
-        if (!GitBridge || !GitBridge.repoPath) return
-        root.currentBranch = GitBridge.getCurrentBranch()
-        var list = GitBridge.getBranches()
-        for (var i = 0; i < list.length; i++) {
-            if (list[i].isRemote) remoteModel.append(list[i])
-            else localModel.append(list[i])
+        if (!GitBridge || !GitBridge.repoPath) {
+            localModel.clear(); remoteModel.clear(); return
         }
+        root.currentBranch = GitBridge.getCurrentBranch()
+        GitBridge.requestBranches()  // 异步,结果经 branchesReady 回传
     }
 
     function _op(res) {
@@ -35,6 +31,13 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
+        function onBranchesReady(list) {
+            localModel.clear(); remoteModel.clear()
+            for (var i = 0; i < list.length; i++) {
+                if (list[i].isRemote) remoteModel.append(list[i])
+                else localModel.append(list[i])
+            }
+        }
     }
     Component.onCompleted: root.reload()
 

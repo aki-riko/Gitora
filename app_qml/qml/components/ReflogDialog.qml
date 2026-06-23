@@ -17,10 +17,17 @@ Fluent.MessageBox {
     function openReflog() {
         reflogModel.clear()
         if (GitBridge && GitBridge.repoPath) {
-            var list = GitBridge.getReflog(100) || []
-            for (var i = 0; i < list.length; i++) reflogModel.append(list[i])
+            GitBridge.requestReflog(100)  // 异步,结果经 reflogReady 回传
         }
         dlg.open()
+    }
+
+    Connections {
+        target: GitBridge
+        function onReflogReady(list) {
+            reflogModel.clear()
+            for (var i = 0; i < list.length; i++) reflogModel.append(list[i])
+        }
     }
 
     ColumnLayout {

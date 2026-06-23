@@ -16,8 +16,15 @@ Fluent.MessageBox {
     function refresh() {
         previewModel.clear()
         if (!GitBridge || !GitBridge.repoPath) return
-        var files = GitBridge.cleanPreview()
-        for (var i = 0; i < files.length; i++) previewModel.append({ "path": files[i] })
+        GitBridge.requestCleanPreview()  // 异步,结果经 cleanPreviewReady 回传
+    }
+
+    Connections {
+        target: GitBridge
+        function onCleanPreviewReady(files) {
+            previewModel.clear()
+            for (var i = 0; i < files.length; i++) previewModel.append({ "path": files[i] })
+        }
     }
 
     function openClean() {

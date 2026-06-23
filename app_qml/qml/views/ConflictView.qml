@@ -12,11 +12,9 @@ Item {
     ListModel { id: conflictModel }
 
     function reload() {
-        conflictModel.clear()
-        if (!GitBridge || !GitBridge.repoPath) return
+        if (!GitBridge || !GitBridge.repoPath) { conflictModel.clear(); root.merging = false; return }
         root.merging = GitBridge.isMerging()
-        var list = GitBridge.getConflicts()
-        for (var i = 0; i < list.length; i++) conflictModel.append(list[i])
+        GitBridge.requestConflicts()  // 异步,结果经 conflictsReady 回传
     }
 
     function _op(res) {
@@ -31,6 +29,10 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
+        function onConflictsReady(list) {
+            conflictModel.clear()
+            for (var i = 0; i < list.length; i++) conflictModel.append(list[i])
+        }
     }
     Component.onCompleted: root.reload()
 

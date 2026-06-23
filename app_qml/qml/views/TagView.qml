@@ -9,10 +9,8 @@ Item {
     ListModel { id: tagModel }
 
     function reload() {
-        tagModel.clear()
-        if (!GitBridge || !GitBridge.repoPath) return
-        var list = GitBridge.getTags()
-        for (var i = 0; i < list.length; i++) tagModel.append(list[i])
+        if (!GitBridge || !GitBridge.repoPath) { tagModel.clear(); return }
+        GitBridge.requestTags()  // 异步,结果经 tagsReady 回传
     }
 
     function _op(res) {
@@ -27,6 +25,10 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
+        function onTagsReady(list) {
+            tagModel.clear()
+            for (var i = 0; i < list.length; i++) tagModel.append(list[i])
+        }
     }
     Component.onCompleted: root.reload()
 
@@ -58,7 +60,7 @@ Item {
                 Fluent.Button {
                     text: "推送所有"
                     enabled: tagModel.count > 0
-                    onClicked: root._op(GitBridge.pushAllTags())
+                    onClicked: GitBridge.pushAllTags()  // 异步,反馈经全局 operationFinished
                 }
                 Fluent.Button {
                     text: "创建标签"
@@ -124,7 +126,7 @@ Item {
                             }
                         }
                         Fluent.Button { text: "检出"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.checkoutTag(model.name)) }
-                        Fluent.Button { text: "推送"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.pushTag(model.name)) }
+                        Fluent.Button { text: "推送"; style: Fluent.Enums.button.style_transparent; onClicked: GitBridge.pushTag(model.name) }
                         Fluent.Button { text: "删除"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.deleteTag(model.name)) }
                     }
                 }

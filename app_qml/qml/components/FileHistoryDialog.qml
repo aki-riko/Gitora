@@ -20,9 +20,8 @@ Fluent.MessageBox {
         dlg.title = "文件历史 - " + path
         dlg.selected = []
         histModel.clear()
-        var list = GitBridge.getFileHistory(path, 50)
-        for (var i = 0; i < list.length; i++) histModel.append(list[i])
-        rightArea.text = list.length > 0 ? "选择一个提交查看该版本内容,选择两个对比差异" : "无历史记录"
+        rightArea.text = "加载中..."
+        GitBridge.requestFileHistory(path, 50)  // 异步,经 fileHistoryReady 回传
         dlg.open()
     }
 
@@ -40,11 +39,33 @@ Fluent.MessageBox {
 
     function _refreshRight() {
         if (dlg.selected.length === 1) {
-            rightArea.text = GitBridge.getFileContentAtCommit(dlg.filePath, dlg.selected[0])
+            rightArea.text = "加载中..."
+            GitBridge.requestFileContentAtCommit(dlg.filePath, dlg.selected[0])
         } else if (dlg.selected.length === 2) {
-            rightArea.text = GitBridge.diffFileBetweenCommits(dlg.filePath, dlg.selected[0], dlg.selected[1])
+            rightArea.text = "加载中..."
+            GitBridge.requestDiffBetween(dlg.filePath, dlg.selected[0], dlg.selected[1])
         } else {
             rightArea.text = "选择一个提交查看该版本内容,选择两个对比差异"
+        }
+    }
+
+    Connections {
+        target: GitBridge
+        function onFileHistoryReady(path, list) {
+            if (path !== dlg.filePath) return  // 防过期
+            histModel.clear()
+            for (var i = 0; i < list.length; i++) histModel.append(list[i])
+            if (dlg.selected.length === 0)
+                rightArea.text = list.length > 0 ? "选择一个提交查看该版本内容,选择两个对比差异" : "无历史记录"
+        }
+        function onFileContentReady(path, hash, content) {
+            if (path !== dlg.filePath || dlg.selected.length !== 1 || hash !== dlg.selected[0]) return
+            rightArea.text = content || "(空文件)"
+        }
+        function onDiffBetweenReady(path, c1, c2, diff) {
+            if (path !== dlg.filePath || dlg.selected.length !== 2
+                || c1 !== dlg.selected[0] || c2 !== dlg.selected[1]) return
+            rightArea.text = diff || "(无差异)"
         }
     }
 

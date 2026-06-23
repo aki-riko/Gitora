@@ -30,8 +30,11 @@ Item {
     function showDiff(path, staged) {
         root.selectedPath = path
         root.selectedStaged = staged
-        var raw = (GitBridge && path) ? GitBridge.getDiff(path, staged) : ""
-        diffView.text = _diffToHtml(raw)
+        diffView.text = ""
+        if (GitBridge && path) {
+            diffView.text = "加载中..."
+            GitBridge.requestDiff(path, staged)  // 异步,结果经 diffReady 回传
+        }
     }
 
     // diff 纯文本 -> 按行着色的 HTML(+绿/-红/@@蓝/文件头灰)
@@ -90,6 +93,11 @@ Item {
             } else {
                 Fluent.NotificationManager.toast.error(root, "失败", msg || "操作失败")
             }
+        }
+        function onDiffReady(path, staged, content) {
+            // 仅当结果对应当前选中项时才填充(防快速切换的过期结果覆盖)
+            if (path === root.selectedPath && staged === root.selectedStaged)
+                diffView.text = root._diffToHtml(content)
         }
         function onRepoOpened(ok, pathOrErr) {
             if (ok) openButton.rebuildList()

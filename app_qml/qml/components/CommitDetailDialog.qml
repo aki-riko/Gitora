@@ -20,10 +20,23 @@ Fluent.MessageBox {
         msgLabel.text = d.message || ""
         metaLabel.text = (d.shortHash || "") + "  ·  " + (d.author || "") + "  ·  " + (d.date || "")
         filesModel.clear()
-        var files = GitBridge.getCommitFiles(hash) || []
-        for (var i = 0; i < files.length; i++) filesModel.append(files[i])
-        diffArea.text = GitBridge.getCommitDiff(hash) || ""
+        diffArea.text = "加载中..."
+        GitBridge.requestCommitFiles(hash)  // 异步,经 commitFilesReady 回传
+        GitBridge.requestCommitDiff(hash)   // 异步,经 commitDiffReady 回传
         dlg.open()
+    }
+
+    Connections {
+        target: GitBridge
+        function onCommitFilesReady(hash, files) {
+            if (hash !== dlg.commitHash) return  // 防过期
+            filesModel.clear()
+            for (var i = 0; i < files.length; i++) filesModel.append(files[i])
+        }
+        function onCommitDiffReady(hash, diff) {
+            if (hash !== dlg.commitHash) return
+            diffArea.text = diff || ""
+        }
     }
 
     ColumnLayout {
