@@ -324,7 +324,12 @@ Item {
                                         text: "丢弃"
                                         style: Fluent.Enums.button.style_transparent
                                         visible: hover.hovered && !model.staged
-                                        onClicked: GitBridge.discardFile(model.path)
+                                        onClicked: {
+                                            discardDanger.content = "将丢弃 " + model.path
+                                                + " 的工作区改动。\n此操作不可恢复。"
+                                            discardDanger._path = model.path
+                                            discardDanger.start()
+                                        }
                                     }
                                     Fluent.Button {
                                         text: "历史"
@@ -427,4 +432,19 @@ Item {
 
     // 文件历史
     FileHistoryDialog { id: fileHistoryDialog }
+
+    // 危险操作:丢弃工作区改动二次确认(不可恢复)
+    DangerDialog {
+        id: discardDanger
+        title: "确认丢弃改动"
+        countdown: 3
+        property string _path: ""
+        onConfirmed: {
+            var ok = GitBridge.discardFile(_path)
+            if (ok)
+                Fluent.NotificationManager.toast.success(root, "已丢弃", _path)
+            else
+                Fluent.NotificationManager.toast.error(root, "失败", "丢弃失败: " + _path)
+        }
+    }
 }
