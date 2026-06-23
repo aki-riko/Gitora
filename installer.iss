@@ -3,7 +3,7 @@
 ; 前提: 先跑 build_nuitka.py 生成 build_dist\main_qml.dist\
 
 #define MyAppName "Gitora"
-#define MyAppVersion "1.0.3"
+#define MyAppVersion "1.0.4"
 #define MyAppPublisher "aki-riko"
 #define MyAppExeName "Gitora.exe"
 #define MyDistDir "build_dist\main_qml.dist"
@@ -27,6 +27,10 @@ ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
 ; 允许用户选择安装目录
 UninstallDisplayIcon={app}\{#MyAppExeName}
+; 自动更新:静默安装时若 Gitora 正在运行,自动关闭并在安装完成后重启
+; (配合 Updater.runInstallerAndQuit 的 /VERYSILENT 静默安装)
+CloseApplications=yes
+RestartApplications=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"

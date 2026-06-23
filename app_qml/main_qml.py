@@ -108,14 +108,25 @@ def main() -> int:
     app.aboutToQuit.connect(repo_scanner.shutdown)
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
-    from app.common.setting import VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL
+    from app.common.setting import (
+        VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL,
+        UPDATE_REPO, UPDATE_ASSET_KEYWORD, INSTALLER_SILENT_ARGS,
+    )
     ctx.setContextProperty("AppInfo", {
         "version": VERSION,
         "author": AUTHOR,
         "year": str(YEAR),
         "helpUrl": HELP_URL,
         "feedbackUrl": FEEDBACK_URL,
+        "installerSilentArgs": INSTALLER_SILENT_ARGS,
     })
+
+    # 自动更新组件(FluentQML 引擎级 Updater,基于 GitHub Releases)。
+    # 自检模式不联网。检测/下载/安装结果经信号回传给 QML(见 SettingsView)。
+    from fluentqml import Updater
+    updater = Updater(UPDATE_REPO, VERSION, asset_keyword=UPDATE_ASSET_KEYWORD)
+    ctx.setContextProperty("Updater", updater)
+    app._updater = updater  # 防 GC,保持网络管理器存活
 
     # addImportPath 指向 fluentqml 包目录(其下 FluentQML/qmldir 提供 QML 模块)
     engine.addImportPath(FLUENTQML_PKG_DIR)
@@ -148,9 +159,16 @@ def main() -> int:
                 from PySide6.QtCore import QMetaObject
                 QMetaObject.invokeMethod(root_obj, "activateWindow")
             except Exception as e:  # noqa: BLE001
-                logger.warning(f"激活窗口失败: {e}")
+                from app.common.logger import get_logger
+                get_logger(__name__).warning(f"激活窗口失败: {e}")
 
         app._single_instance.activateRequested.connect(_on_activate)
+
+    # 启动后静默检查更新(延迟,不阻塞窗口;自检模式跳过联网)。
+    # 检查结果经 Updater 信号传给 QML;启动检查只在有新版时提示,失败静默(见 SettingsView)。
+    if not os.environ.get("GITESS_QML_SELFTEST"):
+        from PySide6.QtCore import QTimer as _QTimerUpd
+        _QTimerUpd.singleShot(3000, updater.checkForUpdate)
 
     # headless 自检:设了 GITESS_QML_SELFTEST 则加载成功后定时退出
     if os.environ.get("GITESS_QML_SELFTEST"):
