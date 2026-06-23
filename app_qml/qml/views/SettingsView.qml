@@ -7,13 +7,10 @@ import FluentQML as Fluent
 Item {
     id: root
 
-    // 更新检查状态
-    property bool _checking: false       // 正在检查
-    property bool _downloading: false    // 正在下载
-    property bool _manualTriggered: false // 本次检查是否手动触发(决定"已最新/失败"是否提示)
+    // 更新检查:实际流程(弹框/下载/安装)由常驻的 RepoView 承载;
+    // 本页仅提供手动触发入口 + 短暂的"检查中"按钮态。
+    property bool _checking: false
     property string _updateStatus: AppInfo ? ("当前版本 " + AppInfo.version) : ""
-    property string _pendingDownloadUrl: "" // 待下载的安装包地址
-    property string _pendingHtmlUrl: ""     // 新版 Releases 页(下载失败兜底跳转)
 
     Fluent.ScrollArea {
         anchors.fill: parent
@@ -140,7 +137,7 @@ Item {
                     buttonText: ""
                 }
 
-                // 检查更新:点按钮 → Updater.checkForUpdate(),结果经下方 Connections 处理
+                // 检查更新:点按钮 → Updater.checkForUpdate();结果(弹框/下载/安装)由常驻 RepoView 处理
                 Fluent.SettingsCard {
                     id: updateCard
                     width: parent ? parent.width : 0
@@ -149,7 +146,7 @@ Item {
                     icon: Fluent.Enums.icon.arrow_sync
                     type: Fluent.Enums.settingCard.type_push
                     buttonText: root._checking ? "检查中…" : "检查更新"
-                    enabled: !root._checking && !root._downloading
+                    enabled: !root._checking
                     onClicked: root._manualCheck()
                 }
             }
@@ -175,121 +172,35 @@ Item {
         GitBridge.gc()  // 异步,结果经 operationFinished 反馈(由全局监听统一弹 toast,避免重复)
     }
 
-    // ==================== 自动更新 ====================
-    // 发现新版本时的确认对话框
-    Fluent.ConfirmDialog {
-        id: updateConfirmDialog
-        level: Fluent.Enums.statusLevel.attention
-        title: "发现新版本"
-        confirmText: "下载并安装"
-        cancelText: "稍后"
-        onConfirmed: {
-            if (root._pendingDownloadUrl !== "") {
-                root._startDownload(root._pendingDownloadUrl)
-            } else if (root._pendingHtmlUrl !== "" && Updater) {
-                // 没有可下载的安装包资源,退而打开 Releases 页让用户手动下载
-                Updater.openInBrowser(root._pendingHtmlUrl)
-            }
-        }
-    }
-
-    // 下载进度对话框(无限转圈 + 百分比文字)
-    Fluent.ProgressDialog {
-        id: downloadDialog
-        title: "正在下载更新"
-        content: "准备中…"
-    }
-
-    // 接收 Updater 信号
-    Connections {
-        target: Updater
-        ignoreUnknownSignals: true
-
-        function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
-            root._checking = false
-            root._updateStatus = "发现新版本 " + version
-            root._pendingDownloadUrl = downloadUrl
-            root._pendingHtmlUrl = htmlUrl
-            var msg = "新版本 " + version + " 可用,当前 " + (AppInfo ? AppInfo.version : "") + "。"
-            if (notes && notes.length > 0) {
-                var brief = notes.length > 300 ? notes.substring(0, 300) + "…" : notes
-                msg += "\n\n更新说明:\n" + brief
-            }
-            updateConfirmDialog.message = msg
-            updateConfirmDialog.open()
-            root._manualTriggered = false  // 本次检查结束,复位
-        }
-
-        function onUpToDate(currentVersion) {
-            root._checking = false
-            root._updateStatus = "已是最新版本 " + currentVersion
-            // 只有手动触发才提示;启动静默检查保持安静
-            if (root._manualTriggered)
-                Fluent.NotificationManager.toast.success(root, "已是最新", "当前已是最新版本 " + currentVersion)
-            root._manualTriggered = false  // 本次检查结束,复位(避免影响后续静默检查)
-        }
-
-        function onCheckFailed(error) {
-            root._checking = false
-            root._updateStatus = AppInfo ? ("当前版本 " + AppInfo.version) : ""
-            if (root._manualTriggered)
-                Fluent.NotificationManager.toast.error(root, "检查更新失败", error || "网络错误")
-            root._manualTriggered = false
-        }
-
-        function onDownloadProgress(received, total) {
-            if (total > 0) {
-                var pct = Math.floor(received * 100 / total)
-                downloadDialog.content = pct + "%  (" + root._fmtSize(received) + " / " + root._fmtSize(total) + ")"
-            } else {
-                downloadDialog.content = root._fmtSize(received) + " 已下载"
-            }
-        }
-
-        function onDownloadFinished(localPath) {
-            root._downloading = false
-            downloadDialog.accept()
-            // 启动静默安装并退出应用(安装包覆盖文件后自动重启 Gitora)
-            var args = AppInfo ? AppInfo.installerSilentArgs : ""
-            var ok = Updater.runInstallerAndQuit(localPath, args)
-            if (!ok)
-                Fluent.NotificationManager.toast.error(root, "安装失败", "无法启动安装程序,请手动安装")
-        }
-
-        function onDownloadFailed(error) {
-            root._downloading = false
-            downloadDialog.reject()
-            root._updateStatus = "下载失败"
-            // 下载失败时,提供打开 Releases 页手动下载的兜底
-            Fluent.NotificationManager.toast.error(root, "下载失败", (error || "网络错误") + ",可前往项目主页手动下载")
-            if (root._pendingHtmlUrl !== "" && Updater)
-                Updater.openInBrowser(root._pendingHtmlUrl)
-        }
-    }
-
+    // ==================== 自动更新(仅触发入口)====================
+    // 实际流程(发现新版弹框/下载进度/静默安装)由常驻的 RepoView 承载。
+    // 本页只负责手动触发检查 + 维护按钮"检查中"态,结果信号同时被这里(复位按钮)
+    // 和 RepoView(弹框/提示)接收,职责不重叠。
     function _manualCheck() {
         if (!Updater) {
             Fluent.NotificationManager.toast.warning(root, "提示", "更新组件不可用")
             return
         }
-        root._manualTriggered = true
         root._checking = true
         root._updateStatus = "正在检查更新…"
-        Updater.checkForUpdate()
+        Updater.checkForUpdate()  // 此刻 RepoView._updSilent 已是 false → 结果会正常提示
     }
 
-    function _startDownload(url) {
-        if (!Updater) return
-        root._downloading = true
-        downloadDialog.content = "准备中…"
-        downloadDialog.open()
-        Updater.downloadUpdate(url)
-    }
-
-    // 字节数转人类可读(KB/MB)
-    function _fmtSize(bytes) {
-        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
-        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB"
-        return bytes + " B"
+    // 仅复位本页按钮态与状态文字;不弹框、不下载(交给 RepoView)
+    Connections {
+        target: typeof Updater !== "undefined" ? Updater : null
+        ignoreUnknownSignals: true
+        function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
+            root._checking = false
+            root._updateStatus = "发现新版本 " + version
+        }
+        function onUpToDate(currentVersion) {
+            root._checking = false
+            root._updateStatus = "已是最新版本 " + currentVersion
+        }
+        function onCheckFailed(error) {
+            root._checking = false
+            root._updateStatus = AppInfo ? ("当前版本 " + AppInfo.version) : ""
+        }
     }
 }

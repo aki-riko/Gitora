@@ -164,11 +164,9 @@ def main() -> int:
 
         app._single_instance.activateRequested.connect(_on_activate)
 
-    # 启动后静默检查更新(延迟,不阻塞窗口;自检模式跳过联网)。
-    # 检查结果经 Updater 信号传给 QML;启动检查只在有新版时提示,失败静默(见 SettingsView)。
-    if not os.environ.get("GITESS_QML_SELFTEST"):
-        from PySide6.QtCore import QTimer as _QTimerUpd
-        _QTimerUpd.singleShot(3000, updater.checkForUpdate)
+    # 启动后的静默更新检查改由常驻的 RepoView(首页)在加载完成后发起,
+    # 确保接收 Updater 信号的 Connections 已就绪(放 Python 端 QTimer 会早于 QML 接收方,
+    # 导致 updateAvailable 信号无人接收而静默检查失效)。SELFTEST 1.5s 即退出,早于其 3s 定时器。
 
     # headless 自检:设了 GITESS_QML_SELFTEST 则加载成功后定时退出
     if os.environ.get("GITESS_QML_SELFTEST"):

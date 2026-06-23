@@ -457,4 +457,109 @@ Item {
                 Fluent.NotificationManager.toast.error(root, "失败", "丢弃失败: " + _path)
         }
     }
+
+    // ==================== 自动更新(全局,常驻首页承载;SettingsView 仅触发检查)====================
+    property bool _updSilent: false        // 本次检查是否静默(启动检查=静默,手动=非静默)
+    property string _updDownloadUrl: ""    // 待下载的安装包地址
+    property string _updHtmlUrl: ""        // 新版 Releases 页(下载失败兜底)
+
+    Fluent.ConfirmDialog {
+        id: updateConfirmDialog
+        level: Fluent.Enums.statusLevel.attention
+        title: "发现新版本"
+        confirmText: "下载并安装"
+        cancelText: "稍后"
+        onConfirmed: {
+            if (root._updDownloadUrl !== "") {
+                root._updStartDownload(root._updDownloadUrl)
+            } else if (root._updHtmlUrl !== "" && Updater) {
+                Updater.openInBrowser(root._updHtmlUrl)  // 无安装包资源,跳 Releases 页手动下载
+            }
+        }
+    }
+
+    Fluent.ProgressDialog {
+        id: updateDownloadDialog
+        title: "正在下载更新"
+        content: "准备中…"
+    }
+
+    Connections {
+        target: typeof Updater !== "undefined" ? Updater : null
+        ignoreUnknownSignals: true
+
+        function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
+            root._updDownloadUrl = downloadUrl
+            root._updHtmlUrl = htmlUrl
+            var msg = "新版本 " + version + " 可用,当前 " + (AppInfo ? AppInfo.version : "") + "。"
+            if (notes && notes.length > 0) {
+                var brief = notes.length > 300 ? notes.substring(0, 300) + "…" : notes
+                msg += "\n\n更新说明:\n" + brief
+            }
+            updateConfirmDialog.message = msg
+            updateConfirmDialog.open()
+            root._updSilent = false
+        }
+        function onUpToDate(currentVersion) {
+            // 静默检查(启动)不打扰;手动检查才提示
+            if (!root._updSilent)
+                Fluent.NotificationManager.toast.success(root, "已是最新", "当前已是最新版本 " + currentVersion)
+            root._updSilent = false
+        }
+        function onCheckFailed(error) {
+            if (!root._updSilent)
+                Fluent.NotificationManager.toast.error(root, "检查更新失败", error || "网络错误")
+            root._updSilent = false
+        }
+        function onDownloadProgress(received, total) {
+            if (total > 0) {
+                var pct = Math.floor(received * 100 / total)
+                updateDownloadDialog.content = pct + "%  (" + root._updFmtSize(received) + " / " + root._updFmtSize(total) + ")"
+            } else {
+                updateDownloadDialog.content = root._updFmtSize(received) + " 已下载"
+            }
+        }
+        function onDownloadFinished(localPath) {
+            updateDownloadDialog.accept()
+            var args = AppInfo ? AppInfo.installerSilentArgs : ""
+            var ok = Updater.runInstallerAndQuit(localPath, args)
+            if (!ok)
+                Fluent.NotificationManager.toast.error(root, "安装失败", "无法启动安装程序,请手动安装")
+        }
+        function onDownloadFailed(error) {
+            updateDownloadDialog.reject()
+            Fluent.NotificationManager.toast.error(root, "下载失败", (error || "网络错误") + ",可前往项目主页手动下载")
+            if (root._updHtmlUrl !== "" && Updater)
+                Updater.openInBrowser(root._updHtmlUrl)
+        }
+    }
+
+    // 发起检查:silent=true 静默(已最新/失败不提示),供启动自检与设置页手动检查共用
+    function _updCheck(silent) {
+        if (!Updater) return
+        root._updSilent = silent === true
+        Updater.checkForUpdate()
+    }
+
+    function _updStartDownload(url) {
+        if (!Updater) return
+        updateDownloadDialog.content = "准备中…"
+        updateDownloadDialog.open()
+        Updater.downloadUpdate(url)
+    }
+
+    function _updFmtSize(bytes) {
+        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
+        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB"
+        return bytes + " B"
+    }
+
+    // 启动后延迟静默检查更新(取代原 Python 端 QTimer,确保接收方已就绪)
+    Timer {
+        id: updateStartupTimer
+        interval: 3000
+        running: true
+        repeat: false
+        onTriggered: root._updCheck(true)
+    }
 }
