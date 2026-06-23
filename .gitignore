@@ -36,6 +36,8 @@ wheels/
 *.dist/
 *.build/
 *.onefile-build/
+build_dist/
+dist_installer/
 
 # 日志文件
 *.log

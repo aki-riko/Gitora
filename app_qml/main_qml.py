@@ -9,18 +9,26 @@ QML 版基于 FluentQML(MIT),无 QFluentWidgets Pro / License 依赖。
 import os
 import sys
 
+# ---- 是否为 Nuitka 打包态 ----
+def _is_frozen() -> bool:
+    return "__compiled__" in globals() or getattr(sys, "frozen", False)
+
 # ---- 路径注入 ----
-# 1) Gitora 项目根(让 app.common.* 可导入)
-GITESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+# 打包态:所有资源解包到 exe 同级目录(Nuitka standalone);
+# 开发态:基于源码文件位置定位。
+if _is_frozen():
+    GITESS_ROOT = os.path.dirname(os.path.abspath(sys.executable))
+else:
+    GITESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, GITESS_ROOT)
 
 # 2) FluentQML 来源:优先用已安装的 pip 包(fqml,import 名 fluentqml);
 #    若未安装,回退到本地源码探测(开发用)。
 def _resolve_fluentqml_dir():
-    # 优先:已 pip 安装的 fqml(import fluentqml)
+    # 优先:已 pip 安装的 fqml(import fluentqml) — 打包态也走这里(已 include 进包)
     try:
         import fluentqml as _f
-        return os.path.dirname(_f.__file__)  # site-packages/fluentqml
+        return os.path.dirname(_f.__file__)
     except ImportError:
         pass
     # 回退:本地源码(含 fluentqml/__init__.py 的仓库根)
@@ -118,8 +126,11 @@ def main() -> int:
     logo_path = os.path.join(GITESS_ROOT, "app", "resource", "images", "logo.png")
     ctx.setContextProperty("AppLogo", QUrl.fromLocalFile(logo_path).toString() if os.path.isfile(logo_path) else "")
 
-    # 加载主 QML
-    qml_main = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "main.qml")
+    # 加载主 QML(打包态在 exe 同级 app_qml/qml,开发态在源码目录)
+    if _is_frozen():
+        qml_main = os.path.join(GITESS_ROOT, "app_qml", "qml", "main.qml")
+    else:
+        qml_main = os.path.join(os.path.dirname(os.path.abspath(__file__)), "qml", "main.qml")
     engine.load(QUrl.fromLocalFile(qml_main))
 
     if not engine.rootObjects():
