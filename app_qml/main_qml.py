@@ -68,14 +68,17 @@ def main() -> int:
     app = App(sys.argv)
     engine = app.engine
 
-    # 单实例检查(共享内存);自检模式跳过
+    # 单实例检查(用 FluentQML 封装:Windows 用 Named Mutex,其他平台 QSharedMemory);
+    # 自检模式跳过。持有 instance 引用到进程结束,锁才不被释放。
+    app._single_instance = None
     if not os.environ.get("GITESS_QML_SELFTEST"):
-        from PySide6.QtCore import QSharedMemory
-        shared = QSharedMemory("Gitora_QML_SingleInstance_Key")
-        if not shared.create(1):
+        from fluentqml import SingleInstance
+        instance = SingleInstance("io.github.aki-riko.gitora")
+        if not instance.try_lock():
             from PySide6.QtWidgets import QMessageBox
             QMessageBox.warning(None, "Gitora 已在运行", "Gitora 已经在运行中,请勿重复启动。")
             return 0
+        app._single_instance = instance  # 防止被 GC,保持锁
 
     # Git 安装检测
     from app.common.git_installer import gitInstaller
