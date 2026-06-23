@@ -6,4 +6,5 @@
 PySide6>=6.5.0
 
 # FluentQML(pip 包名 fqml,import 名 fluentqml,MIT)
-fqml>=0.2.3  # 需 Timeline virtualized 虚拟滚动(0.2.3 新增)
+# 需 0.2.5: Timeline virtualized 虚拟滚动 + 懒加载切回不重载 + 异步孵化控制器(切页不掉帧)
+fqml>=0.2.5
