@@ -31,7 +31,7 @@ pip install -r app_qml/requirements.txt
 python app_qml/main_qml.py
 ```
 
-依赖 `fqml >= 0.2.3`（FluentQML，提供 Timeline 虚拟滚动等特性）。
+依赖 `fqml >= 0.2.5`（FluentQML，提供 Timeline 虚拟滚动等特性）。
 
 ## 功能
 

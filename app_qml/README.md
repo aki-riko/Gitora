@@ -14,7 +14,7 @@
 ## 运行
 
 ```bash
-# 1. 安装依赖(含 FluentQML: pip 包名 fqml >= 0.2.3)
+# 1. 安装依赖(含 FluentQML: pip 包名 fqml >= 0.2.5)
 pip install -r app_qml/requirements.txt
 
 # 2. 启动
