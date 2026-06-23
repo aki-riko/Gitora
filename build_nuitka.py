@@ -22,6 +22,13 @@ ENTRY = os.path.join(ROOT, "app_qml", "main_qml.py")
 ICON = os.path.join(ROOT, "app", "resource", "images", "logo.ico")
 OUT = os.path.join(ROOT, "build_dist")
 
+# PySide6 的 QML 模块目录(Effects/Layouts/Controls 等)。Nuitka 的 pyside6 插件
+# 不扫描"数据文件"里的 QML import,导致这些模块漏打 → 运行时 "module not installed"。
+# 显式把整个 PySide6/qml 打进产物的 PySide6/qml(Qt 运行时在此查找 QML 模块)。
+import PySide6 as _ps
+_PYSIDE_DIR = os.path.dirname(_ps.__file__)
+_PYSIDE_QML = os.path.join(_PYSIDE_DIR, "qml")
+
 args = [
     PY, "-m", "nuitka",
     "--standalone",
@@ -39,10 +46,19 @@ args = [
     # 界面 QML + 资源,解到 exe 同级(对应 frozen 路径)
     f"--include-data-dir={os.path.join(ROOT, 'app_qml', 'qml')}=app_qml/qml",
     f"--include-data-dir={os.path.join(ROOT, 'app', 'resource')}=app/resource",
+    # PySide6 QML 模块(Effects/Layouts/Controls/Shapes/Dialogs 等),补 pyside6 插件漏打
+    f"--include-data-dir={_PYSIDE_QML}=PySide6/qml",
+    # include-data-dir 会跳过 .dll(当代码处理),但 QML 模块的 C++ 插件就是 .dll
+    # (qquicklayoutsplugin.dll 等),必须用 include-data-files 显式按 *.dll 模式带上
+    f"--include-data-files={_PYSIDE_QML}/=PySide6/qml/=**/*.dll",
+    # QtQuick 子模块的核心实现库(Qt6QuickLayouts/Controls2/Shapes/Effects/Templates2 等),
+    # pyside6 插件只打了 Qt6Quick.dll,这些子模块库漏打 → 插件 dll 依赖找不到。
+    # 带到产物根(与 qt6quick.dll 同级,Qt 在此解析依赖)。
+    f"--include-data-files={_PYSIDE_DIR}/Qt6Quick*.dll=./",
     # 产品元信息
     "--company-name=aki-riko",
     "--product-name=Gitora",
-    "--product-version=1.0.0",
+    "--product-version=1.0.1",
     "--file-description=Gitora - Git GUI",
     f"--output-dir={OUT}",
     ENTRY,

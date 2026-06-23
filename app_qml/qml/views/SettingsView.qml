@@ -151,14 +151,6 @@ Item {
             Fluent.NotificationManager.toast.warning(root, "提示", "请先打开一个 Git 仓库")
             return
         }
-        GitBridge.gc()  // 异步,结果经 operationFinished 反馈
-    }
-
-    Connections {
-        target: GitBridge
-        function onOperationFinished(ok, msg) {
-            if (ok) Fluent.NotificationManager.toast.success(root, "成功", msg || "操作完成")
-            else Fluent.NotificationManager.toast.error(root, "失败", msg || "操作失败")
-        }
+        GitBridge.gc()  // 异步,结果经 operationFinished 反馈(由全局监听统一弹 toast,避免重复)
     }
 }
