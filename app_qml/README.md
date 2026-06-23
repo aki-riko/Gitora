@@ -1,6 +1,6 @@
 # Gitora — 架构说明
 
-基于 [FluentQML](https://github.com/)(MIT,纯 QML 声明式 Fluent 组件库)构建的 Git GUI。本文件说明项目架构与设计,面向贡献者。
+基于 [FluentQML](https://github.com/aki-riko/FluentQML)(MIT,纯 QML 声明式 Fluent 组件库)构建的 Git GUI。本文件说明项目架构与设计,面向贡献者。
 
 ## 架构分层
 

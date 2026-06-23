@@ -1,25 +1,32 @@
 # Gitora
 
-> 对新手友好的 Git 可视化工具，基于 [FluentQML](https://github.com/) 的现代化桌面客户端。
+> 对新手友好的 Git 可视化工具，基于 [FluentQML](https://github.com/aki-riko/FluentQML) 的现代化桌面客户端。
 
 Gitora 用 Fluent Design 风格把常见 Git 操作做成清晰直观的界面——暂存、提交、推送、分支、标签、stash、冲突解决，一站式完成，无需记命令。
 
 ## ✨ 特性
 
 - 🎯 **新手友好** — 清晰的操作界面，一键暂存 + 提交 + 推送
-- 🚀 **功能完善** — 文件差异（增删着色）、提交时间线、分支/标签/Stash 管理、冲突解决、Reflog
+- 🚀 **功能完善** — 文件差异（增删着色）、提交时间线、分支/标签/Stash 管理、冲突解决、Reflog、文件历史
 - 🎨 **现代美观** — Fluent Design，亮/暗主题，Mica 半透明，平滑滚动
 - ⚡ **流畅不卡** — Git 操作全异步（不阻塞界面），大仓库历史虚拟滚动
-- 🔒 **安全可靠** — 危险操作倒计时二次确认，完整的边界处理与错误提示
+- 🔒 **安全可靠** — 危险操作倒计时二次确认，ref/URL/路径校验，完整边界处理
 - 🔍 **全盘扫描** — 后台自动扫描磁盘上的 Git 仓库，一键打开
+- 🪟 **单实例** — 重复启动自动激活已有窗口，不开多个
+
+## 下载
+
+前往 [Releases](https://github.com/aki-riko/Gitora/releases) 下载 `Gitora-Setup-x.y.z.exe`（Windows 安装包，已内置运行时，无需 Python 环境）。
+
+> 需要本机已安装 [Git](https://git-scm.com/) 命令行工具，首次启动会自动检测。
 
 ## 技术栈
 
-- **UI**: [FluentQML](https://github.com/)（MIT，纯 QML 声明式 Fluent 组件库）
+- **UI**: [FluentQML](https://github.com/aki-riko/FluentQML)（MIT，纯 QML 声明式 Fluent 组件库）
 - **运行时**: PySide6 (Qt for Python)
 - **后端**: Python 封装 git 命令行（subprocess），异步执行
 
-## 安装与运行
+## 从源码运行
 
 需要 Python 3.10+ 和已安装的 Git 命令行工具。
 
@@ -31,7 +38,17 @@ pip install -r app_qml/requirements.txt
 python app_qml/main_qml.py
 ```
 
-依赖 `fqml >= 0.2.5`（FluentQML，提供 Timeline 虚拟滚动等特性）。
+依赖 `fqml >= 0.2.7`（FluentQML，提供 Timeline 虚拟滚动、单实例 IPC 等特性）。
+
+## 打包
+
+```bash
+# 1. Nuitka 编译为 standalone exe（产物在 build_dist/main_qml.dist/）
+python build_nuitka.py
+
+# 2. InnoSetup 生成安装包（需安装 Inno Setup 6/7）
+ISCC installer.iss   # 产物在 dist_installer/
+```
 
 ## 功能
 

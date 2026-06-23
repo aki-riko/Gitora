@@ -12,11 +12,11 @@ YEAR = 2025
 AUTHOR = "aki-riko"
 VERSION = "v1.0.3"
 APP_NAME = "Gitora"
-# 项目地址(开源后填入真实仓库地址)
-HELP_URL = ""
-REPO_URL = ""
-FEEDBACK_URL = ""
-DOC_URL = ""
+# 项目地址
+HELP_URL = "https://github.com/aki-riko/Gitora"
+REPO_URL = "https://github.com/aki-riko/Gitora"
+FEEDBACK_URL = "https://github.com/aki-riko/Gitora/issues"
+DOC_URL = "https://github.com/aki-riko/Gitora#readme"
 
 # 使用系统用户数据目录
 import os
