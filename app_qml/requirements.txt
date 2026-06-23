@@ -11,4 +11,6 @@ PySide6>=6.5.0
 # 0.2.7: SingleInstance 内置 IPC(第二实例激活已有窗口)
 # 0.2.9: Updater 通用更新组件(自动更新所需,最低版本)
 # 0.2.10: Updater 下载收尾加固(关文件前兜底读缓冲区)
-fqml>=0.2.10
+# 0.2.11: ConfirmDialog messageAlignment(更新说明左对齐)
+# 0.2.12: UpdateDialog 更新对话框组件(Markdown 渲染+滚动+边框)
+fqml>=0.2.12

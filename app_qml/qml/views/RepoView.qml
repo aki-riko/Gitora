@@ -463,12 +463,9 @@ Item {
     property string _updDownloadUrl: ""    // 待下载的安装包地址
     property string _updHtmlUrl: ""        // 新版 Releases 页(下载失败兜底)
 
-    Fluent.ConfirmDialog {
+    Fluent.UpdateDialog {
         id: updateConfirmDialog
-        level: Fluent.Enums.statusLevel.attention
-        title: "发现新版本"
-        confirmText: "下载并安装"
-        cancelText: "稍后"
+        // version/currentVersion/notes 由 onUpdateAvailable 赋值;notes 为 Markdown,组件内渲染+滚动
         onConfirmed: {
             if (root._updDownloadUrl !== "") {
                 root._updStartDownload(root._updDownloadUrl)
@@ -491,12 +488,9 @@ Item {
         function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
             root._updDownloadUrl = downloadUrl
             root._updHtmlUrl = htmlUrl
-            var msg = "新版本 " + version + " 可用,当前 " + (AppInfo ? AppInfo.version : "") + "。"
-            if (notes && notes.length > 0) {
-                var brief = notes.length > 300 ? notes.substring(0, 300) + "…" : notes
-                msg += "\n\n更新说明:\n" + brief
-            }
-            updateConfirmDialog.message = msg
+            updateConfirmDialog.version = version
+            updateConfirmDialog.currentVersion = AppInfo ? AppInfo.version : ""
+            updateConfirmDialog.notes = notes || ""
             updateConfirmDialog.open()
             root._updSilent = false
         }
