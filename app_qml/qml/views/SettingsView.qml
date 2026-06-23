@@ -217,6 +217,7 @@ Item {
             }
             updateConfirmDialog.message = msg
             updateConfirmDialog.open()
+            root._manualTriggered = false  // 本次检查结束,复位
         }
 
         function onUpToDate(currentVersion) {
@@ -225,6 +226,7 @@ Item {
             // 只有手动触发才提示;启动静默检查保持安静
             if (root._manualTriggered)
                 Fluent.NotificationManager.toast.success(root, "已是最新", "当前已是最新版本 " + currentVersion)
+            root._manualTriggered = false  // 本次检查结束,复位(避免影响后续静默检查)
         }
 
         function onCheckFailed(error) {
@@ -232,6 +234,7 @@ Item {
             root._updateStatus = AppInfo ? ("当前版本 " + AppInfo.version) : ""
             if (root._manualTriggered)
                 Fluent.NotificationManager.toast.error(root, "检查更新失败", error || "网络错误")
+            root._manualTriggered = false
         }
 
         function onDownloadProgress(received, total) {
