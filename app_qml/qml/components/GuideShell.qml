@@ -10,7 +10,7 @@
 //   }
 import QtQuick
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 
 Fluent.WindowsCore {
     id: shell

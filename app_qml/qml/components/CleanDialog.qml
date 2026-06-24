@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg

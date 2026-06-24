@@ -8,7 +8,7 @@ Gitora Nuitka 打包脚本(Windows, standalone/onedir)。
 要点:
 - standalone(非 onefile):QML 应用 onefile 解压慢且易出问题,onedir 最稳。
 - pyside6 插件:Nuitka 自动处理 Qt QML 运行时/插件。
-- fluentqml(932 QML + python + icons):include-package + include-package-data 带全部非py资源。
+- prismqml(932 QML + python + icons):include-package + include-package-data 带全部非py资源。
 - app_qml/qml(主界面) 和 app/resource(logo/ico) 用 include-data-dir 解到 exe 同级。
   对应 main_qml.py 的 frozen 路径解析(GITESS_ROOT = exe 同级)。
 """
@@ -37,9 +37,9 @@ args = [
     "--windows-console-mode=disable",
     "--output-filename=Gitora.exe",
     f"--windows-icon-from-ico={ICON}",
-    # fluentqml 整包 + 数据(QML/SVG/字体等非 .py 文件)
-    "--include-package=fluentqml",
-    "--include-package-data=fluentqml",
+    # prismqml 整包 + 数据(QML/SVG/字体等非 .py 文件)
+    "--include-package=prismqml",
+    "--include-package-data=prismqml",
     # 后端包
     "--include-package=app",
     "--include-package=app_qml",

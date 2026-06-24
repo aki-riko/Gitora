@@ -4,7 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 import "../components"
 
 Item {

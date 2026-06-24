@@ -7,7 +7,7 @@
 //   dlg.start()   // 启动倒计时并打开
 import QtQuick
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg

@@ -7,7 +7,7 @@
 import QtQuick
 import QtQuick.Layouts
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 
 Fluent.ScrollArea {
     id: scaffold

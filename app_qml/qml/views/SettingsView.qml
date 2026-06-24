@@ -2,7 +2,7 @@
 // 配置后端映射:主题→ThemeManager,Mica/DPI→ConfigManager,语言→Translator,仓库维护→GitBridge
 import QtQuick
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 
 Item {
     id: root

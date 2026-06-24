@@ -2,7 +2,7 @@
 import QtQuick
 import QtQuick.Window
 
-import FluentQML as Fluent
+import PrismQML as Fluent
 
 QtObject {
     id: root
