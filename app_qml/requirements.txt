@@ -5,13 +5,8 @@
 # UI 框架
 PySide6>=6.5.0
 
-# FluentQML(pip 包名 fqml,import 名 fluentqml,MIT)
-# 0.2.5: Timeline virtualized + 懒加载切回不重载 + 异步孵化控制器(切页不掉帧)
-# 0.2.6: Card autoHeight 内容自撑开关
-# 0.2.7: SingleInstance 内置 IPC(第二实例激活已有窗口)
-# 0.2.9: Updater 通用更新组件(自动更新所需,最低版本)
-# 0.2.10: Updater 下载收尾加固(关文件前兜底读缓冲区)
-# 0.2.11: ConfirmDialog messageAlignment(更新说明左对齐)
-# 0.2.12: UpdateDialog 更新对话框组件(Markdown 渲染+滚动+边框)
-# 0.2.13: 安装改用 ShellExecute open(修提权卡死) + ProgressDialog 确定进度
-fqml>=0.2.13
+# PrismQML(pip 包名 prismqml,import 名 prismqml,MIT;原 FluentQML/fqml 改名升级而来)
+# 多皮肤 UI 引擎(Fluent + Neobrutalism)。自动更新所需组件:
+#   Updater(检测/下载/ShellExecute open 提权安装)+ UpdateDialog(Markdown 更新说明)
+#   + ProgressDialog 确定进度环。均自原 fqml 0.2.9~0.2.13 演进,PrismQML 首发版 0.2.14 起继承。
+prismqml>=0.2.14
