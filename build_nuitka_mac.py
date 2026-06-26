@@ -39,10 +39,13 @@ args = [
     "--standalone",
     "--assume-yes-for-downloads",
     "--enable-plugin=pyside6",
-    # 注:不手动加 --include-qt-plugins=qml。pyside6 的 Nuitka 插件已自动处理 QML 模块
-    # (日志可见 "Included ... Qt QML datafile" + "Including Qt plugins ...qml...");
-    # 手动再加会把 Qt 的构建中间产物(objects-RelWithDebInfo/.qt 等)塞进 Contents/MacOS,
-    # 导致 mac ad-hoc codesign 报 "bundle format unrecognized" 而打包失败。
+    # 带全 QML 运行时模块(QtQuick.Window 等核心模块,否则运行时报 module not installed)。
+    "--include-qt-plugins=qml",
+    # 但排除 Qt 的构建中间产物/实验模块:它们含 objects-RelWithDebInfo/.qt 这类
+    # 非 bundle 格式文件,会让 mac ad-hoc codesign --deep 报 "bundle format unrecognized"。
+    # assetdownloader 是 Qt labs 实验模块,Gitora 不用;objects-* 是构建残留。
+    "--noinclude-data-files=*/objects-*/*",
+    "--noinclude-data-files=*/Qt/labs/assetdownloader/*",
     "--macos-create-app-bundle",
     "--macos-app-create-dmg",          # 直接产 .dmg(Nuitka 内置,免额外打包步骤)
     "--macos-app-console-mode=disable", # 不带终端窗口
