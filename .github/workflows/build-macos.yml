@@ -23,11 +23,34 @@ jobs:
           pip install -r app_qml/requirements.txt
           # imageio: Nuitka 把 logo.png 自动转 .icns 图标所需
           pip install nuitka imageio
-          # create-dmg: Nuitka --macos-app-create-dmg 生成 dmg 所需(mac runner 自带 brew)
-          brew install create-dmg
 
-      - name: Build .app + .dmg with Nuitka
+      - name: Build .app with Nuitka
         run: python build_nuitka_mac.py
+
+      - name: Post-process .app (清脏文件 → 重签 → 打 dmg)
+        run: |
+          APP="build_dist/main_qml.app"
+          if [ ! -d "$APP" ]; then echo "::error::Nuitka 未生成 .app"; ls -R build_dist | head -40; exit 1; fi
+
+          echo "=== 1. 删除导致 codesign 失败的 Qt 构建残留/实验模块 ==="
+          # assetdownloader 是 Qt labs 实验模块(Gitora 不用);objects-* 是构建中间产物。
+          # 它们含非 bundle 格式文件(.qt),codesign --deep 不认。Gitora 用不到,直接删。
+          find "$APP/Contents/MacOS/PySide6/qml" -type d -name "assetdownloader" -prune -exec rm -rf {} + 2>/dev/null || true
+          find "$APP/Contents/MacOS/PySide6/qml" -type d -name "objects-*" -prune -exec rm -rf {} + 2>/dev/null || true
+          # 兜底:删掉所有 .qt 这类 codesign 不认的文件
+          find "$APP/Contents/MacOS/PySide6/qml" -name "*.qt" -delete 2>/dev/null || true
+          echo "残留 assetdownloader:"; find "$APP" -name "assetdownloader" -type d | head || echo "(已清)"
+
+          echo "=== 2. ad-hoc 重新签名整个 .app(覆盖 Nuitka 半成品签名) ==="
+          codesign --force --deep --sign - "$APP"
+          codesign --verify --deep --verbose=2 "$APP" && echo "签名校验通过"
+
+          echo "=== 3. 用 hdiutil 打 dmg(mac 自带,不依赖 create-dmg) ==="
+          mkdir -p dmg_stage
+          cp -R "$APP" dmg_stage/Gitora.app
+          ln -s /Applications dmg_stage/Applications
+          hdiutil create -volname "Gitora" -srcfolder dmg_stage -ov -format UDZO "build_dist/Gitora-macOS.dmg"
+          echo "=== dmg 产物 ==="; ls -lh build_dist/*.dmg
 
       - name: Headless SELFTEST on built .app
         env:
@@ -35,25 +58,19 @@ jobs:
           QT_QPA_PLATFORM: offscreen
         run: |
           APP_BIN="build_dist/main_qml.app/Contents/MacOS/Gitora"
-          if [ ! -f "$APP_BIN" ]; then echo "❌ 未找到 .app 主程序: $APP_BIN"; ls -R build_dist | head -40; exit 1; fi
+          if [ ! -f "$APP_BIN" ]; then echo "::error::未找到 .app 主程序: $APP_BIN"; exit 1; fi
           "$APP_BIN" 2>&1 | tee selftest.log || true
           if grep -qE "rootObjects = [1-9]" selftest.log; then
-            echo "✅ 打包产物 SELFTEST 通过"
+            echo "SELFTEST passed"
           else
-            echo "❌ 打包产物 SELFTEST 失败"; exit 1
+            echo "::error::打包产物 SELFTEST 失败"; exit 1
           fi
-
-      - name: List build artifacts
-        run: |
-          echo "=== build_dist 产物 ==="
-          ls -lh build_dist/ | grep -iE "\.app|\.dmg" || ls -lh build_dist/
 
       - name: Upload .dmg artifact
         uses: actions/upload-artifact@v4
         with:
           name: Gitora-macOS-unsigned
-          path: |
-            build_dist/*.dmg
+          path: build_dist/*.dmg
           if-no-files-found: warn
 
       - name: Upload .app artifact (fallback)

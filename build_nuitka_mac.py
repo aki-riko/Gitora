@@ -48,7 +48,9 @@ args = [
     "--noinclude-data-files=PySide6/qml/Qt/labs/assetdownloader/*",
     "--noinclude-data-files=PySide6/qml/**/objects-*/*",
     "--macos-create-app-bundle",
-    "--macos-app-create-dmg",          # 直接产 .dmg(Nuitka 内置,免额外打包步骤)
+    # 注:不用 --macos-app-create-dmg。Nuitka 在 mac 强制 --deep ad-hoc 签名整个 .app,
+    # 会撞 Qt labs/assetdownloader 的构建残留(.qt 非 bundle 格式)而签名失败 → 命令非零退出。
+    # 改由 CI 后处理:容忍此步退出码 → rm 脏目录 → codesign 重签 → hdiutil 自己打 dmg。
     "--macos-app-console-mode=disable", # 不带终端窗口
     f"--macos-app-icon={ICON}",
     "--macos-app-name=Gitora",
@@ -84,10 +86,15 @@ else:
 print("[build] Nuitka macOS 打包开始(耗时数分钟)...")
 print("[build] " + " ".join(args))
 rc = subprocess.call(args, cwd=ROOT)
+app = os.path.join(OUT, "main_qml.app")
+app_built = os.path.isdir(app)
 if rc == 0:
-    app = os.path.join(OUT, "main_qml.app")
-    print(f"\n[build] 完成!产物: {app} + 同目录 .dmg")
-    print("[build] 验证: open 该 .app;CI 里用 SELFTEST 跑 Contents/MacOS/Gitora。")
+    print(f"\n[build] 完成!产物: {app}")
+elif app_built:
+    # Nuitka mac 强制签名,撞 Qt 构建残留会非零退出,但 .app 通常已在签名前生成。
+    # CI 后处理会清脏文件+重签;此处不当致命错,让 CI 接管。
+    print(f"\n[build] Nuitka 退出码 {rc},但 .app 已生成({app}) — 交 CI 后处理重签/打 dmg")
+    rc = 0
 else:
-    print(f"\n[build] 失败,退出码 {rc}")
+    print(f"\n[build] 失败且无 .app,退出码 {rc}")
 sys.exit(rc)
