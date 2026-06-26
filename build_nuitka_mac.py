@@ -55,11 +55,6 @@ args = [
     # 界面 QML + 资源,解到 bundle 资源目录(对应 frozen 路径解析)
     f"--include-data-dir={os.path.join(ROOT, 'app_qml', 'qml')}=app_qml/qml",
     f"--include-data-dir={os.path.join(ROOT, 'app', 'resource')}=app/resource",
-    # PySide6 QML 模块,补 pyside6 插件漏打。整目录带上(含其中的 .dylib 插件)。
-    # 注:不像 Windows 版那样单独再按 *.dylib 补一遍——mac 上 include-data-dir 会带上
-    # .dylib(Windows 的 include-data-dir 会跳过 .dll 才需单独补);若 SELFTEST 报 QML
-    # 模块缺失再针对性补。
-    f"--include-data-dir={_PYSIDE_QML}=PySide6/qml",
     # 产品元信息(流入 .app bundle 的 Info.plist)
     "--product-name=Gitora",
     "--product-version=1.0.4",
@@ -68,6 +63,15 @@ args = [
     f"--output-dir={OUT}",
     ENTRY,
 ]
+
+# PySide6 QML 模块:仅当 PySide6/qml 目录存在时才显式带上(Windows 有此目录;
+# mac 的 PySide6 QML 布局不同/无此目录,Nuitka 的 pyside6 插件会自动处理)。
+# 硬加不存在的目录会 FATAL(must specify existing source data directory)。
+if os.path.isdir(_PYSIDE_QML):
+    args.insert(-1, f"--include-data-dir={_PYSIDE_QML}=PySide6/qml")
+    print(f"[build] PySide6/qml 存在,显式带上: {_PYSIDE_QML}")
+else:
+    print("[build] PySide6/qml 目录不存在(mac 布局),交由 pyside6 插件自动处理 QML 模块")
 
 print("[build] Nuitka macOS 打包开始(耗时数分钟)...")
 print("[build] " + " ".join(args))
