@@ -39,9 +39,10 @@ args = [
     "--standalone",
     "--assume-yes-for-downloads",
     "--enable-plugin=pyside6",
-    # QML 运行时插件:PrismQML 是纯 QML 组件库,必须带 qml 插件否则运行时
-    # QML 模块加载失败(Nuitka 打包日志也会 WARNING 提示)。
-    "--include-qt-plugins=qml",
+    # 注:不手动加 --include-qt-plugins=qml。pyside6 的 Nuitka 插件已自动处理 QML 模块
+    # (日志可见 "Included ... Qt QML datafile" + "Including Qt plugins ...qml...");
+    # 手动再加会把 Qt 的构建中间产物(objects-RelWithDebInfo/.qt 等)塞进 Contents/MacOS,
+    # 导致 mac ad-hoc codesign 报 "bundle format unrecognized" 而打包失败。
     "--macos-create-app-bundle",
     "--macos-app-create-dmg",          # 直接产 .dmg(Nuitka 内置,免额外打包步骤)
     "--macos-app-console-mode=disable", # 不带终端窗口
