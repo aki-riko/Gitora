@@ -39,6 +39,9 @@ args = [
     "--standalone",
     "--assume-yes-for-downloads",
     "--enable-plugin=pyside6",
+    # QML 运行时插件:PrismQML 是纯 QML 组件库,必须带 qml 插件否则运行时
+    # QML 模块加载失败(Nuitka 打包日志也会 WARNING 提示)。
+    "--include-qt-plugins=qml",
     "--macos-create-app-bundle",
     "--macos-app-create-dmg",          # 直接产 .dmg(Nuitka 内置,免额外打包步骤)
     "--macos-app-console-mode=disable", # 不带终端窗口

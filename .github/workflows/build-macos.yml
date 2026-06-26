@@ -23,6 +23,8 @@ jobs:
           pip install -r app_qml/requirements.txt
           # imageio: Nuitka 把 logo.png 自动转 .icns 图标所需
           pip install nuitka imageio
+          # create-dmg: Nuitka --macos-app-create-dmg 生成 dmg 所需(mac runner 自带 brew)
+          brew install create-dmg
 
       - name: Build .app + .dmg with Nuitka
         run: python build_nuitka_mac.py
