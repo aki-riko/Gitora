@@ -55,10 +55,11 @@ args = [
     # 界面 QML + 资源,解到 bundle 资源目录(对应 frozen 路径解析)
     f"--include-data-dir={os.path.join(ROOT, 'app_qml', 'qml')}=app_qml/qml",
     f"--include-data-dir={os.path.join(ROOT, 'app', 'resource')}=app/resource",
-    # PySide6 QML 模块,补 pyside6 插件漏打
+    # PySide6 QML 模块,补 pyside6 插件漏打。整目录带上(含其中的 .dylib 插件)。
+    # 注:不像 Windows 版那样单独再按 *.dylib 补一遍——mac 上 include-data-dir 会带上
+    # .dylib(Windows 的 include-data-dir 会跳过 .dll 才需单独补);若 SELFTEST 报 QML
+    # 模块缺失再针对性补。
     f"--include-data-dir={_PYSIDE_QML}=PySide6/qml",
-    # QML 模块的 C++ 插件在 mac 是 .dylib(Windows 是 .dll)
-    f"--include-data-files={_PYSIDE_QML}/=PySide6/qml/=**/*.dylib",
     # 产品元信息(流入 .app bundle 的 Info.plist)
     "--product-name=Gitora",
     "--product-version=1.0.4",
