@@ -14,12 +14,27 @@ def _is_frozen() -> bool:
     return "__compiled__" in globals() or getattr(sys, "frozen", False)
 
 # ---- 路径注入 ----
-# 打包态:所有资源解包到 exe 同级目录(Nuitka standalone);
+# 打包态:资源随 Nuitka standalone 解包(Windows/Linux 在主程序同级;
+#   mac .app 里主程序在 Contents/MacOS/,数据可能在同级或 ../Resources)。
+#   故 frozen 时按候选目录探测含 app_qml/qml 的那个,而非赌单一结构。
 # 开发态:基于源码文件位置定位。
-if _is_frozen():
-    GITESS_ROOT = os.path.dirname(os.path.abspath(sys.executable))
-else:
-    GITESS_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+def _resolve_gitess_root() -> str:
+    if not _is_frozen():
+        return os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    exe_dir = os.path.dirname(os.path.abspath(sys.executable))
+    # 候选:主程序同级(Win/Linux 惯例) → mac bundle 的 ../Resources → 再上一级
+    candidates = [
+        exe_dir,
+        os.path.join(exe_dir, "..", "Resources"),
+        os.path.dirname(exe_dir),
+    ]
+    for c in candidates:
+        if os.path.isdir(os.path.join(c, "app_qml", "qml")):
+            return os.path.abspath(c)
+    # 都没命中:回退主程序同级(让后续报错暴露真实结构,而非静默错路径)
+    return exe_dir
+
+GITESS_ROOT = _resolve_gitess_root()
 sys.path.insert(0, GITESS_ROOT)
 
 # 2) PrismQML 来源:优先用已安装的 pip 包(prismqml,import 名 prismqml);
