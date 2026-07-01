@@ -1431,9 +1431,11 @@ class GitService(QObject):
         return files
 
     def get_commit_diff(self, commit_hash: str) -> str:
-        """获取提交的完整diff"""
-        success, stdout, _ = self._run_git_sync(['show', commit_hash])
-        return stdout if success else ""
+        """获取提交的纯 diff(不含 commit header/message,避免与详情面板的消息区重复)"""
+        # --format="" 去掉 commit 头(Author/Date)与提交信息,只保留 diff 正文;
+        # git show 自身能正确处理根提交(无父提交),无需 ^ 语法
+        success, stdout, _ = self._run_git_sync(['show', '--format=', commit_hash])
+        return stdout.lstrip('\n') if success else ""
 
     def get_commit_detail(self, commit_hash: str) -> Optional[CommitInfo]:
         """获取提交详细信息"""

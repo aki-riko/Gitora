@@ -10,4 +10,4 @@ PySide6>=6.5.0
 #   Updater(检测/下载/ShellExecute open 提权安装)+ UpdateDialog(Markdown 更新说明)
 #   + ProgressDialog 确定进度环。均自原 fqml 0.2.9~0.2.13 演进,PrismQML 首发版 0.2.14 起继承。
 # 0.2.15: 按应用派生唯一 AppUserModelID(避免任务栏图标合并)
-prismqml>=0.2.15
+prismqml>=0.2.19

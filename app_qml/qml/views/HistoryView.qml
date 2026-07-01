@@ -121,6 +121,21 @@ Item {
         }
     }
 
+    // 弹 reset 危险确认(按模式给不同说明,hard 额外强警告)
+    function _askReset(mode) {
+        if (!root.selectedCommit) return
+        var desc = {
+            "soft": "(soft 模式:保留暂存区和工作区的所有改动,仅移动 HEAD)",
+            "mixed": "(mixed 模式:保留工作区改动,清空暂存区)",
+            "hard": "⚠️ (hard 模式:丢弃工作区和暂存区的所有未提交改动,不可恢复!)"
+        }[mode]
+        resetDanger.content = "将回滚到提交 " + root.selectedCommit.shortHash
+            + "\n" + desc + "\n此操作会改变提交历史。"
+        resetDanger._hash = root.selectedCommit.hash
+        resetDanger._mode = mode
+        resetDanger.start()
+    }
+
     Component.onCompleted: root.resetAndLoad()
 
     // ==================== 布局 ====================
@@ -219,69 +234,164 @@ Item {
 
                 ColumnLayout {
                     anchors.fill: parent
-                    anchors.margins: Fluent.Enums.spacing.l
-                    spacing: Fluent.Enums.spacing.m
+                    anchors.margins: Fluent.Enums.spacing.xl
+                    spacing: Fluent.Enums.spacing.l
                     visible: !!root.selectedCommit
 
-                    Text {
+                    // ── 头部:作者头像 + 提交标题 ──
+                    RowLayout {
                         Layout.fillWidth: true
-                        text: root.selectedCommit ? root.selectedCommit.message : ""
-                        color: Fluent.Enums.textColor.primary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.titleLarge
-                        font.bold: true
-                        wrapMode: Text.WordWrap
+                        spacing: Fluent.Enums.spacing.m
+
+                        Fluent.Avatar {
+                            size: 44
+                            text: root.selectedCommit ? root.selectedCommit.author : ""
+                            Layout.alignment: Qt.AlignTop
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.xs
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedCommit ? root.selectedCommit.message : ""
+                                color: Fluent.Enums.textColor.primary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.title
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                            }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedCommit ? root.selectedCommit.author : ""
+                                color: Fluent.Enums.textColor.secondary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                            }
+                        }
                     }
 
-                    GridLayout {
+                    Fluent.Separator { Layout.fillWidth: true }
+
+                    // ── 元信息:图标 + 标签 + 值 ──
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        columns: 2
-                        columnSpacing: Fluent.Enums.spacing.l
-                        rowSpacing: Fluent.Enums.spacing.s
-                        Text { text: "Hash"; color: Fluent.Enums.textColor.tertiary; font.family: Fluent.Enums.fontFamily; font.pixelSize: Fluent.Enums.typography.caption }
-                        Text { text: root.selectedCommit ? root.selectedCommit.hash : ""; color: Fluent.Enums.textColor.secondary; font.family: "Consolas, monospace"; font.pixelSize: Fluent.Enums.typography.caption; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { text: "作者"; color: Fluent.Enums.textColor.tertiary; font.family: Fluent.Enums.fontFamily; font.pixelSize: Fluent.Enums.typography.caption }
-                        Text { text: root.selectedCommit ? (root.selectedCommit.author + " <" + root.selectedCommit.email + ">") : ""; color: Fluent.Enums.textColor.secondary; font.family: Fluent.Enums.fontFamily; font.pixelSize: Fluent.Enums.typography.caption; Layout.fillWidth: true; elide: Text.ElideRight }
-                        Text { text: "时间"; color: Fluent.Enums.textColor.tertiary; font.family: Fluent.Enums.fontFamily; font.pixelSize: Fluent.Enums.typography.caption }
-                        Text { text: root.selectedCommit ? root.selectedCommit.date : ""; color: Fluent.Enums.textColor.secondary; font.family: Fluent.Enums.fontFamily; font.pixelSize: Fluent.Enums.typography.caption }
+                        spacing: Fluent.Enums.spacing.m
+
+                        // Hash(等宽,可点复制)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.s
+                            Fluent.Icon { icon: Fluent.Enums.icon.code; size: 16; color: Fluent.Enums.textColor.tertiary; Layout.alignment: Qt.AlignVCenter }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedCommit ? root.selectedCommit.hash : ""
+                                color: Fluent.Enums.textColor.secondary
+                                font.family: "Consolas, monospace"
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                                elide: Text.ElideRight
+                            }
+                        }
+                        // 作者邮箱
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.s
+                            Fluent.Icon { icon: Fluent.Enums.icon.person; size: 16; color: Fluent.Enums.textColor.tertiary; Layout.alignment: Qt.AlignVCenter }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedCommit ? (root.selectedCommit.email || root.selectedCommit.author) : ""
+                                color: Fluent.Enums.textColor.secondary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                                elide: Text.ElideRight
+                            }
+                        }
+                        // 时间
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.s
+                            Fluent.Icon { icon: Fluent.Enums.icon.clock; size: 16; color: Fluent.Enums.textColor.tertiary; Layout.alignment: Qt.AlignVCenter }
+                            Text {
+                                Layout.fillWidth: true
+                                text: root.selectedCommit ? root.selectedCommit.date : ""
+                                color: Fluent.Enums.textColor.secondary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.bodySmall
+                            }
+                        }
+                        // 分支(有才显示,用 Tag)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.s
+                            visible: root.selectedCommit && root.selectedCommit.branch !== ""
+                            Fluent.Icon { icon: Fluent.Enums.icon.branch; size: 16; color: Fluent.Enums.textColor.tertiary; Layout.alignment: Qt.AlignVCenter }
+                            Fluent.Tag {
+                                status: Fluent.Enums.statusLevel.info
+                                text: root.selectedCommit ? root.selectedCommit.branch : ""
+                            }
+                        }
                     }
 
                     Item { Layout.fillHeight: true }
 
-                    // 操作按钮
-                    Flow {
+                    Fluent.Separator { Layout.fillWidth: true }
+
+                    // ── 操作区 ──
+                    ColumnLayout {
                         Layout.fillWidth: true
                         spacing: Fluent.Enums.spacing.m
-                        Fluent.Button {
-                            text: "复制 Hash"
-                            style: Fluent.Enums.button.style_transparent
-                            onClicked: if (root.selectedCommit && ClipboardHelper) ClipboardHelper.copy(root.selectedCommit.hash)
+
+                        // 常规操作:自然宽度左对齐(不铺满,更精致),风格统一
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.s
+                            Fluent.Button {
+                                text: "Checkout"
+                                icon: Fluent.Enums.icon.checkmark_circle
+                                onClicked: root._op(GitBridge.checkoutCommit(root.selectedCommit.hash))
+                            }
+                            Fluent.Button {
+                                text: "Cherry-pick"
+                                icon: Fluent.Enums.icon.branch
+                                onClicked: root._op(GitBridge.cherryPick(root.selectedCommit.hash))
+                            }
+                            Fluent.Button {
+                                text: "Revert"
+                                icon: Fluent.Enums.icon.arrow_undo
+                                onClicked: root._op(GitBridge.revertCommit(root.selectedCommit.hash))
+                            }
                         }
-                        Fluent.Button {
-                            text: "详情"
-                            style: Fluent.Enums.button.style_transparent
-                            onClicked: if (root.selectedCommit) commitDetailDialog.openFor(root.selectedCommit.hash)
-                        }
-                        Fluent.Button {
-                            text: "Checkout"
-                            onClicked: root._op(GitBridge.checkoutCommit(root.selectedCommit.hash))
-                        }
-                        Fluent.Button {
-                            text: "Cherry-pick"
-                            onClicked: root._op(GitBridge.cherryPick(root.selectedCommit.hash))
-                        }
-                        Fluent.Button {
-                            text: "Revert"
-                            onClicked: root._op(GitBridge.revertCommit(root.selectedCommit.hash))
-                        }
-                        Fluent.Button {
-                            text: "Reset (mixed)"
-                            style: Fluent.Enums.button.style_primary
-                            onClicked: {
-                                resetDanger.content = "将回滚到提交 " + root.selectedCommit.shortHash
-                                    + "\n(mixed 模式:保留工作区改动,重置暂存区)\n此操作会改变提交历史。"
-                                resetDanger._hash = root.selectedCommit.hash
-                                resetDanger.start()
+
+                        Fluent.Separator { Layout.fillWidth: true }
+
+                        // 辅助(左,轻量文字按钮) + 危险操作(右,强调)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.xs
+                            Fluent.Button {
+                                text: "复制 Hash"
+                                icon: Fluent.Enums.icon.copy
+                                style: Fluent.Enums.button.style_transparent
+                                onClicked: if (root.selectedCommit && ClipboardHelper) ClipboardHelper.copy(root.selectedCommit.hash)
+                            }
+                            Fluent.Button {
+                                text: "详情"
+                                icon: Fluent.Enums.icon.code
+                                style: Fluent.Enums.button.style_transparent
+                                onClicked: if (root.selectedCommit) commitDetailDialog.openFor(root.selectedCommit.hash)
+                            }
+                            Item { Layout.fillWidth: true }
+                            Fluent.Button {
+                                text: "Reset"
+                                icon: Fluent.Enums.icon.arrow_clockwise
+                                style: Fluent.Enums.button.style_primary
+                                // 下拉选 reset 模式;选任一模式都走危险确认(hard 额外警告)
+                                feature: Fluent.Enums.button.feature_dropdown
+                                menuItems: ["Soft — 保留暂存区+工作区", "Mixed — 保留工作区,清暂存区", "Hard — 丢弃所有改动"]
+                                onClicked: root._askReset("mixed")   // 主按钮默认 mixed(最常用)
+                                onMenuItemClicked: function(index, text) {
+                                    root._askReset(index === 0 ? "soft" : (index === 2 ? "hard" : "mixed"))
+                                }
                             }
                         }
                     }
@@ -290,13 +400,14 @@ Item {
         }
     }
 
-    // 危险操作:reset 二次确认
+    // 危险操作:reset 二次确认(mode 由调用方经 _askReset 设置)
     DangerDialog {
         id: resetDanger
         title: "确认 Reset"
         countdown: 3
         property string _hash: ""
-        onConfirmed: root._op(GitBridge.resetToCommit(_hash, "mixed"))
+        property string _mode: "mixed"
+        onConfirmed: root._op(GitBridge.resetToCommit(_hash, _mode))
     }
 
     // 提交详情
