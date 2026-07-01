@@ -10,7 +10,7 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2025
 AUTHOR = "aki-riko"
-VERSION = "v1.0.4"
+VERSION = "v1.0.5"
 APP_NAME = "Gitora"
 # 项目地址
 HELP_URL = "https://github.com/aki-riko/Gitora"
