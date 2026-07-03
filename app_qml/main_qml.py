@@ -72,11 +72,16 @@ os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 
 from PySide6.QtCore import QUrl  # noqa: E402
 
+from app.common.setting import APP_USER_MODEL_ID  # noqa: E402
+
+os.environ.setdefault("PRISMQML_APP_USER_MODEL_ID", APP_USER_MODEL_ID)
+
 from prismqml import App  # noqa: E402
 from prismqml.python.config import getConfigManager  # noqa: E402
 from prismqml.python.providers import get_clipboard_helper  # noqa: E402
 
 from app_qml.backend.git_bridge import GitBridge  # noqa: E402
+from app_qml.backend.window_icon_bridge import WindowIconBridge  # noqa: E402
 
 
 def main() -> int:
@@ -111,11 +116,14 @@ def main() -> int:
     config_manager = getConfigManager()
     from app_qml.backend.repo_scanner import RepoScanner
     repo_scanner = RepoScanner()
+    window_icon_bridge = WindowIconBridge()
     ctx = engine.rootContext()
     ctx.setContextProperty("GitBridge", git_bridge)
     ctx.setContextProperty("ConfigManager", config_manager)
     ctx.setContextProperty("ClipboardHelper", get_clipboard_helper())
     ctx.setContextProperty("RepoScanner", repo_scanner)
+    ctx.setContextProperty("WindowIconBridge", window_icon_bridge)
+    app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive
     # 启动后台扫描(延迟启动,不阻塞窗口显示)
     from PySide6.QtCore import QTimer as _QTimer
     _QTimer.singleShot(1500, repo_scanner.start)
@@ -124,7 +132,7 @@ def main() -> int:
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import (
-        VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL,
+        VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL, APP_USER_MODEL_ID,
         UPDATE_REPO, UPDATE_ASSET_KEYWORD, INSTALLER_SILENT_ARGS,
     )
     ctx.setContextProperty("AppInfo", {
@@ -133,6 +141,7 @@ def main() -> int:
         "year": str(YEAR),
         "helpUrl": HELP_URL,
         "feedbackUrl": FEEDBACK_URL,
+        "appUserModelId": APP_USER_MODEL_ID,
         "installerSilentArgs": INSTALLER_SILENT_ARGS,
     })
 
@@ -152,7 +161,9 @@ def main() -> int:
 
     # 应用 logo(窗口/任务栏图标),复用原版 app/resource/images/logo.png
     logo_path = os.path.join(GITESS_ROOT, "app", "resource", "images", "logo.png")
+    icon_path = os.path.join(GITESS_ROOT, "app", "resource", "images", "logo.ico")
     ctx.setContextProperty("AppLogo", QUrl.fromLocalFile(logo_path).toString() if os.path.isfile(logo_path) else "")
+    ctx.setContextProperty("AppIconFile", QUrl.fromLocalFile(icon_path).toString() if os.path.isfile(icon_path) else "")
 
     # 加载主 QML(打包态在 exe 同级 app_qml/qml,开发态在源码目录)
     if _is_frozen():

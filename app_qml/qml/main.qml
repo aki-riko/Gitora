@@ -40,6 +40,12 @@ QtObject {
 
     property var windowInstance: null
 
+    function applyNativeWindowIcon(targetWindow) {
+        if (!targetWindow || typeof WindowIconBridge === "undefined") return
+        let iconSource = (typeof AppIconFile !== "undefined" && AppIconFile !== "") ? AppIconFile : targetWindow.windowIcon
+        if (iconSource) WindowIconBridge.applyWindowIcon(targetWindow, iconSource)
+    }
+
     // 供 Python 侧单实例 IPC 调用:把窗口提到前台(第二实例启动时激活已有窗口)
     function activateWindow() {
         if (!windowInstance) return
@@ -72,6 +78,8 @@ QtObject {
             // 创建启动屏幕,赋给 _splashInstance;内容加载完成后引擎自动 finish()
             Component.onCompleted: {
                 this._splashInstance = root.splashComponent.createObject(this.contentItem)
+                let currentWindow = this
+                Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })
             }
         }
     }

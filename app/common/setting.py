@@ -10,8 +10,9 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2025
 AUTHOR = "aki-riko"
-VERSION = "v1.0.6"
+VERSION = "v1.0.7"
 APP_NAME = "Gitora"
+APP_USER_MODEL_ID = "PrismQML.Gitora"
 # 项目地址
 HELP_URL = "https://github.com/aki-riko/Gitora"
 REPO_URL = "https://github.com/aki-riko/Gitora"
