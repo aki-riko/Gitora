@@ -10,7 +10,7 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2025
 AUTHOR = "aki-riko"
-VERSION = "v1.0.5"
+VERSION = "v1.0.6"
 APP_NAME = "Gitora"
 # 项目地址
 HELP_URL = "https://github.com/aki-riko/Gitora"
@@ -20,7 +20,7 @@ DOC_URL = "https://github.com/aki-riko/Gitora#readme"
 
 # 自动更新:GitHub 仓库 "owner/repo"(用于查 latest release)
 UPDATE_REPO = "aki-riko/Gitora"
-# 从 release assets 中挑安装包的关键词(安装包名形如 Gitora-Setup-1.0.4.exe)
+# 从 release assets 中挑安装包的关键词(安装包名形如 Gitora-Setup-x.y.z.exe)
 UPDATE_ASSET_KEYWORD = "Setup"
 # 安装包启动参数:走可见安装向导(用户点下一步),由安装包自身 manifest 触发 UAC 提权。
 # 不用 /VERYSILENT 全静默——静默+提权在部分 UAC 配置下会卡死;可见向导更稳。
