@@ -14,7 +14,7 @@
 ## 运行
 
 ```bash
-# 1. 安装依赖(含 PrismQML: pip 包名 prismqml >= 0.2.14)
+# 1. 安装依赖(含 PrismQML: pip 包名 prismqml >= 0.2.24)
 pip install -r app_qml/requirements.txt
 
 # 2. 启动
