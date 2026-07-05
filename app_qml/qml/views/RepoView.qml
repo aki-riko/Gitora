@@ -13,7 +13,6 @@ Item {
     // 当前选中的文件(用于 diff)
     property string selectedPath: ""
     property bool selectedStaged: false
-    readonly property int statusPollIntervalMs: 2000
     property bool _statusRequesting: false
     property bool _reloadPending: false
     property string _statusRequestRepoPath: ""
@@ -146,13 +145,8 @@ Item {
 
     ListModel { id: changeModel }
 
-    Timer {
-        id: statusPollTimer
-        interval: root.statusPollIntervalMs
-        running: !!GitBridge && !!GitBridge.repoPath
-        repeat: true
-        onTriggered: root.reload()
-    }
+    // 外部变化的刷新由后端 GitBridge 统一轮询驱动:检测到指纹变化 → 发 statusChanged,
+    // 上方 Connections.onStatusChanged 已接管刷新,故此处不再需要视图自轮询 Timer。
 
     // ==================== 布局 ====================
     ColumnLayout {

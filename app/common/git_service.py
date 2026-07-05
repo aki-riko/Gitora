@@ -186,6 +186,39 @@ class GitService(QObject):
                 return False
         return False
 
+    def compute_state_fingerprint(self, repo_path: str) -> str:
+        """计算仓库状态指纹,用于轮询检测"外部"(命令行/其他工具)引起的变化。
+
+        覆盖面:工作区/暂存区(status v2)、当前分支与 ahead/behind、所有 refs
+        (本地分支/远程分支/tag 的 oid,故 commit 移动/分支增删/tag 增删/fetch 都能感知)、
+        stash 列表、以及合并/rebase/cherry-pick/revert 中途态标记文件。
+
+        返回指纹字符串;仓库无效或 status 读取失败时返回空串,
+        调用方据此"跳过本轮"而非误触发刷新。
+        """
+        if not repo_path or not os.path.isdir(os.path.join(repo_path, '.git')):
+            return ""
+
+        parts: list[str] = []
+        # 工作区/暂存/分支状态(含 unmerged 项 → 冲突文件变化也在内)
+        ok, out, _ = self._run_git_sync_at(repo_path, ['status', '--porcelain=v2', '--branch'], timeout=10)
+        if not ok:
+            return ""  # 读不到状态:跳过本轮,避免拿不确定数据误判
+        parts.append(out)
+        # 所有 refs 的 oid(空仓库时 show-ref 返回非 0,视为空串,不算失败)
+        ok, out, _ = self._run_git_sync_at(repo_path, ['show-ref'], timeout=10)
+        parts.append(out if ok else "")
+        # stash 列表
+        ok, out, _ = self._run_git_sync_at(repo_path, ['stash', 'list'], timeout=10)
+        parts.append(out if ok else "")
+        # 中途态标记(status v2 未必完整反映"处于合并/变基中途")
+        git_dir = os.path.join(repo_path, '.git')
+        for marker in ('MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'):
+            parts.append("1" if os.path.exists(os.path.join(git_dir, marker)) else "0")
+
+        import hashlib
+        return hashlib.md5("\x00".join(parts).encode('utf-8', 'replace')).hexdigest()
+
     def _run_git_sync(self, args: list[str], timeout: int = 30) -> tuple[bool, str, str]:
         """同步执行Git命令
 
