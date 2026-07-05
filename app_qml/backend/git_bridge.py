@@ -110,11 +110,12 @@ class GitBridge(QObject):
     # ==================== 仓库 ====================
     @Slot(str, result=bool)
     def setRepoPath(self, path: str) -> bool:
-        ok = self._svc.set_repo_path(path)
+        ok = self._svc.set_repo_path(path, emit_status=False)
         if ok:
             from app.common.recent_repos import recentReposManager
             recentReposManager.add(self._svc.repo_path or path)
             self.repoPathChanged.emit(self._svc.repo_path or "")
+            self.statusChanged.emit()
         return ok
 
     @Slot(str)
@@ -124,7 +125,7 @@ class GitBridge(QObject):
 
         def work():
             try:
-                ok = self._svc.set_repo_path(path)
+                ok = self._svc.set_repo_path(path, emit_status=False)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"打开仓库失败 {path}: {e}")
                 ok = False
@@ -165,8 +166,8 @@ class GitBridge(QObject):
 
         def work():
             try:
-                changes = [_file_change_to_dict(fc) for fc in self._svc.get_status()]
-                branch = self._svc.get_current_branch()
+                changes = [_file_change_to_dict(fc) for fc in self._svc.get_status_at(repo)]
+                branch = self._svc.get_current_branch_at(repo)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取状态失败: {e}")
                 changes, branch = [], ""

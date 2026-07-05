@@ -149,7 +149,7 @@ class GitService(QObject):
     def repo_path(self) -> Optional[str]:
         return self._repo_path
 
-    def set_repo_path(self, path: str) -> bool:
+    def set_repo_path(self, path: str, emit_status: bool = True) -> bool:
         """设置仓库路径"""
         logger.info(f"设置仓库路径: {path}")
         if not path or not os.path.isdir(path):
@@ -168,7 +168,8 @@ class GitService(QObject):
 
         self._repo_path = path
         logger.info(f"仓库路径设置成功: {path}")
-        self.statusChanged.emit()
+        if emit_status:
+            self.statusChanged.emit()
         return True
     
     def is_large_repo(self) -> bool:
@@ -184,15 +185,19 @@ class GitService(QObject):
             except ValueError:
                 return False
         return False
-    
+
     def _run_git_sync(self, args: list[str], timeout: int = 30) -> tuple[bool, str, str]:
         """同步执行Git命令
-        
+
         Args:
             args: Git命令参数
             timeout: 超时时间（秒），默认30秒
         """
-        if not self._repo_path:
+        return self._run_git_sync_at(self._repo_path or "", args, timeout)
+
+    def _run_git_sync_at(self, repo_path: str, args: list[str], timeout: int = 30) -> tuple[bool, str, str]:
+        """在指定仓库快照路径同步执行 Git 命令,用于异步查询防切仓库串读。"""
+        if not repo_path:
             return False, "", "未设置仓库路径"
 
         # -c core.quotepath=false: 让 git 输出原始 UTF-8 文件名,
@@ -201,23 +206,23 @@ class GitService(QObject):
         try:
             result = subprocess.run(
                 cmd,
-                cwd=self._repo_path,
+                cwd=repo_path,
                 capture_output=True,
                 text=True,
                 encoding='utf-8',
                 errors='replace',
-                timeout=timeout,  # 添加超时控制
+                timeout=timeout,
                 creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
             )
             return result.returncode == 0, result.stdout, result.stderr
         except subprocess.TimeoutExpired:
-            logger.error(f"Git命令超时: {' '.join(args)}, timeout={timeout}s")
+            logger.error(f"Git命令超时: {' '.join(args)}, timeout={timeout}s, repo={repo_path}")
             return False, "", f"操作超时（{timeout}秒）"
         except FileNotFoundError:
             logger.error("Git未安装或不在PATH中")
             return False, "", "Git未安装或不在PATH中"
         except Exception as e:
-            logger.exception(f"Git命令异常: {' '.join(args)}, error: {e}")
+            logger.exception(f"Git命令异常: {' '.join(args)}, repo={repo_path}, error: {e}")
             return False, "", str(e)
 
     def _run_git_async(self, args: list[str], callback: Callable[[bool, str, str], None], timeout: int = None):
@@ -259,7 +264,17 @@ class GitService(QObject):
         success, stdout, stderr = self._run_git_sync(['status', '--porcelain=v1', '-uall'])
         if not success:
             return []
+        return self._parse_status_output(stdout)
 
+    def get_status_at(self, repo_path: str) -> list[FileChange]:
+        """获取指定仓库路径的工作区状态,不读取当前 self._repo_path。"""
+        success, stdout, stderr = self._run_git_sync_at(repo_path, ['status', '--porcelain=v1', '-uall'])
+        if not success:
+            return []
+        return self._parse_status_output(stdout)
+
+    def _parse_status_output(self, stdout: str) -> list[FileChange]:
+        """解析 git status --porcelain=v1 输出。"""
         changes = []
         # 注意:不能用 stdout.strip(),会删掉首行前导空格导致 porcelain 列偏移
         # (" M file.txt" 的行首空格表示 index 状态为空,有意义)
@@ -313,6 +328,11 @@ class GitService(QObject):
     def get_current_branch(self) -> str:
         """获取当前分支名"""
         success, stdout, _ = self._run_git_sync(['rev-parse', '--abbrev-ref', 'HEAD'])
+        return stdout.strip() if success else ""
+
+    def get_current_branch_at(self, repo_path: str) -> str:
+        """获取指定仓库路径的当前分支名,不读取当前 self._repo_path。"""
+        success, stdout, _ = self._run_git_sync_at(repo_path, ['rev-parse', '--abbrev-ref', 'HEAD'])
         return stdout.strip() if success else ""
 
     def get_branches(self) -> list[BranchInfo]:

@@ -13,18 +13,51 @@ Item {
     // 当前选中的文件(用于 diff)
     property string selectedPath: ""
     property bool selectedStaged: false
+    readonly property int statusPollIntervalMs: 2000
+    property bool _statusRequesting: false
+    property bool _reloadPending: false
+    property string _statusRequestRepoPath: ""
+    property bool _changeListActive: false
 
     // ==================== 数据加载 ====================
+    function _resetRepoUi() {
+        branchLabel.text = ""
+        changeModel.clear()
+        root._changeListActive = false
+        root.selectedPath = ""
+        root.selectedStaged = false
+        diffView.text = ""
+        if (changeListLoader.item && changeListLoader.item.scrollToTop)
+            changeListLoader.item.scrollToTop()
+    }
+
     function reload() {
         if (!GitBridge || !GitBridge.repoPath) {
-            branchLabel.text = ""
-            changeModel.clear()
-            root.selectedPath = ""
-            diffView.text = ""
+            root._statusRequesting = false
+            root._reloadPending = false
+            root._statusRequestRepoPath = ""
+            root._resetRepoUi()
+            return
+        }
+        if (root._statusRequesting) {
+            root._reloadPending = true
             return
         }
         // 后台获取,结果经 statusReady/branchReady 回填,不阻塞主线程
+        root._statusRequesting = true
+        root._reloadPending = false
+        root._statusRequestRepoPath = GitBridge.repoPath
         GitBridge.requestStatus()
+    }
+
+    function _finishStatusRequest(repoPath) {
+        if (repoPath !== root._statusRequestRepoPath) return
+        root._statusRequesting = false
+        root._statusRequestRepoPath = ""
+        if (root._reloadPending) {
+            root._reloadPending = false
+            Qt.callLater(function() { root.reload() })
+        }
     }
 
     function showDiff(path, staged) {
@@ -66,6 +99,12 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
+        function onRepoPathChanged(path) {
+            root._statusRequesting = false
+            root._reloadPending = false
+            root._statusRequestRepoPath = ""
+            root._resetRepoUi()
+        }
         function onStatusReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 过期/切仓库,丢弃
             changeModel.clear()
@@ -76,11 +115,13 @@ Item {
                 if (list[i].path === root.selectedPath && list[i].staged === root.selectedStaged)
                     stillThere = true
             }
+            root._changeListActive = changeModel.count > 0
             // 选中的文件已不在变更列表或暂存状态已变 → 清空 diff,避免显示过期内容
             if (root.selectedPath !== "" && !stillThere) {
                 root.selectedPath = ""
                 diffView.text = ""
             }
+            root._finishStatusRequest(repoPath)
         }
         function onBranchReady(repoPath, branch) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
@@ -104,6 +145,14 @@ Item {
     Component.onCompleted: root.reload()
 
     ListModel { id: changeModel }
+
+    Timer {
+        id: statusPollTimer
+        interval: root.statusPollIntervalMs
+        running: !!GitBridge && !!GitBridge.repoPath
+        repeat: true
+        onTriggered: root.reload()
+    }
 
     // ==================== 布局 ====================
     ColumnLayout {
@@ -279,69 +328,85 @@ Item {
                             description: "没有未提交的变更"
                         }
 
-                        Fluent.ListView {
-                            id: changeListView
+                        Loader {
+                            id: changeListLoader
                             anchors.fill: parent
                             anchors.margins: Fluent.Enums.spacing.xs
-                            visible: changeModel.count > 0
-                            framed: false
-                            spacing: 2
-                            model: changeModel
-                            delegate: Rectangle {
-                                width: changeListView.listView ? changeListView.listView.width : 0
-                                height: 40
-                                radius: Fluent.Enums.radius.small
-                                color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
+                            active: root._changeListActive && changeModel.count > 0
+                            visible: active
+                            sourceComponent: changeListComponent
+                        }
 
-                                HoverHandler { id: hover }
-                                TapHandler { onTapped: root.showDiff(model.path, model.staged) }
+                        Component {
+                            id: changeListComponent
 
-                                RowLayout {
-                                    anchors.fill: parent
-                                    anchors.leftMargin: Fluent.Enums.spacing.m
-                                    anchors.rightMargin: Fluent.Enums.spacing.s
-                                    spacing: Fluent.Enums.spacing.m
+                            Fluent.ScrollArea {
+                                id: changeScrollArea
+                                type: Fluent.Enums.scroll.type_list
+                                model: changeModel
+                                itemHeight: 40
+                                listSpacing: 2
+                                listCacheBuffer: 0
+                                reuseItems: false
+                                bounceEnabled: false
+                                padding: 0
 
-                                    Text {
-                                        text: model.statusText
-                                        Layout.preferredWidth: 50
-                                        color: model.staged ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.tertiary
-                                        font.family: Fluent.Enums.fontFamily
-                                        font.pixelSize: Fluent.Enums.typography.caption
-                                    }
-                                    Text {
-                                        Layout.fillWidth: true
-                                        text: model.path
-                                        color: Fluent.Enums.textColor.primary
-                                        font.family: Fluent.Enums.fontFamily
-                                        font.pixelSize: Fluent.Enums.typography.body
-                                        elide: Text.ElideMiddle
-                                    }
-                                    Fluent.Button {
-                                        text: model.staged ? "取消" : "暂存"
-                                        style: Fluent.Enums.button.style_transparent
-                                        visible: hover.hovered
-                                        onClicked: {
-                                            if (model.staged) GitBridge.unstageFile(model.path)
-                                            else GitBridge.stageFile(model.path)
+                                delegate: Rectangle {
+                                    width: ListView.view ? ListView.view.width : 0
+                                    height: 40
+                                    radius: Fluent.Enums.radius.small
+                                    color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
+
+                                    HoverHandler { id: hover }
+                                    TapHandler { onTapped: root.showDiff(model.path, model.staged) }
+
+                                    RowLayout {
+                                        anchors.fill: parent
+                                        anchors.leftMargin: Fluent.Enums.spacing.m
+                                        anchors.rightMargin: Fluent.Enums.spacing.s
+                                        spacing: Fluent.Enums.spacing.m
+
+                                        Text {
+                                            text: model.statusText
+                                            Layout.preferredWidth: 50
+                                            color: model.staged ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.tertiary
+                                            font.family: Fluent.Enums.fontFamily
+                                            font.pixelSize: Fluent.Enums.typography.caption
                                         }
-                                    }
-                                    Fluent.Button {
-                                        text: "丢弃"
-                                        style: Fluent.Enums.button.style_transparent
-                                        visible: hover.hovered && !model.staged
-                                        onClicked: {
-                                            discardDanger.content = "将丢弃 " + model.path
-                                                + " 的工作区改动。\n此操作不可恢复。"
-                                            discardDanger._path = model.path
-                                            discardDanger.start()
+                                        Text {
+                                            Layout.fillWidth: true
+                                            text: model.path
+                                            color: Fluent.Enums.textColor.primary
+                                            font.family: Fluent.Enums.fontFamily
+                                            font.pixelSize: Fluent.Enums.typography.body
+                                            elide: Text.ElideMiddle
                                         }
-                                    }
-                                    Fluent.Button {
-                                        text: "历史"
-                                        style: Fluent.Enums.button.style_transparent
-                                        visible: hover.hovered
-                                        onClicked: fileHistoryDialog.openFor(model.path)
+                                        Fluent.Button {
+                                            text: model.staged ? "取消" : "暂存"
+                                            style: Fluent.Enums.button.style_transparent
+                                            visible: hover.hovered
+                                            onClicked: {
+                                                if (model.staged) GitBridge.unstageFile(model.path)
+                                                else GitBridge.stageFile(model.path)
+                                            }
+                                        }
+                                        Fluent.Button {
+                                            text: "丢弃"
+                                            style: Fluent.Enums.button.style_transparent
+                                            visible: hover.hovered && !model.staged
+                                            onClicked: {
+                                                discardDanger.content = "将丢弃 " + model.path
+                                                    + " 的工作区改动。\n此操作不可恢复。"
+                                                discardDanger._path = model.path
+                                                discardDanger.start()
+                                            }
+                                        }
+                                        Fluent.Button {
+                                            text: "历史"
+                                            style: Fluent.Enums.button.style_transparent
+                                            visible: hover.hovered
+                                            onClicked: fileHistoryDialog.openFor(model.path)
+                                        }
                                     }
                                 }
                             }
