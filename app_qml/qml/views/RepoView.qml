@@ -87,12 +87,8 @@ Item {
             branchLabel.text = branch
         }
         function onOperationFinished(ok, msg) {
-            if (ok) {
-                Fluent.NotificationManager.toast.success(root, "成功", msg || "操作完成")
+            if (ok)
                 root.reload()
-            } else {
-                Fluent.NotificationManager.toast.error(root, "失败", msg || "操作失败")
-            }
         }
         function onDiffReady(path, staged, content) {
             // 仅当结果对应当前选中项时才填充(防快速切换的过期结果覆盖)
@@ -458,106 +454,4 @@ Item {
         }
     }
 
-    // ==================== 自动更新(全局,常驻首页承载;SettingsView 仅触发检查)====================
-    property bool _updSilent: false        // 本次检查是否静默(启动检查=静默,手动=非静默)
-    property string _updDownloadUrl: ""    // 待下载的安装包地址
-    property string _updHtmlUrl: ""        // 新版 Releases 页(下载失败兜底)
-
-    Fluent.UpdateDialog {
-        id: updateConfirmDialog
-        // version/currentVersion/notes 由 onUpdateAvailable 赋值;notes 为 Markdown,组件内渲染+滚动
-        onConfirmed: {
-            if (root._updDownloadUrl !== "") {
-                root._updStartDownload(root._updDownloadUrl)
-            } else if (root._updHtmlUrl !== "" && Updater) {
-                Updater.openInBrowser(root._updHtmlUrl)  // 无安装包资源,跳 Releases 页手动下载
-            }
-        }
-    }
-
-    Fluent.ProgressDialog {
-        id: updateDownloadDialog
-        title: "正在下载更新"
-        content: "准备中…"
-    }
-
-    Connections {
-        target: typeof Updater !== "undefined" ? Updater : null
-        ignoreUnknownSignals: true
-
-        function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
-            root._updDownloadUrl = downloadUrl
-            root._updHtmlUrl = htmlUrl
-            updateConfirmDialog.version = version
-            updateConfirmDialog.currentVersion = AppInfo ? AppInfo.version : ""
-            updateConfirmDialog.notes = notes || ""
-            updateConfirmDialog.open()
-            root._updSilent = false
-        }
-        function onUpToDate(currentVersion) {
-            // 静默检查(启动)不打扰;手动检查才提示
-            if (!root._updSilent)
-                Fluent.NotificationManager.toast.success(root, "已是最新", "当前已是最新版本 " + currentVersion)
-            root._updSilent = false
-        }
-        function onCheckFailed(error) {
-            if (!root._updSilent)
-                Fluent.NotificationManager.toast.error(root, "检查更新失败", error || "网络错误")
-            root._updSilent = false
-        }
-        function onDownloadProgress(received, total) {
-            if (total > 0) {
-                var pct = Math.floor(received * 100 / total)
-                updateDownloadDialog.progress = pct  // 确定进度:进度环按百分比填充
-                updateDownloadDialog.content = pct + "%  (" + root._updFmtSize(received) + " / " + root._updFmtSize(total) + ")"
-            } else {
-                updateDownloadDialog.progress = -1  // 总大小未知:转圈
-                updateDownloadDialog.content = root._updFmtSize(received) + " 已下载"
-            }
-        }
-        function onDownloadFinished(localPath) {
-            updateDownloadDialog.accept()
-            var args = AppInfo ? AppInfo.installerSilentArgs : ""
-            var ok = Updater.runInstallerAndQuit(localPath, args)
-            // 提权失败(用户取消 UAC)或启动失败:提示手动安装(安装包已下载到本地)
-            if (!ok)
-                Fluent.NotificationManager.toast.warning(root, "安装未开始", "已取消或需要管理员权限,安装包已下载到临时目录,可手动运行")
-        }
-        function onDownloadFailed(error) {
-            updateDownloadDialog.reject()
-            Fluent.NotificationManager.toast.error(root, "下载失败", (error || "网络错误") + ",可前往项目主页手动下载")
-            if (root._updHtmlUrl !== "" && Updater)
-                Updater.openInBrowser(root._updHtmlUrl)
-        }
-    }
-
-    // 发起检查:silent=true 静默(已最新/失败不提示),供启动自检与设置页手动检查共用
-    function _updCheck(silent) {
-        if (!Updater) return
-        root._updSilent = silent === true
-        Updater.checkForUpdate()
-    }
-
-    function _updStartDownload(url) {
-        if (!Updater) return
-        updateDownloadDialog.progress = -1  // 开始时总大小未知,先转圈;收到进度后转确定
-        updateDownloadDialog.content = "准备中…"
-        updateDownloadDialog.open()
-        Updater.downloadUpdate(url)
-    }
-
-    function _updFmtSize(bytes) {
-        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
-        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB"
-        return bytes + " B"
-    }
-
-    // 启动后延迟静默检查更新(取代原 Python 端 QTimer,确保接收方已就绪)
-    Timer {
-        id: updateStartupTimer
-        interval: 3000
-        running: true
-        repeat: false
-        onTriggered: root._updCheck(true)
-    }
 }

@@ -7,7 +7,7 @@ import PrismQML as Fluent
 Item {
     id: root
 
-    // 更新检查:实际流程(弹框/下载/安装)由常驻的 RepoView 承载;
+    // 更新检查:实际流程(弹框/下载/安装)由主窗口 ToastProgressHost 承载;
     // 本页仅提供手动触发入口 + 短暂的"检查中"按钮态。
     property bool _checking: false
     property string _updateStatus: AppInfo ? ("当前版本 " + AppInfo.version) : ""
@@ -137,7 +137,7 @@ Item {
                     buttonText: ""
                 }
 
-                // 检查更新:点按钮 → Updater.checkForUpdate();结果(弹框/下载/安装)由常驻 RepoView 处理
+                // 检查更新:点按钮 → Updater.checkForUpdate();结果(弹框/下载/安装)由主窗口处理
                 Fluent.SettingsCard {
                     id: updateCard
                     width: parent ? parent.width : 0
@@ -173,9 +173,9 @@ Item {
     }
 
     // ==================== 自动更新(仅触发入口)====================
-    // 实际流程(发现新版弹框/下载进度/静默安装)由常驻的 RepoView 承载。
+    // 实际流程(发现新版弹框/下载进度/静默安装)由主窗口 ToastProgressHost 承载。
     // 本页只负责手动触发检查 + 维护按钮"检查中"态,结果信号同时被这里(复位按钮)
-    // 和 RepoView(弹框/提示)接收,职责不重叠。
+    // 和主窗口 host(弹框/提示)接收,职责不重叠。
     function _manualCheck() {
         if (!Updater) {
             Fluent.NotificationManager.toast.warning(root, "提示", "更新组件不可用")
@@ -183,10 +183,10 @@ Item {
         }
         root._checking = true
         root._updateStatus = "正在检查更新…"
-        Updater.checkForUpdate()  // 此刻 RepoView._updSilent 已是 false → 结果会正常提示
+        Updater.checkForUpdate()  // 主窗口默认非静默,结果会正常提示
     }
 
-    // 仅复位本页按钮态与状态文字;不弹框、不下载(交给 RepoView)
+    // 仅复位本页按钮态与状态文字;不弹框、不下载(交给主窗口 host)
     Connections {
         target: typeof Updater !== "undefined" ? Updater : null
         ignoreUnknownSignals: true

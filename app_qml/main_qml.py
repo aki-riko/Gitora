@@ -190,7 +190,7 @@ def main() -> int:
 
         app._single_instance.activateRequested.connect(_on_activate)
 
-    # 启动后的静默更新检查改由常驻的 RepoView(首页)在加载完成后发起,
+    # 启动后的静默更新检查由主窗口 ToastProgressHost 在加载完成后发起,
     # 确保接收 Updater 信号的 Connections 已就绪(放 Python 端 QTimer 会早于 QML 接收方,
     # 导致 updateAvailable 信号无人接收而静默检查失效)。SELFTEST 1.5s 即退出,早于其 3s 定时器。
 

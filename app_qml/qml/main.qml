@@ -3,6 +3,7 @@ import QtQuick
 import QtQuick.Window
 
 import PrismQML as Fluent
+import "components"
 
 QtObject {
     id: root
@@ -39,6 +40,7 @@ QtObject {
     ]
 
     property var windowInstance: null
+    property var toastProgressHostInstance: null
 
     function applyNativeWindowIcon(targetWindow) {
         if (!targetWindow || typeof WindowIconBridge === "undefined") return
@@ -78,6 +80,7 @@ QtObject {
             // 创建启动屏幕,赋给 _splashInstance;内容加载完成后引擎自动 finish()
             Component.onCompleted: {
                 this._splashInstance = root.splashComponent.createObject(this.contentItem)
+                root.toastProgressHostInstance = root.toastProgressHostComponent.createObject(this.contentItem)
                 let currentWindow = this
                 Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })
             }
@@ -92,5 +95,9 @@ QtObject {
             subtitle: "正在加载..."
             z: 9999
         }
+    }
+
+    property Component toastProgressHostComponent: Component {
+        ToastProgressHost {}
     }
 }
