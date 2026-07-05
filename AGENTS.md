@@ -14,7 +14,7 @@
 
 本仓库有两个远程,推送时**两个都要推**:
 
-- `origin` = Gitea(`git@git.9li.life:Aquila/Gitora.git`)
+- `origin` = Gitea(`ssh://git@git.9li.life:28022/Aquila/Gitora.git`)
 - `github` = GitHub(`git@github.com:aki-riko/Gitora.git`)—— **CI / Release 在这**
 
 以 `git remote -v` 实测为准。GitHub Release 页面挂发行产物(Windows .exe + macOS .dmg),用户从这里下载。
@@ -41,6 +41,8 @@
 1. 确保 venv 已装最新 `prismqml` 与依赖
 2. `.venv/Scripts/python.exe build_nuitka.py`
    - Nuitka standalone/onedir,产物在 `build_dist/main_qml.dist/Gitora.exe`
+   - 验证产物能启动(打安装包前先自检):在 `build_dist/main_qml.dist/` 下
+     `GITESS_QML_SELFTEST=1 ./Gitora.exe`,看到 `exit=0` + `[SELFTEST] QML 加载成功,rootObjects = 1` 即通过
 3. 出安装包:`"C:\Program Files\Inno Setup 7\ISCC.exe" installer.iss`
    - 产物在 `dist_installer/Gitora-Setup-X.Y.Z.exe`
    - `installer.iss` 的 `MyDistDir` 是相对路径,ISCC 须在仓库根目录运行
@@ -82,3 +84,7 @@ macOS 的 .app/.dmg **不能在本地(Windows)构建**,必须触发 CI:
 - [ ] mac CI 已触发且成功,dmg 已下载
 - [ ] tag 已推两个远程
 - [ ] GitHub Release 已建,exe + dmg 均已上传
+
+## 九、省时技巧
+
+mac CI 与 Windows 打包互不依赖,可并行:先 `gh workflow run build-macos.yml --ref master` 把 CI 跑起来(约 8 分钟),同时本地跑 Nuitka + ISCC。两条线并行,总耗时约等于 mac CI 单程。等 CI 时用 `gh run watch <id> --exit-status` 阻塞等待,省去反复轮询。
