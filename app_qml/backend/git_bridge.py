@@ -314,6 +314,11 @@ class GitBridge(QObject):
         ok, msg = self._svc.amend_commit(message)
         return [ok, msg]
 
+    @Slot(result=bool)
+    def isHeadPushed(self) -> bool:
+        """最近提交是否已推送到上游(供前端 amend 前判断是否需告警)。"""
+        return self._svc.is_head_pushed()
+
     # ==================== 远程同步(异步,经 operationFinished 回传) ====================
     @Slot()
     def push(self):

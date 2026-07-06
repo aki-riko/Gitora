@@ -722,6 +722,29 @@ class GitService(QObject):
             return True, "修改提交成功"
         return False, stderr or "修改提交失败"
 
+    def is_head_pushed(self) -> bool:
+        """最近一次提交(HEAD)是否已推送到上游。
+
+        用于 amend 前的安全判断:已推送的提交被 amend 后本地与远端历史分叉,
+        需强制推送才能同步,应向用户告警。判定规则:
+          - 无 HEAD(空仓库)     → False(无提交可谈"已推送")
+          - 无上游分支           → False(本地分支从未推送)
+          - HEAD 是上游的祖先    → True(HEAD 已包含在远端,即已推送)
+          - 否则                 → False(HEAD 领先上游,最近提交未推送)
+        """
+        has_head, _, _ = self._run_git_sync(['rev-parse', '--verify', 'HEAD'])
+        if not has_head:
+            return False
+        # 解析上游引用(@{u});无上游时该命令失败
+        has_upstream, _, _ = self._run_git_sync(
+            ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])
+        if not has_upstream:
+            return False
+        # HEAD 是上游祖先 → 已被远端包含 → 已推送
+        is_ancestor, _, _ = self._run_git_sync(
+            ['merge-base', '--is-ancestor', 'HEAD', '@{u}'])
+        return is_ancestor
+
     # ==================== 推送/拉取操作 ====================
 
     def push(self, remote: str = "origin", branch: str = "", force: bool = False, callback: Callable[[bool, str], None] = None):
@@ -757,7 +780,10 @@ class GitService(QObject):
         # 始终使用 -u 设置上游分支（对新分支和已有分支都安全）
         args = ['push', '-u']
         if force:
-            args.append('--force')  # 强制推送
+            # --force-with-lease:仅当远端分支仍是本地已知的位置时才覆盖。
+            # 若远端有本地未见的新提交(他人推送)会被拒绝,避免误覆盖他人工作,
+            # 比裸 --force 安全,是主流 Git GUI 的默认强制推送方式。
+            args.append('--force-with-lease')
         args.append(remote)
         args.append(branch)
 

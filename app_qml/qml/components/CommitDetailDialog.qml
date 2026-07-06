@@ -146,11 +146,15 @@ Fluent.DialogBoxCore {
             color: Fluent.Enums.textColor.secondary
         }
         Fluent.ScrollArea {
+            id: filesScrollArea
             Layout.fillWidth: true
             Layout.preferredHeight: Math.min(filesModel.count * 24 + 4, 110)
             padding: 0
             Column {
-                width: parent.width
+                // 绑 ScrollArea 自身宽度而非 parent:content 被塞进内部 Loader,
+                // parent(contentHolder)在 Loader 实例化时序里会短暂为 null,
+                // 读 parent.width 会报 "Cannot read property 'width' of null"。
+                width: filesScrollArea.width
                 Repeater {
                     model: filesModel
                     delegate: Row {

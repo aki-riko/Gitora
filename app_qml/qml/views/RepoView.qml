@@ -49,6 +49,18 @@ Item {
         GitBridge.requestStatus()
     }
 
+    // 修补上次提交:用输入框内容重写 HEAD 的提交消息(git commit --amend)
+    function doAmend() {
+        var res = GitBridge.amendCommit(commitInput.text)
+        if (res[0]) {
+            commitInput.text = ""
+            Fluent.NotificationManager.toast.success(root, "已修补提交", res[1] || "")
+            root.reload()
+        } else {
+            Fluent.NotificationManager.toast.error(root, "修补失败", res[1] || "")
+        }
+    }
+
     function _finishStatusRequest(repoPath) {
         if (repoPath !== root._statusRequestRepoPath) return
         root._statusRequesting = false
@@ -218,8 +230,34 @@ Item {
             }
             Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
             Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
-            Fluent.Button { text: "拉取"; icon: Fluent.Enums.icon.arrow_download; onClicked: GitBridge.pull() }
-            Fluent.Button { text: "推送"; icon: Fluent.Enums.icon.arrow_upload; onClicked: GitBridge.push() }
+            // 拉取:主按钮 pull;下拉出「拉取(变基)」「抓取(fetch)」
+            Fluent.Button {
+                text: "拉取"
+                icon: Fluent.Enums.icon.arrow_download
+                feature: Fluent.Enums.button.feature_split
+                menuItems: [
+                    { "text": "拉取(变基)", "icon": Fluent.Enums.icon.arrow_download },
+                    { "text": "抓取(fetch)", "icon": Fluent.Enums.icon.arrow_sync }
+                ]
+                onClicked: GitBridge.pull()
+                onMenuItemClicked: function(index, text) {
+                    if (index === 0) GitBridge.pullRebase()
+                    else if (index === 1) GitBridge.fetch()
+                }
+            }
+            // 推送:主按钮 push;下拉出「强制推送」(破坏性,走危险确认)
+            Fluent.Button {
+                text: "推送"
+                icon: Fluent.Enums.icon.arrow_upload
+                feature: Fluent.Enums.button.feature_split
+                menuItems: [
+                    { "text": "强制推送", "icon": Fluent.Enums.icon.warning }
+                ]
+                onClicked: GitBridge.push()
+                onMenuItemClicked: function(index, text) {
+                    if (index === 0) forcePushDanger.start()
+                }
+            }
         }
 
         Text {
@@ -245,6 +283,11 @@ Item {
                 text: "提交"
                 style: Fluent.Enums.button.style_primary
                 enabled: commitInput.text.length > 0
+                feature: Fluent.Enums.button.feature_split
+                // 下拉:修补上次提交(commit --amend),用输入框内容作为新提交消息
+                menuItems: [
+                    { "text": "修补上次提交", "icon": Fluent.Enums.icon.edit }
+                ]
                 onClicked: {
                     var res = GitBridge.commit(commitInput.text)
                     if (res[0]) {
@@ -254,6 +297,19 @@ Item {
                     } else {
                         Fluent.NotificationManager.toast.error(root, "提交失败", res[1] || "")
                     }
+                }
+                onMenuItemClicked: function(index, text) {
+                    if (index !== 0) return
+                    // amend 需要一条新消息(输入框内容);为空则提示
+                    if (commitInput.text.length === 0) {
+                        Fluent.NotificationManager.toast.warning(root, "无法修补", "请先在输入框填写修补后的提交消息")
+                        return
+                    }
+                    // 已推送的提交被 amend 会与远端历史分叉,需强制推送 → 弹危险确认
+                    if (GitBridge.isHeadPushed())
+                        amendDanger.start()
+                    else
+                        root.doAmend()
                 }
             }
             Fluent.Button {
@@ -511,6 +567,28 @@ Item {
             else
                 Fluent.NotificationManager.toast.error(root, "失败", "丢弃失败: " + _path)
         }
+    }
+
+    // 危险操作:强制推送二次确认(会覆盖远端历史,可能丢失他人提交,不可恢复)
+    DangerDialog {
+        id: forcePushDanger
+        title: "确认强制推送"
+        content: "⚠️ 强制推送(--force-with-lease)会用本地分支覆盖远端。\n"
+            + "若远端有你本地没有的提交,可能造成丢失。\n此操作不可恢复,请确认远端历史可被覆盖。"
+        countdown: 3
+        // 异步执行,结果经全局 operationFinished 统一弹 toast(与普通 push 一致)
+        onConfirmed: GitBridge.pushForce()
+    }
+
+    // 危险操作:修补「已推送」的提交(会与远端历史分叉,之后需强制推送才能同步)
+    DangerDialog {
+        id: amendDanger
+        title: "确认修补已推送的提交"
+        content: "⚠️ 最近一次提交已推送到远端。\n"
+            + "修补(amend)会重写它,导致本地与远端历史分叉,\n"
+            + "之后需要「强制推送」才能同步。若他人已基于旧提交工作,可能造成影响。"
+        countdown: 3
+        onConfirmed: root.doAmend()
     }
 
 }

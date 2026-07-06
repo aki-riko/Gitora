@@ -3,11 +3,13 @@ import QtQuick
 import QtQuick.Layouts
 
 import PrismQML as Fluent
+import "../components"
 
 Item {
     id: root
 
     property string currentBranch: ""
+    property string _mergeTarget: ""   // 待合并到当前分支的目标分支名
     ListModel { id: localModel }
     ListModel { id: remoteModel }
 
@@ -67,6 +69,11 @@ Item {
                 Fluent.Button { text: "Fetch"; icon: Fluent.Enums.icon.arrow_sync; onClicked: GitBridge.fetch() }
                 Fluent.Button { text: "Prune"; onClicked: root._op(GitBridge.pruneRemote()) }
                 Fluent.Button {
+                    text: "远程"
+                    icon: Fluent.Enums.icon.globe
+                    onClicked: remoteManageDialog.openPanel()
+                }
+                Fluent.Button {
                     text: "新建分支"
                     style: Fluent.Enums.button.style_primary
                     icon: Fluent.Enums.icon.add
@@ -122,6 +129,16 @@ Item {
                                 text: model.isCurrent ? "当前" : "切换"
                                 enabled: !model.isCurrent
                                 onClicked: root._op(GitBridge.checkoutBranch(model.name))
+                            }
+                            Fluent.Button {
+                                text: "合并"
+                                visible: !model.isCurrent
+                                // 把该分支合并到当前分支(异步,结果经全局 operationFinished 弹 toast;
+                                // 冲突时 git 会中止合并并在 toast 报错,不会静默破坏工作区)
+                                onClicked: {
+                                    root._mergeTarget = model.name
+                                    mergeConfirm.open()
+                                }
                             }
                             Fluent.Button {
                                 text: "删除"
@@ -189,4 +206,21 @@ Item {
             newBranchInput.text = ""
         }
     }
+
+    // 合并分支确认:把 _mergeTarget 合并到当前分支
+    Fluent.MessageBox {
+        id: mergeConfirm
+        title: "合并分支"
+        content: "确定把分支 \"" + root._mergeTarget + "\" 合并到当前分支 \"" + root.currentBranch + "\" 吗?\n若产生冲突,合并会中止并提示,需手动解决。"
+        confirmText: "合并"
+        cancelText: "取消"
+        onAccepted: {
+            if (root._mergeTarget)
+                GitBridge.mergeBranch(root._mergeTarget)
+            root._mergeTarget = ""
+        }
+    }
+
+    // 远程管理面板(添加/修改URL/删除)
+    RemoteDialog { id: remoteManageDialog }
 }
