@@ -4,6 +4,11 @@
 
 Gitora 用 Fluent Design 风格把常见 Git 操作做成清晰直观的界面——暂存、提交、推送、分支、标签、stash、冲突解决，一站式完成，无需记命令。
 
+![Gitora 主界面](docs/images/gitora-main.png)
+
+- **下载**：[GitHub Releases](https://github.com/aki-riko/Gitora/releases)
+- **适合**：想少记命令、用图形界面完成日常 Git 工作流的新手与桌面端用户。
+
 ## ✨ 特性
 
 - 🎯 **新手友好** — 清晰的操作界面，一键暂存 + 提交 + 推送
