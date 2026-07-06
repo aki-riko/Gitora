@@ -4,6 +4,14 @@ name: Build macOS .app/.dmg
 # Nuitka 不能交叉编译 mac,故必须在 macOS 上构建。产物作为 artifact 下载。
 on:
   workflow_dispatch:      # 手动触发(打包慢,不随 push 自动跑)
+    inputs:
+      release_tag:
+        description: "要把 dmg 附加到的 Release tag(如 v1.1.0);留空则只产出 artifact 不发 Release"
+        required: false
+        default: ""
+
+permissions:
+  contents: write         # 需要写权限才能上传到 Release
 
 jobs:
   build-mac:
@@ -79,3 +87,18 @@ jobs:
           name: Gitora-macOS-app
           path: build_dist/main_qml.app
           if-no-files-found: warn
+
+      # 若指定了 release_tag,直接在 runner 上把 dmg 附加到对应 Release。
+      # GitHub 内网上传,秒传,避免本地慢速上行带宽卡住大文件。
+      - name: Attach dmg to Release
+        if: ${{ inputs.release_tag != '' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${{ inputs.release_tag }}"
+          VER="${TAG#v}"
+          SRC=$(ls build_dist/*.dmg | head -1)
+          DEST="Gitora-macOS-${VER}.dmg"
+          cp "$SRC" "$DEST"
+          echo "上传 $DEST 到 Release $TAG"
+          gh release upload "$TAG" "$DEST" --repo "${{ github.repository }}" --clobber
