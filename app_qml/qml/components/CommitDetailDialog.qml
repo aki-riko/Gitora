@@ -9,13 +9,26 @@ Fluent.DialogBoxCore {
     id: dlg
 
     property string commitHash: ""
+    property string _requestRepoPath: ""
     property string _author: ""
     property string _shortHash: ""
     property string _date: ""
     ListModel { id: filesModel }
 
+    function clearContent() {
+        dlg.commitHash = ""
+        dlg._requestRepoPath = ""
+        dlg._author = ""
+        dlg._shortHash = ""
+        dlg._date = ""
+        msgLabel.text = ""
+        filesModel.clear()
+        diffArea.text = ""
+    }
+
     function openFor(hash) {
         dlg.commitHash = hash
+        dlg._requestRepoPath = (GitBridge && GitBridge.repoPath) ? GitBridge.repoPath : ""
         var d = GitBridge.getCommitDetail(hash) || ({})
         msgLabel.text = d.message || ""
         dlg._author = d.author || ""
@@ -30,13 +43,14 @@ Fluent.DialogBoxCore {
 
     Connections {
         target: GitBridge
-        function onCommitFilesReady(hash, files) {
-            if (hash !== dlg.commitHash) return
+        function onRepoPathChanged(path) { dlg.clearContent() }
+        function onCommitFilesReady(repoPath, hash, files) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
             filesModel.clear()
             for (var i = 0; i < files.length; i++) filesModel.append(files[i])
         }
-        function onCommitDiffReady(hash, diff) {
-            if (hash !== dlg.commitHash) return
+        function onCommitDiffReady(repoPath, hash, diff) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
             diffArea.text = dlg._diffToHtml(diff || "")
         }
     }

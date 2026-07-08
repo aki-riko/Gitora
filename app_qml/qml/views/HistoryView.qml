@@ -22,12 +22,18 @@ Item {
     // ==================== 数据加载 ====================
     function resetAndLoad() {
         root.allCommits = []
+        root.timelineItems = []
         root.loadedCount = 0
         root.hasMore = true
         root.searchMode = false
         root.loading = false
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         loadMore()
+    }
+
+    function resetForRepoChange() {
+        searchInput.text = ""
+        resetAndLoad()
     }
 
     function loadMore() {
@@ -110,6 +116,7 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.resetAndLoad() }
+        function onRepoPathChanged(path) { root.resetForRepoChange() }
     }
 
     function _op(res) {

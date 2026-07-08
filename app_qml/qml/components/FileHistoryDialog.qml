@@ -12,11 +12,21 @@ Fluent.MessageBox {
     cancelButtonVisible: false
 
     property string filePath: ""
+    property string _requestRepoPath: ""
     property var selected: []   // 选中的 commit hash 列表(最多2)
     ListModel { id: histModel }
 
+    function clearContent() {
+        dlg.filePath = ""
+        dlg._requestRepoPath = ""
+        dlg.selected = []
+        histModel.clear()
+        rightArea.text = ""
+    }
+
     function openFor(path) {
         dlg.filePath = path
+        dlg._requestRepoPath = (GitBridge && GitBridge.repoPath) ? GitBridge.repoPath : ""
         dlg.title = "文件历史 - " + path
         dlg.selected = []
         histModel.clear()
@@ -51,19 +61,22 @@ Fluent.MessageBox {
 
     Connections {
         target: GitBridge
-        function onFileHistoryReady(path, list) {
-            if (path !== dlg.filePath) return  // 防过期
+        function onRepoPathChanged(path) { dlg.clearContent() }
+        function onFileHistoryReady(repoPath, path, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || path !== dlg.filePath) return  // 防过期
             histModel.clear()
             for (var i = 0; i < list.length; i++) histModel.append(list[i])
             if (dlg.selected.length === 0)
                 rightArea.text = list.length > 0 ? "选择一个提交查看该版本内容,选择两个对比差异" : "无历史记录"
         }
-        function onFileContentReady(path, hash, content) {
-            if (path !== dlg.filePath || dlg.selected.length !== 1 || hash !== dlg.selected[0]) return
+        function onFileContentReady(repoPath, path, hash, content) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath
+                || path !== dlg.filePath || dlg.selected.length !== 1 || hash !== dlg.selected[0]) return
             rightArea.text = content || "(空文件)"
         }
-        function onDiffBetweenReady(path, c1, c2, diff) {
-            if (path !== dlg.filePath || dlg.selected.length !== 2
+        function onDiffBetweenReady(repoPath, path, c1, c2, diff) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath
+                || path !== dlg.filePath || dlg.selected.length !== 2
                 || c1 !== dlg.selected[0] || c2 !== dlg.selected[1]) return
             rightArea.text = diff || "(无差异)"
         }

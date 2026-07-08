@@ -80,18 +80,18 @@ class GitBridge(QObject):
     logReady = Signal(str, int, "QVariantList")    # 后台提交分页就绪(repoPath, skip, 批次)
     searchReady = Signal(str, "QVariantList")       # 后台搜索结果就绪(repoPath, 结果)
     # 以下为耗时操作异步化新增信号(均带请求参数供前端校验防过期)
-    diffReady = Signal(str, bool, str)              # (path, staged, diff内容)
-    commitDiffReady = Signal(str, str)              # (hash, diff)
-    branchesReady = Signal("QVariantList")          # 分支列表
-    tagsReady = Signal("QVariantList")              # 标签列表
-    fileHistoryReady = Signal(str, "QVariantList")  # (path, 提交列表)
-    conflictsReady = Signal("QVariantList")         # 冲突文件列表
-    commitFilesReady = Signal(str, "QVariantList")  # (hash, 文件列表)
-    fileContentReady = Signal(str, str, str)        # (path, hash, 内容)
-    diffBetweenReady = Signal(str, str, str, str)   # (path, c1, c2, diff)
-    stashListReady = Signal("QVariantList")         # stash 列表
-    cleanPreviewReady = Signal("QVariantList")      # 待清理文件列表
-    reflogReady = Signal("QVariantList")            # reflog 列表
+    diffReady = Signal(str, str, bool, str)              # (repoPath, path, staged, diff内容)
+    commitDiffReady = Signal(str, str, str)              # (repoPath, hash, diff)
+    branchesReady = Signal(str, "QVariantList")          # (repoPath, 分支列表)
+    tagsReady = Signal(str, "QVariantList")              # (repoPath, 标签列表)
+    fileHistoryReady = Signal(str, str, "QVariantList")  # (repoPath, path, 提交列表)
+    conflictsReady = Signal(str, "QVariantList")         # (repoPath, 冲突文件列表)
+    commitFilesReady = Signal(str, str, "QVariantList")  # (repoPath, hash, 文件列表)
+    fileContentReady = Signal(str, str, str, str)        # (repoPath, path, hash, 内容)
+    diffBetweenReady = Signal(str, str, str, str, str)   # (repoPath, path, c1, c2, diff)
+    stashListReady = Signal(str, "QVariantList")         # (repoPath, stash 列表)
+    cleanPreviewReady = Signal(str, "QVariantList")      # (repoPath, 待清理文件列表)
+    reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
 
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
     _POLL_INTERVAL_MS = 2000
@@ -248,14 +248,16 @@ class GitBridge(QObject):
     # ==================== 仓库维护 ====================
     @Slot()
     def requestCleanPreview(self):
-        """后台预览待清理文件,完成发 cleanPreviewReady(list)。"""
+        """后台预览待清理文件,完成发 cleanPreviewReady(repoPath,list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = self._svc.clean_preview()
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"预览清理失败: {e}"); data = []
-            self.cleanPreviewReady.emit(data)
+            self.cleanPreviewReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(bool, result="QVariantList")
@@ -293,14 +295,16 @@ class GitBridge(QObject):
     # ==================== 差异 ====================
     @Slot(str, bool)
     def requestDiff(self, path: str, staged: bool):
-        """后台获取文件差异,完成发 diffReady(path, staged, content)。"""
+        """后台获取文件差异,完成发 diffReady(repoPath, path, staged, content)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = self._svc.get_diff(path, staged)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取 diff 失败: {e}"); data = ""
-            self.diffReady.emit(path, staged, data)
+            self.diffReady.emit(repo, path, staged, data)
         threading.Thread(target=work, daemon=True).start()
 
     # ==================== 提交 ====================
@@ -424,14 +428,16 @@ class GitBridge(QObject):
     # ==================== 分支 ====================
     @Slot()
     def requestBranches(self):
-        """后台获取分支列表,完成发 branchesReady(list)。"""
+        """后台获取分支列表,完成发 branchesReady(repoPath,list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [_branch_to_dict(b) for b in self._svc.get_branches()]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取分支失败: {e}"); data = []
-            self.branchesReady.emit(data)
+            self.branchesReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, bool, result="QVariantList")
@@ -466,14 +472,16 @@ class GitBridge(QObject):
 
     @Slot()
     def requestConflicts(self):
-        """后台获取冲突文件,完成发 conflictsReady(list)。"""
+        """后台获取冲突文件,完成发 conflictsReady(repoPath,list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [_conflict_to_dict(c) for c in self._svc.get_conflicts()]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取冲突失败: {e}"); data = []
-            self.conflictsReady.emit(data)
+            self.conflictsReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, result="QVariantList")
@@ -494,14 +502,16 @@ class GitBridge(QObject):
     # ==================== Stash ====================
     @Slot()
     def requestStashList(self):
-        """后台获取 stash 列表,完成发 stashListReady(list)。"""
+        """后台获取 stash 列表,完成发 stashListReady(repoPath,list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [{"id": sid, "message": msg} for sid, msg in self._svc.stash_list()]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取 stash 失败: {e}"); data = []
-            self.stashListReady.emit(data)
+            self.stashListReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, result="QVariantList")
@@ -532,14 +542,16 @@ class GitBridge(QObject):
     # ==================== Tag ====================
     @Slot()
     def requestTags(self):
-        """后台获取标签列表,完成发 tagsReady(list)。"""
+        """后台获取标签列表,完成发 tagsReady(repoPath,list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [{"name": n, "hash": h, "message": m} for n, h, m in self._svc.get_tags()]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取标签失败: {e}"); data = []
-            self.tagsReady.emit(data)
+            self.tagsReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, str, result="QVariantList")
@@ -628,38 +640,44 @@ class GitBridge(QObject):
     # ==================== 文件历史 ====================
     @Slot(str, int)
     def requestFileHistory(self, path: str, count: int):
-        """后台获取文件历史,完成发 fileHistoryReady(path, list)。"""
+        """后台获取文件历史,完成发 fileHistoryReady(repoPath, path, list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [_commit_to_dict(c) for c in self._svc.get_file_history(path, count)]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取文件历史失败: {e}"); data = []
-            self.fileHistoryReady.emit(path, data)
+            self.fileHistoryReady.emit(repo, path, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, str)
     def requestFileContentAtCommit(self, path: str, commit_hash: str):
-        """后台获取文件在某提交的内容,完成发 fileContentReady(path, hash, content)。"""
+        """后台获取文件在某提交的内容,完成发 fileContentReady(repoPath, path, hash, content)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = self._svc.get_file_content_at_commit(path, commit_hash)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取文件内容失败: {e}"); data = ""
-            self.fileContentReady.emit(path, commit_hash, data)
+            self.fileContentReady.emit(repo, path, commit_hash, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str, str, str)
     def requestDiffBetween(self, path: str, c1: str, c2: str):
-        """后台对比文件两提交差异,完成发 diffBetweenReady(path, c1, c2, diff)。"""
+        """后台对比文件两提交差异,完成发 diffBetweenReady(repoPath, path, c1, c2, diff)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = self._svc.diff_file_between_commits(path, c1, c2)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"对比文件失败: {e}"); data = ""
-            self.diffBetweenReady.emit(path, c1, c2, data)
+            self.diffBetweenReady.emit(repo, path, c1, c2, data)
         threading.Thread(target=work, daemon=True).start()
 
     # ==================== 提交详情 ====================
@@ -670,39 +688,45 @@ class GitBridge(QObject):
 
     @Slot(str)
     def requestCommitFiles(self, commit_hash: str):
-        """后台获取提交变更文件,完成发 commitFilesReady(hash, list)。"""
+        """后台获取提交变更文件,完成发 commitFilesReady(repoPath, hash, list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [_file_change_to_dict(fc) for fc in self._svc.get_commit_files(commit_hash)]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取提交文件失败: {e}"); data = []
-            self.commitFilesReady.emit(commit_hash, data)
+            self.commitFilesReady.emit(repo, commit_hash, data)
         threading.Thread(target=work, daemon=True).start()
 
     @Slot(str)
     def requestCommitDiff(self, commit_hash: str):
-        """后台获取提交 diff,完成发 commitDiffReady(hash, diff)。"""
+        """后台获取提交 diff,完成发 commitDiffReady(repoPath, hash, diff)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = self._svc.get_commit_diff(commit_hash)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取提交 diff 失败: {e}"); data = ""
-            self.commitDiffReady.emit(commit_hash, data)
+            self.commitDiffReady.emit(repo, commit_hash, data)
         threading.Thread(target=work, daemon=True).start()
 
     # ==================== Reflog ====================
     @Slot(int)
     def requestReflog(self, count: int):
-        """后台获取 reflog,完成发 reflogReady(list)。"""
+        """后台获取 reflog,完成发 reflogReady(repoPath,list)。"""
         import threading
+        repo = self._svc.repo_path or ""
+
         def work():
             try:
                 data = [{"hash": h, "ref": r, "message": m} for h, r, m in self._svc.get_reflog(count)]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取 reflog 失败: {e}"); data = []
-            self.reflogReady.emit(data)
+            self.reflogReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
     # ==================== 冲突文件内容 ====================

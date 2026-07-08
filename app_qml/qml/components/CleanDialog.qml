@@ -11,17 +11,24 @@ Fluent.MessageBox {
     cancelText: "取消"
 
     signal cleanRequested(bool includeDirectories)
+    property string _requestRepoPath: ""
     ListModel { id: previewModel }
 
     function refresh() {
         previewModel.clear()
         if (!GitBridge || !GitBridge.repoPath) return
+        dlg._requestRepoPath = GitBridge.repoPath
         GitBridge.requestCleanPreview()  // 异步,结果经 cleanPreviewReady 回传
     }
 
     Connections {
         target: GitBridge
-        function onCleanPreviewReady(files) {
+        function onRepoPathChanged(path) {
+            dlg._requestRepoPath = ""
+            previewModel.clear()
+        }
+        function onCleanPreviewReady(repoPath, files) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath) return
             previewModel.clear()
             for (var i = 0; i < files.length; i++) previewModel.append({ "path": files[i] })
         }

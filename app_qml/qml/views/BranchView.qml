@@ -10,13 +10,23 @@ Item {
 
     property string currentBranch: ""
     property string _mergeTarget: ""   // 待合并到当前分支的目标分支名
+    property string _branchesRequestRepoPath: ""
     ListModel { id: localModel }
     ListModel { id: remoteModel }
 
+    function clearModels() {
+        root.currentBranch = ""
+        root._branchesRequestRepoPath = ""
+        localModel.clear()
+        remoteModel.clear()
+    }
+
     function reload() {
         if (!GitBridge || !GitBridge.repoPath) {
-            localModel.clear(); remoteModel.clear(); return
+            clearModels()
+            return
         }
+        root._branchesRequestRepoPath = GitBridge.repoPath
         root.currentBranch = GitBridge.getCurrentBranch()
         GitBridge.requestBranches()  // 异步,结果经 branchesReady 回传
     }
@@ -33,7 +43,12 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
-        function onBranchesReady(list) {
+        function onRepoPathChanged(path) {
+            root.clearModels()
+            root.reload()
+        }
+        function onBranchesReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._branchesRequestRepoPath) return
             localModel.clear(); remoteModel.clear()
             for (var i = 0; i < list.length; i++) {
                 if (list[i].isRemote) remoteModel.append(list[i])

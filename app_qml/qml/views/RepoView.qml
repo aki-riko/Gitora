@@ -115,6 +115,7 @@ Item {
             root._reloadPending = false
             root._statusRequestRepoPath = ""
             root._resetRepoUi()
+            root.reload()
         }
         function onStatusReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 过期/切仓库,丢弃
@@ -142,7 +143,8 @@ Item {
             if (ok)
                 root.reload()
         }
-        function onDiffReady(path, staged, content) {
+        function onDiffReady(repoPath, path, staged, content) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return
             // 仅当结果对应当前选中项时才填充(防快速切换的过期结果覆盖)
             if (path === root.selectedPath && staged === root.selectedStaged)
                 diffView.text = root._diffToHtml(content)

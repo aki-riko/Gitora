@@ -12,11 +12,14 @@ Fluent.MessageBox {
     cancelButtonVisible: false
 
     signal checkoutRequested(string commitHash)
+    property string _requestRepoPath: ""
     ListModel { id: reflogModel }
 
     function openReflog() {
         reflogModel.clear()
+        dlg._requestRepoPath = ""
         if (GitBridge && GitBridge.repoPath) {
+            dlg._requestRepoPath = GitBridge.repoPath
             GitBridge.requestReflog(100)  // 异步,结果经 reflogReady 回传
         }
         dlg.open()
@@ -24,7 +27,12 @@ Fluent.MessageBox {
 
     Connections {
         target: GitBridge
-        function onReflogReady(list) {
+        function onRepoPathChanged(path) {
+            dlg._requestRepoPath = ""
+            reflogModel.clear()
+        }
+        function onReflogReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath) return
             reflogModel.clear()
             for (var i = 0; i < list.length; i++) reflogModel.append(list[i])
         }

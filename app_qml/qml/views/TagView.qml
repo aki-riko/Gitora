@@ -6,10 +6,17 @@ import PrismQML as Fluent
 
 Item {
     id: root
+    property string _tagsRequestRepoPath: ""
     ListModel { id: tagModel }
 
+    function clearModel() {
+        root._tagsRequestRepoPath = ""
+        tagModel.clear()
+    }
+
     function reload() {
-        if (!GitBridge || !GitBridge.repoPath) { tagModel.clear(); return }
+        if (!GitBridge || !GitBridge.repoPath) { clearModel(); return }
+        root._tagsRequestRepoPath = GitBridge.repoPath
         GitBridge.requestTags()  // 异步,结果经 tagsReady 回传
     }
 
@@ -25,7 +32,12 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
-        function onTagsReady(list) {
+        function onRepoPathChanged(path) {
+            root.clearModel()
+            root.reload()
+        }
+        function onTagsReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._tagsRequestRepoPath) return
             tagModel.clear()
             for (var i = 0; i < list.length; i++) tagModel.append(list[i])
         }

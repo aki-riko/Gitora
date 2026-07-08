@@ -6,10 +6,17 @@ import PrismQML as Fluent
 
 Item {
     id: root
+    property string _stashRequestRepoPath: ""
     ListModel { id: stashModel }
 
+    function clearModel() {
+        root._stashRequestRepoPath = ""
+        stashModel.clear()
+    }
+
     function reload() {
-        if (!GitBridge || !GitBridge.repoPath) { stashModel.clear(); return }
+        if (!GitBridge || !GitBridge.repoPath) { clearModel(); return }
+        root._stashRequestRepoPath = GitBridge.repoPath
         GitBridge.requestStashList()  // 异步,结果经 stashListReady 回传
     }
 
@@ -25,7 +32,12 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
-        function onStashListReady(list) {
+        function onRepoPathChanged(path) {
+            root.clearModel()
+            root.reload()
+        }
+        function onStashListReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._stashRequestRepoPath) return
             stashModel.clear()
             for (var i = 0; i < list.length; i++) stashModel.append(list[i])
         }

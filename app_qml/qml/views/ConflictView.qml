@@ -9,10 +9,18 @@ Item {
     id: root
 
     property bool merging: false
+    property string _conflictsRequestRepoPath: ""
     ListModel { id: conflictModel }
 
+    function clearModel() {
+        root.merging = false
+        root._conflictsRequestRepoPath = ""
+        conflictModel.clear()
+    }
+
     function reload() {
-        if (!GitBridge || !GitBridge.repoPath) { conflictModel.clear(); root.merging = false; return }
+        if (!GitBridge || !GitBridge.repoPath) { clearModel(); return }
+        root._conflictsRequestRepoPath = GitBridge.repoPath
         root.merging = GitBridge.isMerging()
         GitBridge.requestConflicts()  // 异步,结果经 conflictsReady 回传
     }
@@ -29,7 +37,12 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
-        function onConflictsReady(list) {
+        function onRepoPathChanged(path) {
+            root.clearModel()
+            root.reload()
+        }
+        function onConflictsReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._conflictsRequestRepoPath) return
             conflictModel.clear()
             for (var i = 0; i < list.length; i++) conflictModel.append(list[i])
         }
