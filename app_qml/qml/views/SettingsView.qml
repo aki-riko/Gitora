@@ -1,6 +1,7 @@
 // 设置视图(阶段 1:迁移 setting_interface.py)
 // 配置后端映射:主题→ThemeManager,Mica/DPI→ConfigManager,语言→Translator,仓库维护→GitBridge
 import QtQuick
+import QtQuick.Layouts
 
 import PrismQML as Fluent
 
@@ -11,6 +12,10 @@ Item {
     // 本页仅提供手动触发入口 + 短暂的"检查中"按钮态。
     property bool _checking: false
     property string _updateStatus: AppInfo ? ("当前版本 " + AppInfo.version) : ""
+    property string _gitUserName: ""
+    property string _gitUserEmail: ""
+
+    Component.onCompleted: root._loadGitUserInfo()
 
     Fluent.ScrollArea {
         anchors.fill: parent
@@ -59,6 +64,102 @@ Item {
                     type: Fluent.Enums.settingCard.type_push
                     buttonText: "垃圾回收"
                     onClicked: root._runGc()
+                }
+            }
+
+            // ==================== Git 配置 ====================
+            Fluent.SettingsCardGroup {
+                title: "Git 配置"
+                width: contentCol.groupWidth
+
+                Rectangle {
+                    width: parent ? parent.width : 0
+                    height: gitUserLayout.implicitHeight + Fluent.Enums.spacing.l * 2
+                    radius: 8
+                    color: Fluent.Enums.stateColor.settingCardBg
+                    border.color: Fluent.Enums.stateColor.settingCardBorder
+                    border.width: 1
+
+                    RowLayout {
+                        id: gitUserLayout
+                        anchors.fill: parent
+                        anchors.margins: Fluent.Enums.spacing.l
+                        spacing: Fluent.Enums.spacing.l
+
+                        Fluent.Icon {
+                            icon: Fluent.Enums.icon.person_settings
+                            size: 24
+                            color: Fluent.Enums.textColor.secondary
+                            Layout.alignment: Qt.AlignTop
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: Fluent.Enums.spacing.m
+
+                            Text {
+                                text: "提交用户"
+                                color: Fluent.Enums.textColor.primary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.body
+                                font.bold: true
+                                Layout.fillWidth: true
+                            }
+
+                            Text {
+                                text: "保存到全局 Git 配置"
+                                color: Fluent.Enums.textColor.tertiary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            GridLayout {
+                                Layout.fillWidth: true
+                                columns: root.width < 720 ? 1 : 2
+                                columnSpacing: Fluent.Enums.spacing.m
+                                rowSpacing: Fluent.Enums.spacing.s
+
+                                Fluent.LineEdit {
+                                    id: gitUserNameInput
+                                    Layout.fillWidth: true
+                                    placeholderText: "用户名"
+                                    text: root._gitUserName
+                                    onTextChanged: root._gitUserName = text
+                                }
+
+                                Fluent.LineEdit {
+                                    id: gitUserEmailInput
+                                    Layout.fillWidth: true
+                                    placeholderText: "邮箱"
+                                    text: root._gitUserEmail
+                                    onTextChanged: root._gitUserEmail = text
+                                }
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Fluent.Enums.spacing.s
+
+                                Item { Layout.fillWidth: true }
+
+                                Fluent.Button {
+                                    text: "重新读取"
+                                    icon: Fluent.Enums.icon.arrow_sync
+                                    onClicked: root._loadGitUserInfo()
+                                }
+
+                                Fluent.Button {
+                                    text: "保存"
+                                    icon: Fluent.Enums.icon.save
+                                    style: Fluent.Enums.button.style_primary
+                                    enabled: root._gitUserName.trim().length > 0 && root._gitUserEmail.trim().length > 0
+                                    onClicked: root._saveGitUserInfo()
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -170,6 +271,37 @@ Item {
             return
         }
         GitBridge.gc()  // 异步,结果经 operationFinished 反馈(由全局监听统一弹 toast,避免重复)
+    }
+
+    function _loadGitUserInfo() {
+        if (!GitBridge) return
+        var res = GitBridge.getGlobalUserInfo()
+        if (res && res.length >= 2) {
+            root._gitUserName = res[0] || ""
+            root._gitUserEmail = res[1] || ""
+        }
+    }
+
+    function _saveGitUserInfo() {
+        if (!GitBridge) {
+            Fluent.NotificationManager.toast.warning(root, "提示", "Git 组件不可用")
+            return
+        }
+        var name = root._gitUserName.trim()
+        var email = root._gitUserEmail.trim()
+        if (name.length === 0 || email.length === 0) {
+            Fluent.NotificationManager.toast.warning(root, "提示", "请填写用户名和邮箱")
+            return
+        }
+
+        var res = GitBridge.setUserInfo(name, email, true)
+        if (res[0]) {
+            root._gitUserName = name
+            root._gitUserEmail = email
+            Fluent.NotificationManager.toast.success(root, "已保存 Git 用户", name + " <" + email + ">")
+        } else {
+            Fluent.NotificationManager.toast.error(root, "保存失败", res[1] || "")
+        }
     }
 
     // ==================== 自动更新(仅触发入口)====================

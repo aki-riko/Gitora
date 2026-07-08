@@ -1668,14 +1668,22 @@ class GitService(QObject):
 
     # ==================== Config配置 ====================
 
+    def _run_git_config_sync(self, args: list[str], global_scope: bool, timeout: int = 30) -> tuple[bool, str, str]:
+        """执行 Git 配置命令;全局配置不要求当前已打开仓库。"""
+        if self._repo_path:
+            return self._run_git_sync(args, timeout)
+        if global_scope:
+            return self._run_git_sync_at(str(Path.home()), args, timeout)
+        return False, "", "未设置仓库路径"
+
     def get_config(self, key: str, global_scope: bool = False) -> str:
         """获取Git配置"""
         args = ['config']
         if global_scope:
             args.append('--global')
         args.append(key)
-        
-        success, stdout, _ = self._run_git_sync(args)
+
+        success, stdout, _ = self._run_git_config_sync(args, global_scope)
         return stdout.strip() if success else ""
 
     def set_config(self, key: str, value: str, global_scope: bool = False) -> tuple[bool, str]:
@@ -1684,20 +1692,20 @@ class GitService(QObject):
         if global_scope:
             args.append('--global')
         args.extend([key, value])
-        
-        success, _, stderr = self._run_git_sync(args)
+
+        success, _, stderr = self._run_git_config_sync(args, global_scope)
         if success:
             return True, f"已设置 {key} = {value}"
         return False, stderr or "设置配置失败"
 
-    def get_user_info(self) -> tuple[str, str]:
+    def get_user_info(self, global_scope: bool = False) -> tuple[str, str]:
         """获取用户信息
-        
+
         Returns:
             (name, email)
         """
-        name = self.get_config('user.name')
-        email = self.get_config('user.email')
+        name = self.get_config('user.name', global_scope)
+        email = self.get_config('user.email', global_scope)
         return name, email
 
     def set_user_info(self, name: str, email: str, global_scope: bool = True) -> tuple[bool, str]:

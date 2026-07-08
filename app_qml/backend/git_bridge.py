@@ -609,8 +609,14 @@ class GitBridge(QObject):
     # ==================== 用户信息 / 远程 ====================
     @Slot(result="QVariantList")
     def getUserInfo(self) -> list:
-        """全局用户配置 -> [name, email]"""
+        """当前仓库生效的用户配置 -> [name, email]"""
         name, email = self._svc.get_user_info()
+        return [name, email]
+
+    @Slot(result="QVariantList")
+    def getGlobalUserInfo(self) -> list:
+        """全局用户配置 -> [name, email]"""
+        name, email = self._svc.get_user_info(True)
         return [name, email]
 
     @Slot(str, str, bool, result="QVariantList")
