@@ -10,6 +10,7 @@ Item {
 
     property string currentBranch: ""
     property string _mergeTarget: ""   // 待合并到当前分支的目标分支名
+    property string _rebaseTarget: ""  // 当前分支要 rebase 到的目标分支名
     property string _branchesRequestRepoPath: ""
     ListModel { id: localModel }
     ListModel { id: remoteModel }
@@ -162,6 +163,15 @@ Item {
                                 onClicked: {
                                     root._mergeTarget = model.name
                                     mergeConfirm.open()
+                                }
+                            }
+                            Fluent.Button {
+                                text: "Rebase"
+                                style: Fluent.Enums.button.style_transparent
+                                visible: !model.isCurrent
+                                onClicked: {
+                                    root._rebaseTarget = model.name
+                                    rebaseDanger.start()
                                 }
                             }
                             Fluent.Button {
@@ -330,6 +340,20 @@ Item {
             if (root._mergeTarget)
                 GitBridge.mergeBranch(root._mergeTarget)
             root._mergeTarget = ""
+        }
+    }
+
+    // 危险操作:将当前分支 rebase 到目标分支,会重写当前分支提交基底
+    DangerDialog {
+        id: rebaseDanger
+        title: "确认 Rebase"
+        countdown: 3
+        content: "将当前分支 \"" + root.currentBranch + "\" rebase 到 \"" + root._rebaseTarget + "\"。\n"
+            + "这会重写当前分支尚未推送的提交历史;如果产生冲突,请到冲突页继续、跳过或中止。"
+        onConfirmed: {
+            if (root._rebaseTarget)
+                root._op(GitBridge.rebaseOnto(root._rebaseTarget))
+            root._rebaseTarget = ""
         }
     }
 

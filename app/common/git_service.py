@@ -1063,6 +1063,20 @@ class GitService(QObject):
             return True, f"已重命名分支 {old_name} -> {new_name}"
         return False, stderr or "重命名分支失败"
 
+    def rebase_onto(self, branch: str) -> tuple[bool, str]:
+        """将当前分支 rebase 到目标分支。"""
+        branch = (branch or "").strip()
+        if self._bad_ref(branch):
+            return False, "非法的分支名"
+        success, _, stderr = self._run_git_sync(['rebase', branch])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已 rebase 到 {branch}"
+        if self.get_operation_state() == "rebase":
+            self.statusChanged.emit()
+            return False, (stderr or "Rebase 产生冲突") + "\n请在冲突页解决后继续、跳过或中止 rebase"
+        return False, stderr or "Rebase 失败"
+
     def merge_branch(self, branch: str, callback: Callable[[bool, str], None] = None):
         """合并分支（异步）"""
         if self._bad_ref(branch):
@@ -1096,6 +1110,9 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已撤销提交 {commit_hash[:7]}（创建了新的撤销提交）"
+        if self.get_operation_state() == "revert":
+            self.statusChanged.emit()
+            return False, (stderr or "Revert 产生冲突") + "\n请在冲突页解决后继续或中止 revert"
         return False, stderr or "撤销提交失败"
 
     def reset_to_commit(self, commit_hash: str, mode: str = "mixed") -> tuple[bool, str]:
@@ -1308,12 +1325,111 @@ class GitService(QObject):
             return True, "已中止合并"
         return False, stderr or "中止合并失败"
 
+    def _git_path(self, name: str) -> str:
+        """返回 Git 内部路径,兼容 worktree 的 .git 文件形态。"""
+        if not self._repo_path:
+            return ""
+        success, stdout, _ = self._run_git_sync(['rev-parse', '--git-path', name])
+        if success and stdout.strip():
+            path = stdout.strip()
+            if not os.path.isabs(path):
+                path = os.path.join(self._repo_path, path)
+            return path
+        return os.path.join(self._repo_path, '.git', name)
+
+    def _git_marker_exists(self, name: str) -> bool:
+        path = self._git_path(name)
+        return bool(path and os.path.exists(path))
+
+    def get_operation_state(self) -> str:
+        """当前中途 Git 操作: merge/rebase/cherry-pick/revert,无则返回空字符串。"""
+        if not self._repo_path:
+            return ""
+        if self._git_marker_exists('rebase-merge') or self._git_marker_exists('rebase-apply'):
+            return "rebase"
+        if self._git_marker_exists('CHERRY_PICK_HEAD'):
+            return "cherry-pick"
+        if self._git_marker_exists('REVERT_HEAD'):
+            return "revert"
+        if self._git_marker_exists('MERGE_HEAD'):
+            return "merge"
+        return ""
+
+    def _run_mid_operation(self, operation: str, args: list[str], success_msg: str, failure_msg: str) -> tuple[bool, str]:
+        if self.get_operation_state() != operation:
+            return False, f"当前不在 {operation} 中途状态"
+        success, _, stderr = self._run_git_sync(args)
+        self.statusChanged.emit()
+        if success:
+            return True, success_msg
+        return False, stderr or failure_msg
+
+    def continue_rebase(self) -> tuple[bool, str]:
+        """继续 rebase。"""
+        return self._run_mid_operation(
+            "rebase",
+            ['-c', 'core.editor=true', 'rebase', '--continue'],
+            "已继续 rebase",
+            "继续 rebase 失败",
+        )
+
+    def abort_rebase(self) -> tuple[bool, str]:
+        """中止 rebase。"""
+        return self._run_mid_operation(
+            "rebase",
+            ['rebase', '--abort'],
+            "已中止 rebase",
+            "中止 rebase 失败",
+        )
+
+    def skip_rebase(self) -> tuple[bool, str]:
+        """跳过当前 rebase 补丁。"""
+        return self._run_mid_operation(
+            "rebase",
+            ['rebase', '--skip'],
+            "已跳过当前 rebase 补丁",
+            "跳过 rebase 补丁失败",
+        )
+
+    def continue_cherry_pick(self) -> tuple[bool, str]:
+        """继续 cherry-pick。"""
+        return self._run_mid_operation(
+            "cherry-pick",
+            ['-c', 'core.editor=true', 'cherry-pick', '--continue'],
+            "已继续 cherry-pick",
+            "继续 cherry-pick 失败",
+        )
+
+    def abort_cherry_pick(self) -> tuple[bool, str]:
+        """中止 cherry-pick。"""
+        return self._run_mid_operation(
+            "cherry-pick",
+            ['cherry-pick', '--abort'],
+            "已中止 cherry-pick",
+            "中止 cherry-pick 失败",
+        )
+
+    def continue_revert(self) -> tuple[bool, str]:
+        """继续 revert。"""
+        return self._run_mid_operation(
+            "revert",
+            ['-c', 'core.editor=true', 'revert', '--continue'],
+            "已继续 revert",
+            "继续 revert 失败",
+        )
+
+    def abort_revert(self) -> tuple[bool, str]:
+        """中止 revert。"""
+        return self._run_mid_operation(
+            "revert",
+            ['revert', '--abort'],
+            "已中止 revert",
+            "中止 revert 失败",
+        )
+
     def is_merging(self) -> bool:
         """检查是否正在合并"""
-        if not self._repo_path:
-            return False
-        merge_head = os.path.join(self._repo_path, '.git', 'MERGE_HEAD')
-        return os.path.exists(merge_head)
+        return self.get_operation_state() == "merge"
 
     # ==================== Stash暂存 ====================
 
@@ -1683,6 +1799,9 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已应用提交 {commit_hash[:7]}"
+        if self.get_operation_state() == "cherry-pick":
+            self.statusChanged.emit()
+            return False, (stderr or "Cherry-pick 产生冲突") + "\n请在冲突页解决后继续或中止 cherry-pick"
         return False, stderr or "Cherry-pick失败"
 
     # ==================== 克隆仓库 ====================

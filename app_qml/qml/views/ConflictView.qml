@@ -9,11 +9,13 @@ Item {
     id: root
 
     property bool merging: false
+    property string operation: ""
     property string _conflictsRequestRepoPath: ""
     ListModel { id: conflictModel }
 
     function clearModel() {
         root.merging = false
+        root.operation = ""
         root._conflictsRequestRepoPath = ""
         conflictModel.clear()
     }
@@ -21,8 +23,17 @@ Item {
     function reload() {
         if (!GitBridge || !GitBridge.repoPath) { clearModel(); return }
         root._conflictsRequestRepoPath = GitBridge.repoPath
-        root.merging = GitBridge.isMerging()
+        root.operation = GitBridge.getConflictOperation()
+        root.merging = root.operation.length > 0
         GitBridge.requestConflicts()  // 异步,结果经 conflictsReady 回传
+    }
+
+    function _operationText() {
+        if (root.operation === "merge") return "合并"
+        if (root.operation === "rebase") return "Rebase"
+        if (root.operation === "cherry-pick") return "Cherry-pick"
+        if (root.operation === "revert") return "Revert"
+        return ""
     }
 
     function _op(res) {
@@ -32,6 +43,23 @@ Item {
         } else {
             Fluent.NotificationManager.toast.error(root, "失败", res[1] || "操作失败")
         }
+    }
+
+    function _continueOperation() {
+        if (root.operation === "rebase") root._op(GitBridge.continueRebase())
+        else if (root.operation === "cherry-pick") root._op(GitBridge.continueCherryPick())
+        else if (root.operation === "revert") root._op(GitBridge.continueRevert())
+    }
+
+    function _abortOperation() {
+        if (root.operation === "merge") root._op(GitBridge.abortMerge())
+        else if (root.operation === "rebase") root._op(GitBridge.abortRebase())
+        else if (root.operation === "cherry-pick") root._op(GitBridge.abortCherryPick())
+        else if (root.operation === "revert") root._op(GitBridge.abortRevert())
+    }
+
+    function _skipOperation() {
+        if (root.operation === "rebase") root._op(GitBridge.skipRebase())
     }
 
     Connections {
@@ -74,9 +102,21 @@ Item {
                 Item { Layout.fillWidth: true }
                 Fluent.Button { text: "刷新"; icon: Fluent.Enums.icon.arrow_sync; onClicked: root.reload() }
                 Fluent.Button {
-                    text: "中止合并"
+                    text: "继续"
+                    visible: root.operation === "rebase" || root.operation === "cherry-pick" || root.operation === "revert"
+                    onClicked: root._continueOperation()
+                }
+                Fluent.Button {
+                    text: "跳过"
+                    visible: root.operation === "rebase"
+                    style: Fluent.Enums.button.style_transparent
+                    onClicked: root._skipOperation()
+                }
+                Fluent.Button {
+                    text: "中止"
                     visible: root.merging
-                    onClicked: root._op(GitBridge.abortMerge())
+                    style: Fluent.Enums.button.style_transparent
+                    onClicked: root._abortOperation()
                 }
             }
 
@@ -96,8 +136,8 @@ Item {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: !root.merging ? "当前没有合并冲突"
-                              : (conflictModel.count > 0 ? ("发现 " + conflictModel.count + " 个冲突文件") : "合并中,冲突已解决")
+                        text: !root.merging ? "当前没有 Git 中途操作或冲突"
+                              : (conflictModel.count > 0 ? (root._operationText() + " 中发现 " + conflictModel.count + " 个冲突文件") : (root._operationText() + " 中,冲突已解决"))
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.body

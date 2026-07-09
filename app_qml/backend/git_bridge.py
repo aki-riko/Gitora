@@ -494,6 +494,11 @@ class GitBridge(QObject):
         """合并分支(异步);结果经 operationFinished 回传"""
         self._svc.merge_branch(branch)
 
+    @Slot(str, result="QVariantList")
+    def rebaseOnto(self, branch: str) -> list:
+        ok, msg = self._svc.rebase_onto(branch)
+        return [ok, msg]
+
     @Slot(result="QVariantList")
     def pruneRemote(self) -> list:
         ok, msg = self._svc.prune_remote()
@@ -503,6 +508,10 @@ class GitBridge(QObject):
     @Slot(result=bool)
     def isMerging(self) -> bool:
         return self._svc.is_merging()
+
+    @Slot(result=str)
+    def getConflictOperation(self) -> str:
+        return self._svc.get_operation_state()
 
     @Slot()
     def requestConflicts(self):
@@ -531,6 +540,41 @@ class GitBridge(QObject):
     @Slot(result="QVariantList")
     def abortMerge(self) -> list:
         ok, msg = self._svc.abort_merge()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def continueRebase(self) -> list:
+        ok, msg = self._svc.continue_rebase()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def abortRebase(self) -> list:
+        ok, msg = self._svc.abort_rebase()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def skipRebase(self) -> list:
+        ok, msg = self._svc.skip_rebase()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def continueCherryPick(self) -> list:
+        ok, msg = self._svc.continue_cherry_pick()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def abortCherryPick(self) -> list:
+        ok, msg = self._svc.abort_cherry_pick()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def continueRevert(self) -> list:
+        ok, msg = self._svc.continue_revert()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def abortRevert(self) -> list:
+        ok, msg = self._svc.abort_revert()
         return [ok, msg]
 
     # ==================== Stash ====================

@@ -180,3 +180,4 @@
 | Step 3: 强制删除分支 UI | 已完成 | `unittest` 未合并分支场景, QML selftest |
 | Step 4: 同步 remote/branch 选择 | 已完成 | `unittest` 显式 remote/branch 场景, QML selftest |
 | Step 5: 分支/远程基础补全 | 已完成 | `unittest` 重命名/上游/远程重命名场景, QML selftest |
+| Step 6: 历史/中途状态补全 | 已完成 | `unittest` rebase/cherry-pick/revert 真实冲突场景, QML selftest |
