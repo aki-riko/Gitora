@@ -159,7 +159,16 @@ Item {
                                 text: "删除"
                                 style: Fluent.Enums.button.style_transparent
                                 visible: !model.isCurrent
+                                feature: Fluent.Enums.button.feature_split
+                                menuItems: [
+                                    { "text": "强制删除", "icon": Fluent.Enums.icon.warning }
+                                ]
                                 onClicked: root._op(GitBridge.deleteBranch(model.name, false))
+                                onMenuItemClicked: function(index, text) {
+                                    if (index !== 0) return
+                                    forceDeleteBranchDanger._branch = model.name
+                                    forceDeleteBranchDanger.start()
+                                }
                             }
                         }
                     }
@@ -233,6 +242,22 @@ Item {
             if (root._mergeTarget)
                 GitBridge.mergeBranch(root._mergeTarget)
             root._mergeTarget = ""
+        }
+    }
+
+    // 危险操作:强制删除本地分支二次确认(会丢弃该分支未合并提交)
+    DangerDialog {
+        id: forceDeleteBranchDanger
+        title: "确认强制删除分支"
+        countdown: 3
+        property string _branch: ""
+        content: "将强制删除本地分支 \"" + _branch + "\"。\n"
+            + "即使该分支包含尚未合并的提交也会被删除。\n"
+            + "此操作不可恢复,请确认这些提交不再需要。"
+        onConfirmed: {
+            if (_branch)
+                root._op(GitBridge.deleteBranch(_branch, true))
+            _branch = ""
         }
     }
 

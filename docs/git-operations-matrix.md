@@ -41,7 +41,7 @@
 | 分支 | 切换本地分支 | 已有 | `checkoutBranch` | 脏工作区失败提示复核 |
 | 分支 | 检出远程分支 | 部分 | `checkoutBranch(model.name)` | 明确创建本地跟踪分支流程 |
 | 分支 | 删除分支 | 已有 | `deleteBranch(name, false)` | 补强制删除入口和危险确认 |
-| 分支 | 强制删除分支 | 缺失 | 后端支持 `force=True`, UI 未接 | P0/P1 补 UI |
+| 分支 | 强制删除分支 | 已有 | `deleteBranch(name, true)`, `forceDeleteBranchDanger` | 已走危险确认 |
 | 分支 | 合并分支 | 已有 | `mergeBranch` | 冲突时进入冲突页提示 |
 | 分支 | 分支重命名 | 缺失 | 未发现 | P1 |
 | 分支 | 设置/修改上游 | 缺失 | 后端有 `set_upstream`, UI 未接 | P1 |
@@ -130,11 +130,11 @@
 
 - 测试基座。
 - 远程强制覆盖本地。
+- 强制删除分支 UI。
 
 剩余 P0:
 
 - 同步操作 remote/branch 选择。
-- 强制删除分支 UI。
 
 P1:
 
