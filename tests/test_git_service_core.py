@@ -382,6 +382,67 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertEqual(service.stash_list(), [])
 
+    def test_stash_options_and_show_use_real_repo(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+
+        write_file(repo, "untracked.txt", "new\n")
+        ok, msg = service.stash_save("with untracked", include_untracked=True)
+        self.assertTrue(ok, msg)
+        self.assertFalse((repo / "untracked.txt").exists())
+        stash_id = service.stash_list()[0][0]
+        ok, content = service.stash_show(stash_id)
+        self.assertTrue(ok, content)
+        self.assertIn("untracked.txt", content)
+        ok, msg = service.stash_pop(stash_id)
+        self.assertTrue(ok, msg)
+        self.assertEqual((repo / "untracked.txt").read_text(encoding="utf-8"), "new\n")
+
+        run_git(repo, "reset", "--hard", "HEAD")
+        run_git(repo, "clean", "-fd")
+        write_file(repo, "tracked.txt", "staged\n")
+        run_git(repo, "add", "tracked.txt")
+        write_file(repo, "tracked.txt", "unstaged\n")
+        ok, msg = service.stash_save("keep index", keep_index=True)
+        self.assertTrue(ok, msg)
+        self.assertEqual((repo / "tracked.txt").read_text(encoding="utf-8"), "staged\n")
+        cached_diff = run_git(repo, "diff", "--cached", "--", "tracked.txt").stdout
+        self.assertIn("staged", cached_diff)
+        self.assertEqual(run_git(repo, "diff", "--", "tracked.txt").stdout, "")
+
+    def test_tag_types_and_remote_delete_use_real_repo(self) -> None:
+        remote = init_bare_repo(self.root / "remote.git")
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        run_git(repo, "remote", "add", "origin", str(remote))
+        run_git(repo, "push", "-u", "origin", "master")
+        service = self.service_for(repo)
+
+        ok, msg = service.create_tag("v-light", "ignored message", annotated=False)
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(repo, "cat-file", "-t", "v-light").stdout.strip(), "commit")
+
+        ok, msg = service.create_tag("v-ann", "release notes", annotated=True)
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(repo, "cat-file", "-t", "v-ann").stdout.strip(), "tag")
+
+        ok, msg = service.push_tag("v-ann", "origin")
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(remote, "rev-parse", "refs/tags/v-ann^{tag}").returncode, 0)
+
+        ok, msg = service.delete_remote_tag("v-ann", "origin")
+        self.assertTrue(ok, msg)
+        missing_remote_tag = run_git(remote, "rev-parse", "refs/tags/v-ann", check=False)
+        self.assertNotEqual(missing_remote_tag.returncode, 0)
+        self.assertEqual(run_git(repo, "rev-parse", "refs/tags/v-ann^{tag}").returncode, 0)
+
+        ok, msg = service.delete_tag("v-light")
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(repo, "tag", "--list", "v-light").stdout.strip(), "")
+
 
 if __name__ == "__main__":
     unittest.main()

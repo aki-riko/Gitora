@@ -3,10 +3,13 @@ import QtQuick
 import QtQuick.Layouts
 
 import PrismQML as Fluent
+import "../components"
 
 Item {
     id: root
     property string _stashRequestRepoPath: ""
+    property string _pendingDrop: ""
+    property string _showTitle: ""
     ListModel { id: stashModel }
 
     function clearModel() {
@@ -66,26 +69,42 @@ Item {
             }
 
             // 保存操作栏
-            RowLayout {
+            Column {
                 width: parent.cw
                 spacing: Fluent.Enums.spacing.m
-                Fluent.LineEdit {
-                    id: stashMsgInput
-                    Layout.fillWidth: true
-                    placeholderText: "备注(可选)"
-                }
-                Fluent.Button {
-                    text: "保存当前修改"
-                    style: Fluent.Enums.button.style_primary
-                    onClicked: {
-                        root._op(GitBridge.stashSave(stashMsgInput.text))
-                        stashMsgInput.text = ""
+                RowLayout {
+                    width: parent.width
+                    spacing: Fluent.Enums.spacing.m
+                    Fluent.LineEdit {
+                        id: stashMsgInput
+                        Layout.fillWidth: true
+                        placeholderText: "备注(可选)"
+                    }
+                    Fluent.Button {
+                        text: "保存当前修改"
+                        style: Fluent.Enums.button.style_primary
+                        onClicked: {
+                            root._op(GitBridge.stashSave(stashMsgInput.text, includeUntrackedCheck.checked, keepIndexCheck.checked))
+                            stashMsgInput.text = ""
+                        }
+                    }
+                    Fluent.Button {
+                        text: "清空所有"
+                        enabled: stashModel.count > 0
+                        onClicked: clearStashDanger.start()
                     }
                 }
-                Fluent.Button {
-                    text: "清空所有"
-                    enabled: stashModel.count > 0
-                    onClicked: root._op(GitBridge.stashClear())
+                RowLayout {
+                    width: parent.width
+                    spacing: Fluent.Enums.spacing.l
+                    Fluent.CheckBox {
+                        id: includeUntrackedCheck
+                        text: "包含未跟踪文件"
+                    }
+                    Fluent.CheckBox {
+                        id: keepIndexCheck
+                        text: "保留暂存区"
+                    }
                 }
             }
 
@@ -130,12 +149,87 @@ Item {
                                 elide: Text.ElideRight
                             }
                         }
+                        Fluent.Button {
+                            text: "查看"
+                            style: Fluent.Enums.button.style_transparent
+                            onClicked: {
+                                var res = GitBridge.stashShow(model.id)
+                                if (res[0]) {
+                                    root._showTitle = model.id
+                                    stashShowText.text = res[1] || ""
+                                    stashShowDialog.open()
+                                } else {
+                                    Fluent.NotificationManager.toast.error(root, "失败", res[1] || "查看 stash 失败")
+                                }
+                            }
+                        }
                         Fluent.Button { text: "应用"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.stashApply(model.id)) }
                         Fluent.Button { text: "恢复"; onClicked: root._op(GitBridge.stashPop(model.id)) }
-                        Fluent.Button { text: "删除"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.stashDrop(model.id)) }
+                        Fluent.Button {
+                            text: "删除"
+                            style: Fluent.Enums.button.style_transparent
+                            onClicked: {
+                                root._pendingDrop = model.id
+                                dropStashDanger.start()
+                            }
+                        }
                     }
                 }
             }
         }
+    }
+
+    Fluent.MessageBox {
+        id: stashShowDialog
+        title: "Stash 内容 " + root._showTitle
+        confirmText: "关闭"
+        cancelText: "关闭"
+        ColumnLayout {
+            width: 720
+            spacing: Fluent.Enums.spacing.m
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 420
+                radius: Fluent.Enums.radius.medium
+                color: Fluent.Enums.cardColor
+                border.width: Fluent.Enums.border.normal
+                border.color: Fluent.Enums.stateColor.border
+                Fluent.ScrollArea {
+                    anchors.fill: parent
+                    anchors.margins: Fluent.Enums.spacing.s
+                    padding: 0
+                    TextEdit {
+                        id: stashShowText
+                        readOnly: true
+                        selectByMouse: true
+                        textFormat: TextEdit.PlainText
+                        wrapMode: TextEdit.NoWrap
+                        font.family: "Consolas, monospace"
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        color: Fluent.Enums.textColor.primary
+                    }
+                }
+            }
+        }
+    }
+
+    DangerDialog {
+        id: dropStashDanger
+        title: "确认删除 Stash"
+        countdown: 3
+        content: "将删除 \"" + root._pendingDrop + "\"。\n此操作会永久移除这条 stash 记录,不会修改当前工作区。"
+        onConfirmed: {
+            if (root._pendingDrop)
+                root._op(GitBridge.stashDrop(root._pendingDrop))
+            root._pendingDrop = ""
+        }
+    }
+
+    DangerDialog {
+        id: clearStashDanger
+        title: "确认清空所有 Stash"
+        countdown: 3
+        content: "将清空当前仓库的所有 stash 记录。\n这些记录删除后不可从 Gitora 恢复。"
+        onConfirmed: root._op(GitBridge.stashClear())
     }
 }

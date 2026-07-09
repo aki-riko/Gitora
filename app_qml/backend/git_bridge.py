@@ -592,9 +592,9 @@ class GitBridge(QObject):
             self.stashListReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
-    @Slot(str, result="QVariantList")
-    def stashSave(self, message: str) -> list:
-        ok, msg = self._svc.stash_save(message)
+    @Slot(str, bool, bool, result="QVariantList")
+    def stashSave(self, message: str, include_untracked: bool, keep_index: bool) -> list:
+        ok, msg = self._svc.stash_save(message, include_untracked, keep_index)
         return [ok, msg]
 
     @Slot(str, result="QVariantList")
@@ -617,6 +617,11 @@ class GitBridge(QObject):
         ok, msg = self._svc.stash_clear()
         return [ok, msg]
 
+    @Slot(str, result="QVariantList")
+    def stashShow(self, stash_id: str) -> list:
+        ok, msg = self._svc.stash_show(stash_id)
+        return [ok, msg]
+
     # ==================== Tag ====================
     @Slot()
     def requestTags(self):
@@ -632,9 +637,9 @@ class GitBridge(QObject):
             self.tagsReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
-    @Slot(str, str, result="QVariantList")
-    def createTag(self, name: str, message: str) -> list:
-        ok, msg = self._svc.create_tag(name, message)
+    @Slot(str, str, bool, result="QVariantList")
+    def createTag(self, name: str, message: str, annotated: bool) -> list:
+        ok, msg = self._svc.create_tag(name, message, annotated=annotated)
         return [ok, msg]
 
     @Slot(str, result="QVariantList")
@@ -665,6 +670,19 @@ class GitBridge(QObject):
                 ok, msg = self._svc.push_all_tags()
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"推送标签失败: {e}"); ok, msg = False, str(e)
+            self.operationFinished.emit(ok, msg)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def deleteRemoteTag(self, name: str, remote: str):
+        """后台删除远程标签(网络操作);本地 tag 不会被删除。"""
+        import threading
+        self.operationStarted.emit(f"正在删除远程标签 {remote}/{name}...")
+        def work():
+            try:
+                ok, msg = self._svc.delete_remote_tag(name, remote)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"删除远程标签失败: {e}"); ok, msg = False, str(e)
             self.operationFinished.emit(ok, msg)
         threading.Thread(target=work, daemon=True).start()
 

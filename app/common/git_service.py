@@ -1433,12 +1433,22 @@ class GitService(QObject):
 
     # ==================== Stash暂存 ====================
 
-    def stash_save(self, message: str = "") -> tuple[bool, str]:
+    @staticmethod
+    def _bad_stash_id(stash_id: str) -> bool:
+        if not stash_id or stash_id.startswith('-'):
+            return True
+        return any(c in stash_id for c in ('\n', '\r', '\t', '\x00'))
+
+    def stash_save(self, message: str = "", include_untracked: bool = False, keep_index: bool = False) -> tuple[bool, str]:
         """暂存当前变更到stash"""
         args = ['stash', 'push']
+        if include_untracked:
+            args.append('--include-untracked')
+        if keep_index:
+            args.append('--keep-index')
         if message:
             args.extend(['-m', message])
-        
+
         success, stdout, stderr = self._run_git_sync(args)
         if success:
             self.statusChanged.emit()
@@ -1469,6 +1479,8 @@ class GitService(QObject):
 
     def stash_pop(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """恢复stash并删除"""
+        if self._bad_stash_id(stash_id):
+            return False, "非法的 stash 引用"
         if not self.stash_list():
             return False, "没有可恢复的暂存"
         success, stdout, stderr = self._run_git_sync(['stash', 'pop', stash_id])
@@ -1479,6 +1491,8 @@ class GitService(QObject):
 
     def stash_apply(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """恢复stash但不删除"""
+        if self._bad_stash_id(stash_id):
+            return False, "非法的 stash 引用"
         if not self.stash_list():
             return False, "没有可应用的暂存"
         success, stdout, stderr = self._run_git_sync(['stash', 'apply', stash_id])
@@ -1489,8 +1503,11 @@ class GitService(QObject):
 
     def stash_drop(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """删除指定stash"""
+        if self._bad_stash_id(stash_id):
+            return False, "非法的 stash 引用"
         success, stdout, stderr = self._run_git_sync(['stash', 'drop', stash_id])
         if success:
+            self.statusChanged.emit()
             return True, f"已删除stash: {stash_id}"
         return False, stderr or "删除stash失败"
 
@@ -1498,8 +1515,23 @@ class GitService(QObject):
         """清空所有stash"""
         success, stdout, stderr = self._run_git_sync(['stash', 'clear'])
         if success:
+            self.statusChanged.emit()
             return True, "已清空所有stash"
         return False, stderr or "清空stash失败"
+
+    def stash_show(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
+        """查看 stash 内容(diffstat + patch)。"""
+        if self._bad_stash_id(stash_id):
+            return False, "非法的 stash 引用"
+        success, stdout, stderr = self._run_git_sync([
+            'stash', 'show', '--stat', '--patch', '--include-untracked', stash_id
+        ])
+        if success:
+            max_size = 200 * 1024
+            if len(stdout) > max_size:
+                stdout = stdout[:max_size] + "\n\n[内容过大,已截断]"
+            return True, stdout or "该 stash 没有可显示的内容"
+        return False, stderr or "查看 stash 失败"
 
     # ==================== 文件历史 ====================
 
@@ -1582,23 +1614,32 @@ class GitService(QObject):
         
         return tags
 
-    def create_tag(self, name: str, message: str = "", commit: str = "HEAD") -> tuple[bool, str]:
+    def create_tag(
+        self,
+        name: str,
+        message: str = "",
+        commit: str = "HEAD",
+        annotated: bool | None = None,
+    ) -> tuple[bool, str]:
         """创建Tag
-        
+
         Args:
             name: Tag名称
-            message: Tag消息（如果提供，创建附注Tag）
+            message: Tag消息
             commit: 目标提交（默认HEAD）
+            annotated: 是否创建附注 Tag;None 时保持旧行为:有消息则附注,否则轻量
         """
         if self._bad_ref(name):
             return False, "非法的标签名"
-        if message:
+        if annotated is None:
+            annotated = bool(message)
+        if annotated:
             # 附注Tag
             args = ['tag', '-a', name, '-m', message, commit]
         else:
             # 轻量级Tag
             args = ['tag', name, commit]
-        
+
         success, _, stderr = self._run_git_sync(args)
         if success:
             return True, f"已创建Tag: {name}"

@@ -62,20 +62,20 @@
 | 历史 | reset soft/mixed/hard | 已有 | `HistoryView.resetDanger`, `resetToCommit` | hard 文案继续明确丢弃 |
 | 历史 | 复制 hash | 已有 | `ClipboardHelper.copy` | 保持轻量入口 |
 | 历史 | reflog | 已有 | `ReflogDialog`, `requestReflog` | 可补 reset/branch from reflog |
-| Stash | 保存 | 已有 | `stashSave` | 补 include untracked/keep index |
+| Stash | 保存 | 已有 | `stashSave(message, includeUntracked, keepIndex)` | 已支持 include untracked/keep index |
 | Stash | apply | 已有 | `stashApply` | 冲突提示复核 |
 | Stash | pop | 已有 | `stashPop` | 冲突提示复核 |
-| Stash | drop | 部分 | `stashDrop` | 补危险确认 |
-| Stash | clear | 部分 | `stashClear` | 补危险确认 |
-| Stash | show 内容 | 缺失 | 未发现 | P1 |
+| Stash | drop | 已有 | `stashDrop`, `dropStashDanger` | 已走危险确认 |
+| Stash | clear | 已有 | `stashClear`, `clearStashDanger` | 已走危险确认 |
+| Stash | show 内容 | 已有 | `stashShow`, `stashShowDialog` | 已显示 diffstat + patch |
 | Stash | 从 stash 建分支 | 缺失 | 未发现 | P2 |
 | Tag | 列出 tag | 已有 | `requestTags` | 保持异步 |
-| Tag | 创建 tag | 已有 | `createTag` | 区分轻量/附注 tag |
+| Tag | 创建 tag | 已有 | `createTag(name, message, annotated)` | 已显式区分轻量/附注 tag |
 | Tag | checkout tag | 已有 | `checkoutTag` | 分离 HEAD 提示复核 |
-| Tag | 删除本地 tag | 部分 | `deleteTag` | 补危险确认 |
+| Tag | 删除本地 tag | 已有 | `deleteTag`, `deleteLocalTagDanger` | 已走危险确认 |
 | Tag | 推送单个 tag | 已有 | `pushTag` | 真实远端测试 |
 | Tag | 推送全部 tag | 已有 | `pushAllTags` | 真实远端测试 |
-| Tag | 删除远程 tag | 缺失 | 后端有 `delete_remote_tag`, UI 未接 | P1 |
+| Tag | 删除远程 tag | 已有 | `deleteRemoteTag`, `delete_remote_tag`, `deleteRemoteTagDanger` | 已走危险确认 |
 | 冲突 | 检测中途操作状态 | 已有 | `getConflictOperation`, `requestConflicts` | 已扩展到 merge/rebase/cherry-pick/revert |
 | 冲突 | 查看冲突文件 | 已有 | `ConflictViewerDialog` | 保持路径越界保护 |
 | 冲突 | ours | 已有 | `resolveWithOurs` | 真实冲突测试 |
@@ -140,10 +140,11 @@
 
 - 分支重命名、设置上游、远程重命名。
 - rebase 到目标分支、rebase continue/abort/skip、cherry-pick/revert continue/abort。
+- stash include untracked/keep index/show/drop/clear 安全增强,tag 类型选择和本地/远程删除安全增强。
 
 剩余 P1:
 
-- stash 和 tag 安全增强。
+- 无。
 
 P2:
 
