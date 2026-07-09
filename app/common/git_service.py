@@ -4,8 +4,9 @@ Git服务层 - 封装所有Git命令操作
 提供异步执行和错误处理
 """
 import os
+import re
 import subprocess
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable
 from pathlib import Path
@@ -104,6 +105,39 @@ class SubmoduleInfo:
     hash: str = ""
     status: str = ""
     description: str = ""
+
+
+@dataclass
+class DiffLine:
+    """统一 diff 中的一行。"""
+    kind: str
+    text: str
+    old_number: Optional[int] = None
+    new_number: Optional[int] = None
+
+
+@dataclass
+class DiffHunk:
+    """统一 diff hunk。"""
+    header: str
+    old_start: int = 0
+    old_count: int = 0
+    new_start: int = 0
+    new_count: int = 0
+    lines: list[DiffLine] = field(default_factory=list)
+
+
+@dataclass
+class DiffFile:
+    """统一 diff 中单个文件的变更摘要。"""
+    path: str
+    old_path: str = ""
+    new_path: str = ""
+    status: str = "modified"
+    additions: int = 0
+    deletions: int = 0
+    hunks: list[DiffHunk] = field(default_factory=list)
+    raw: str = ""
 
 
 class GitWorker(QThread):
@@ -598,6 +632,132 @@ class GitService(QObject):
             return target_real == repo_real or target_real.startswith(repo_real + os.sep)
         except Exception:
             return False
+
+    @staticmethod
+    def _strip_diff_path(value: str) -> str:
+        """把 diff 头里的 a/path、b/path、/dev/null 规整成仓库相对路径。"""
+        path = (value or "").strip()
+        if path == "/dev/null":
+            return ""
+        if path.startswith('"') and path.endswith('"') and len(path) >= 2:
+            path = path[1:-1]
+        if path.startswith("a/") or path.startswith("b/"):
+            path = path[2:]
+        return path
+
+    @staticmethod
+    def _diff_file_from_header(line: str) -> DiffFile:
+        payload = line[len("diff --git "):]
+        parts = payload.split(" b/", 1)
+        if len(parts) == 2:
+            old_path = GitService._strip_diff_path(parts[0])
+            new_path = GitService._strip_diff_path("b/" + parts[1])
+        else:
+            old_path = ""
+            new_path = ""
+        return DiffFile(path=new_path or old_path, old_path=old_path, new_path=new_path)
+
+    @staticmethod
+    def _parse_hunk_header(line: str) -> DiffHunk:
+        match = re.match(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@", line)
+        if not match:
+            return DiffHunk(header=line)
+        old_start = int(match.group(1))
+        old_count = int(match.group(2) or "1")
+        new_start = int(match.group(3))
+        new_count = int(match.group(4) or "1")
+        return DiffHunk(line, old_start, old_count, new_start, new_count)
+
+    @staticmethod
+    def _finish_diff_file(files: list[DiffFile], current: Optional[DiffFile], raw_lines: list[str]) -> None:
+        if not current:
+            return
+        current.raw = "\n".join(raw_lines)
+        if current.raw and not current.raw.endswith("\n"):
+            current.raw += "\n"
+        if current.status == "modified":
+            if current.old_path == "" and current.new_path:
+                current.status = "added"
+            elif current.new_path == "" and current.old_path:
+                current.status = "deleted"
+        files.append(current)
+
+    @staticmethod
+    def parse_unified_diff(raw_diff: str) -> list[DiffFile]:
+        """解析 unified diff,供摘要、文件过滤和测试验证复用。"""
+        files: list[DiffFile] = []
+        current: Optional[DiffFile] = None
+        hunk: Optional[DiffHunk] = None
+        raw_lines: list[str] = []
+        old_no = new_no = 0
+
+        for line in (raw_diff or "").splitlines():
+            if line.startswith("diff --git "):
+                GitService._finish_diff_file(files, current, raw_lines)
+                current = GitService._diff_file_from_header(line)
+                hunk = None
+                raw_lines = [line]
+                continue
+            if current is None:
+                current = DiffFile(path="")
+            raw_lines.append(line)
+            if line.startswith("new file mode"):
+                current.status = "added"
+            elif line.startswith("deleted file mode"):
+                current.status = "deleted"
+            elif line.startswith("rename from "):
+                current.status = "renamed"
+                current.old_path = line[len("rename from "):]
+            elif line.startswith("rename to "):
+                current.status = "renamed"
+                current.new_path = line[len("rename to "):]
+                current.path = current.new_path
+            elif line.startswith("--- "):
+                current.old_path = GitService._strip_diff_path(line[4:])
+            elif line.startswith("+++ "):
+                current.new_path = GitService._strip_diff_path(line[4:])
+                current.path = current.new_path or current.old_path
+            elif line.startswith("@@"):
+                hunk = GitService._parse_hunk_header(line)
+                current.hunks.append(hunk)
+                old_no = hunk.old_start
+                new_no = hunk.new_start
+            elif hunk is not None:
+                old_no, new_no = GitService._append_diff_line(current, hunk, line, old_no, new_no)
+
+        GitService._finish_diff_file(files, current, raw_lines)
+        return [f for f in files if f.raw or f.path or f.hunks]
+
+    @staticmethod
+    def _append_diff_line(file_diff: DiffFile, hunk: DiffHunk, line: str, old_no: int, new_no: int) -> tuple[int, int]:
+        prefix = line[:1]
+        text = line[1:] if prefix in (" ", "+", "-", "\\") else line
+        if prefix == "+":
+            hunk.lines.append(DiffLine("added", text, None, new_no))
+            file_diff.additions += 1
+            return old_no, new_no + 1
+        if prefix == "-":
+            hunk.lines.append(DiffLine("deleted", text, old_no, None))
+            file_diff.deletions += 1
+            return old_no + 1, new_no
+        if prefix == " ":
+            hunk.lines.append(DiffLine("context", text, old_no, new_no))
+            return old_no + 1, new_no + 1
+        hunk.lines.append(DiffLine("meta", text, None, None))
+        return old_no, new_no
+
+    @staticmethod
+    def filter_unified_diff(raw_diff: str, file_path: str) -> str:
+        """从多文件 diff 中取出指定文件的完整 diff 段。"""
+        target = (file_path or "").strip()
+        if not target:
+            return raw_diff or ""
+        matches = []
+        for file_diff in GitService.parse_unified_diff(raw_diff):
+            paths = {file_diff.path, file_diff.old_path, file_diff.new_path}
+            if target in paths:
+                matches.append(file_diff.raw)
+        return "\n".join(matches).strip("\n")
 
     def get_diff(self, file_path: str, staged: bool = False) -> str:
         """获取文件差异"""

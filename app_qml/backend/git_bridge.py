@@ -13,7 +13,7 @@ from PySide6.QtCore import QObject, Slot, Signal, Property
 
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
-    WorktreeInfo, SubmoduleInfo,
+    WorktreeInfo, SubmoduleInfo, DiffFile,
 )
 from app.common.logger import get_logger
 
@@ -86,6 +86,18 @@ def _submodule_to_dict(s: SubmoduleInfo) -> dict:
         "shortHash": s.hash[:7] if s.hash else "",
         "status": s.status,
         "description": s.description,
+    }
+
+
+def _diff_file_to_dict(d: DiffFile) -> dict:
+    return {
+        "path": d.path,
+        "oldPath": d.old_path,
+        "newPath": d.new_path,
+        "status": d.status,
+        "additions": d.additions,
+        "deletions": d.deletions,
+        "hunkCount": len(d.hunks),
     }
 
 
@@ -423,6 +435,16 @@ class GitBridge(QObject):
                 logger.warning(f"获取 diff 失败: {e}"); data = ""
             self.diffReady.emit(repo, path, staged, data)
         threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, result="QVariantList")
+    def parseDiffFiles(self, raw_diff: str) -> list:
+        """解析 diff 文件摘要,供 QML diff viewer 展示和过滤。"""
+        return [_diff_file_to_dict(d) for d in GitService.parse_unified_diff(raw_diff)]
+
+    @Slot(str, str, result=str)
+    def filterDiffByPath(self, raw_diff: str, path: str) -> str:
+        """从多文件 diff 中取指定文件段。"""
+        return GitService.filter_unified_diff(raw_diff, path)
 
     # ==================== 提交 ====================
     @Slot(str, result="QVariantList")

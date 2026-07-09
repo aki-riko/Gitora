@@ -527,6 +527,43 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertFalse(service.is_bisecting())
         self.assertEqual(run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(), "master")
 
+    def test_parse_diff_summary_and_filter_use_real_git_output(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "one\ntwo\nthree\n")
+        first_commit = commit_all(repo, "base")
+        service = self.service_for(repo)
+
+        write_file(repo, "tracked.txt", "one\nTWO\nthree\nfour\n")
+        write_file(repo, "added.txt", "new\n")
+        working_diff = service.get_diff("tracked.txt")
+        parsed_working = GitService.parse_unified_diff(working_diff)
+        self.assertEqual(len(parsed_working), 1)
+        self.assertEqual(parsed_working[0].path, "tracked.txt")
+        self.assertEqual(parsed_working[0].additions, 2)
+        self.assertEqual(parsed_working[0].deletions, 1)
+        self.assertEqual(
+            [line.kind for line in parsed_working[0].hunks[0].lines],
+            ["context", "deleted", "added", "context", "added"],
+        )
+
+        second_commit = commit_all(repo, "modify and add")
+        commit_diff = service.get_commit_diff(second_commit)
+        parsed_commit = GitService.parse_unified_diff(commit_diff)
+        by_path = {item.path: item for item in parsed_commit}
+        self.assertEqual(by_path["tracked.txt"].status, "modified")
+        self.assertEqual(by_path["added.txt"].status, "added")
+        self.assertEqual(by_path["added.txt"].additions, 1)
+
+        filtered = GitService.filter_unified_diff(commit_diff, "tracked.txt")
+        self.assertIn("diff --git a/tracked.txt b/tracked.txt", filtered)
+        self.assertNotIn("added.txt", filtered)
+
+        between = service.diff_file_between_commits("tracked.txt", first_commit, second_commit)
+        parsed_between = GitService.parse_unified_diff(between)
+        self.assertEqual(len(parsed_between), 1)
+        self.assertEqual(parsed_between[0].path, "tracked.txt")
+        self.assertIn("+four", between)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -13,6 +13,8 @@ Fluent.DialogBoxCore {
     property string _author: ""
     property string _shortHash: ""
     property string _date: ""
+    property string _rawDiff: ""
+    property string _selectedFilePath: ""
     ListModel { id: filesModel }
 
     function clearContent() {
@@ -21,9 +23,11 @@ Fluent.DialogBoxCore {
         dlg._author = ""
         dlg._shortHash = ""
         dlg._date = ""
+        dlg._rawDiff = ""
+        dlg._selectedFilePath = ""
         msgLabel.text = ""
         filesModel.clear()
-        diffArea.text = ""
+        commitDiffViewer.clearDiff()
     }
 
     function openFor(hash) {
@@ -34,8 +38,10 @@ Fluent.DialogBoxCore {
         dlg._author = d.author || ""
         dlg._shortHash = d.shortHash || ""
         dlg._date = d.date || ""
+        dlg._rawDiff = ""
+        dlg._selectedFilePath = ""
         filesModel.clear()
-        diffArea.text = "加载中..."
+        commitDiffViewer.setLoading("加载中...")
         GitBridge.requestCommitFiles(hash)
         GitBridge.requestCommitDiff(hash)
         dlg.open()
@@ -51,34 +57,10 @@ Fluent.DialogBoxCore {
         }
         function onCommitDiffReady(repoPath, hash, diff) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
-            diffArea.text = dlg._diffToHtml(diff || "")
+            dlg._rawDiff = diff || ""
+            commitDiffViewer.rawDiff = dlg._rawDiff
+            commitDiffViewer.filterPath = dlg._selectedFilePath
         }
-    }
-
-    // diff 纯文本 -> 按行着色的 HTML(+绿/-红/@@蓝/文件头灰),与 RepoView 一致
-    function _diffToHtml(raw) {
-        if (!raw) return ""
-        var isDark = (typeof ThemeManager !== "undefined") && ThemeManager.isDark
-        var cAdd = isDark ? "#4ec97a" : "#1a7f37"
-        var cDel = isDark ? "#f47067" : "#cf222e"
-        var cHunk = isDark ? "#6cb6ff" : "#0969da"
-        var cMeta = isDark ? "#8b949e" : "#8a8a8a"
-        var cNormal = isDark ? "#d0d0d0" : "#1f1f1f"
-        var lines = raw.split("\n")
-        var out = []
-        for (var i = 0; i < lines.length; i++) {
-            var ln = lines[i]
-            var esc = ln.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-            if (esc === "") esc = "&nbsp;"
-            var color = cNormal
-            if (ln.indexOf("+++") === 0 || ln.indexOf("---") === 0 || ln.indexOf("diff ") === 0 || ln.indexOf("index ") === 0)
-                color = cMeta
-            else if (ln.indexOf("@@") === 0) color = cHunk
-            else if (ln.charAt(0) === "+") color = cAdd
-            else if (ln.charAt(0) === "-") color = cDel
-            out.push('<span style="color:' + color + '">' + esc + '</span>')
-        }
-        return '<pre style="margin:0;font-family:Consolas,monospace">' + out.join("<br>") + '</pre>'
     }
 
     // 底部关闭按钮
@@ -171,28 +153,43 @@ Fluent.DialogBoxCore {
                 width: filesScrollArea.width
                 Repeater {
                     model: filesModel
-                    delegate: Row {
+                    delegate: Rectangle {
                         width: parent.width
                         height: 24
-                        spacing: Fluent.Enums.spacing.m
-                        Text {
-                            text: model.statusText
-                            width: 50
-                            color: Fluent.Enums.textColor.tertiary
-                            font.family: Fluent.Enums.fontFamily
-                            font.pixelSize: Fluent.Enums.typography.caption
-                            verticalAlignment: Text.AlignVCenter
-                            height: parent.height
+                        radius: Fluent.Enums.radius.micro
+                        readonly property bool isSelected: dlg._selectedFilePath === model.path
+                        color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
+
+                        HoverHandler { id: fileHover }
+                        TapHandler {
+                            onTapped: {
+                                dlg._selectedFilePath = model.path
+                                commitDiffViewer.filterPath = model.path
+                            }
                         }
-                        Text {
-                            width: parent.width - 50 - Fluent.Enums.spacing.m
-                            text: model.path
-                            color: Fluent.Enums.textColor.primary
-                            font.family: "Consolas, monospace"
-                            font.pixelSize: Fluent.Enums.typography.caption
-                            elide: Text.ElideMiddle
-                            verticalAlignment: Text.AlignVCenter
-                            height: parent.height
+
+                        Row {
+                            anchors.fill: parent
+                            spacing: Fluent.Enums.spacing.m
+                            Text {
+                                text: model.statusText
+                                width: 50
+                                color: Fluent.Enums.textColor.tertiary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                verticalAlignment: Text.AlignVCenter
+                                height: parent.height
+                            }
+                            Text {
+                                width: parent.width - 50 - Fluent.Enums.spacing.m
+                                text: model.path
+                                color: Fluent.Enums.textColor.primary
+                                font.family: "Consolas, monospace"
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                elide: Text.ElideMiddle
+                                verticalAlignment: Text.AlignVCenter
+                                height: parent.height
+                            }
                         }
                     }
                 }
@@ -209,19 +206,12 @@ Fluent.DialogBoxCore {
             color: Fluent.Enums.cardColor
             border.width: Fluent.Enums.border.normal
             border.color: Fluent.Enums.stateColor.border
-            Fluent.ScrollArea {
+            DiffViewer {
+                id: commitDiffViewer
                 anchors.fill: parent
                 anchors.margins: Fluent.Enums.spacing.s
-                padding: 0
-                TextEdit {
-                    id: diffArea
-                    readOnly: true
-                    selectByMouse: true
-                    textFormat: TextEdit.RichText   // 按行着色的 HTML(+绿/-红/@@蓝)
-                    wrapMode: TextEdit.NoWrap
-                    font.family: "Consolas, monospace"
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    color: Fluent.Enums.textColor.primary
+                onFilterChanged: function(path) {
+                    dlg._selectedFilePath = path
                 }
             }
         }

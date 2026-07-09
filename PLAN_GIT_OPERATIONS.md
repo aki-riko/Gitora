@@ -159,11 +159,27 @@
 - 验证:
   - 每类功能至少一个真实仓库端到端测试。
 
+### Step 9: Diff 和比较体验增强
+
+- 目标:
+  - 工作区 diff 支持统一视图和分栏视图。
+  - 提交详情支持按文件过滤 diff。
+  - 文件历史中两提交对比复用同一套 diff 查看体验。
+  - 后端提供 unified diff 结构化解析,便于摘要、过滤和真实 Git 输出测试。
+- 产物:
+  - `DiffViewer` 复用组件。
+  - `GitService.parse_unified_diff` 和 `filter_unified_diff`。
+  - `GitBridge.parseDiffFiles` 和 `filterDiffByPath`。
+  - 真实仓库 diff 解析/过滤测试。
+- 验证:
+  - 工作区修改、新增文件、提交 diff、两提交文件 diff 均来自真实 Git 输出。
+  - QML selftest 通过,三处 diff 入口均能加载。
+
 ## 5. 完成定义
 
 全部完成必须同时满足:
 
-- `docs/git-operations-matrix.md` 中 P0/P1 项均为已实现或有明确延期理由。
+- `docs/git-operations-matrix.md` 中 P0/P1/P2 项均为已实现或有明确延期理由。
 - 每个已实现项都有源码入口、后端封装、真实 Git 行为验证。
 - 危险操作均有二次确认和明确后果文案。
 - QML selftest 通过。
@@ -183,3 +199,4 @@
 | Step 6: 历史/中途状态补全 | 已完成 | `unittest` rebase/cherry-pick/revert 真实冲突场景, QML selftest |
 | Step 7: Stash/Tag 安全增强 | 已完成 | `unittest` stash 选项/show 和 tag 类型/远程删除场景, QML selftest |
 | Step 8: 高级 Git 页面 | 已完成 | `unittest` worktree/submodule/LFS/bisect 真实仓库场景, QML selftest |
+| Step 9: Diff 和比较体验增强 | 已完成 | `unittest` 真实 diff 解析/过滤/两提交比较场景, QML selftest |

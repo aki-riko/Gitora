@@ -14,14 +14,17 @@ Fluent.MessageBox {
     property string filePath: ""
     property string _requestRepoPath: ""
     property var selected: []   // 选中的 commit hash 列表(最多2)
+    property bool _showingDiff: false
     ListModel { id: histModel }
 
     function clearContent() {
         dlg.filePath = ""
         dlg._requestRepoPath = ""
         dlg.selected = []
+        dlg._showingDiff = false
         histModel.clear()
         rightArea.text = ""
+        historyDiffViewer.clearDiff()
     }
 
     function openFor(path) {
@@ -29,8 +32,10 @@ Fluent.MessageBox {
         dlg._requestRepoPath = (GitBridge && GitBridge.repoPath) ? GitBridge.repoPath : ""
         dlg.title = "文件历史 - " + path
         dlg.selected = []
+        dlg._showingDiff = false
         histModel.clear()
         rightArea.text = "加载中..."
+        historyDiffViewer.clearDiff()
         GitBridge.requestFileHistory(path, 50)  // 异步,经 fileHistoryReady 回传
         dlg.open()
     }
@@ -49,12 +54,15 @@ Fluent.MessageBox {
 
     function _refreshRight() {
         if (dlg.selected.length === 1) {
+            dlg._showingDiff = false
             rightArea.text = "加载中..."
             GitBridge.requestFileContentAtCommit(dlg.filePath, dlg.selected[0])
         } else if (dlg.selected.length === 2) {
-            rightArea.text = "加载中..."
+            dlg._showingDiff = true
+            historyDiffViewer.setLoading("加载中...")
             GitBridge.requestDiffBetween(dlg.filePath, dlg.selected[0], dlg.selected[1])
         } else {
+            dlg._showingDiff = false
             rightArea.text = "选择一个提交查看该版本内容,选择两个对比差异"
         }
     }
@@ -66,19 +74,23 @@ Fluent.MessageBox {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || path !== dlg.filePath) return  // 防过期
             histModel.clear()
             for (var i = 0; i < list.length; i++) histModel.append(list[i])
-            if (dlg.selected.length === 0)
+            if (dlg.selected.length === 0) {
+                dlg._showingDiff = false
                 rightArea.text = list.length > 0 ? "选择一个提交查看该版本内容,选择两个对比差异" : "无历史记录"
+            }
         }
         function onFileContentReady(repoPath, path, hash, content) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath
                 || path !== dlg.filePath || dlg.selected.length !== 1 || hash !== dlg.selected[0]) return
+            dlg._showingDiff = false
             rightArea.text = content || "(空文件)"
         }
         function onDiffBetweenReady(repoPath, path, c1, c2, diff) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath
                 || path !== dlg.filePath || dlg.selected.length !== 2
                 || c1 !== dlg.selected[0] || c2 !== dlg.selected[1]) return
-            rightArea.text = diff || "(无差异)"
+            dlg._showingDiff = true
+            historyDiffViewer.rawDiff = diff || ""
         }
     }
 
@@ -151,6 +163,7 @@ Fluent.MessageBox {
                 anchors.fill: parent
                 anchors.margins: Fluent.Enums.spacing.s
                 clip: true
+                visible: !dlg._showingDiff
                 contentWidth: rightArea.paintedWidth
                 contentHeight: rightArea.paintedHeight
                 TextEdit {
@@ -162,6 +175,12 @@ Fluent.MessageBox {
                     font.pixelSize: Fluent.Enums.typography.caption
                     color: Fluent.Enums.textColor.primary
                 }
+            }
+            DiffViewer {
+                id: historyDiffViewer
+                anchors.fill: parent
+                anchors.margins: Fluent.Enums.spacing.s
+                visible: dlg._showingDiff
             }
         }
     }

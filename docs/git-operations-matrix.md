@@ -19,7 +19,7 @@
 | 仓库 | 初始化 | 已有 | `InitRepoGuide`, `GitBridge.initRepo` | 保持远程可选配置 |
 | 仓库 | 最近仓库管理 | 部分 | `getRecentRepos/removeRecentRepo/clearRecentRepos` | 需要 UI 管理入口复核 |
 | 工作区 | 查看状态 | 已有 | `requestStatus`, `statusReady` | 继续保持异步和过期结果丢弃 |
-| 工作区 | 查看 diff | 已有 | `requestDiff`, `diffReady` | 后续可补 side-by-side 视图 |
+| 工作区 | 查看 diff | 已有 | `requestDiff`, `diffReady`, `DiffViewer` | 已支持统一/分栏视图、文件摘要和真实 diff 解析测试 |
 | 工作区 | 暂存文件 | 已有 | `GitBridge.stageFile` | 真实仓库回归测试 |
 | 工作区 | 取消暂存文件 | 已有 | `GitBridge.unstageFile` | 真实仓库回归测试 |
 | 工作区 | 全部暂存 | 已有 | `GitBridge.stageAll` | 真实仓库回归测试 |
@@ -55,7 +55,8 @@
 | 远程 | 重命名远程 | 已有 | `renameRemote`, `rename_remote` | 只修改本地远程配置 |
 | 历史 | 分页日志 | 已有 | `requestLog` | 保持大仓库虚拟滚动 |
 | 历史 | 搜索提交 | 已有 | `requestSearch` | 测试作者/消息/hash |
-| 历史 | 提交详情 | 已有 | `CommitDetailDialog` | 可补文件列表排序 |
+| 历史 | 提交详情 | 已有 | `CommitDetailDialog`, `DiffViewer` | 已支持点击变更文件过滤 diff |
+| 历史 | 文件历史比较 | 已有 | `FileHistoryDialog`, `requestDiffBetween`, `DiffViewer` | 已支持两提交 diff 的统一/分栏视图 |
 | 历史 | checkout commit | 已有 | `checkoutCommit` | 分离 HEAD 提示复核 |
 | 历史 | cherry-pick | 已有 | `cherryPick`, `continueCherryPick`, `abortCherryPick` | 已支持冲突 continue/abort |
 | 历史 | revert | 已有 | `revertCommit`, `continueRevert`, `abortRevert` | 已支持冲突 continue/abort |
@@ -149,7 +150,8 @@
 已完成 P2:
 
 - worktree、submodule、LFS、bisect。
+- 更高级的 diff 和比较体验。
 
 剩余 P2:
 
-- 更高级的 diff 和比较体验。
+- 从 stash 建分支。

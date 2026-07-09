@@ -25,7 +25,7 @@ Item {
         root._changeListActive = false
         root.selectedPath = ""
         root.selectedStaged = false
-        diffView.text = ""
+        diffViewer.clearDiff()
         if (changeListLoader.item && changeListLoader.item.scrollToTop)
             changeListLoader.item.scrollToTop()
     }
@@ -74,9 +74,9 @@ Item {
     function showDiff(path, staged) {
         root.selectedPath = path
         root.selectedStaged = staged
-        diffView.text = ""
+        diffViewer.clearDiff()
         if (GitBridge && path) {
-            diffView.text = "加载中..."
+            diffViewer.setLoading("加载中...")
             GitBridge.requestDiff(path, staged)  // 异步,结果经 diffReady 回传
         }
     }
@@ -93,32 +93,6 @@ Item {
     function _defaultBranchName() {
         var branch = GitBridge ? GitBridge.getCurrentBranch() : ""
         return branch === "HEAD" ? "" : branch
-    }
-
-    // diff 纯文本 -> 按行着色的 HTML(+绿/-红/@@蓝/文件头灰)
-    function _diffToHtml(raw) {
-        if (!raw) return ""
-        var isDark = (typeof ThemeManager !== "undefined") && ThemeManager.isDark
-        var cAdd = isDark ? "#4ec97a" : "#1a7f37"
-        var cDel = isDark ? "#f47067" : "#cf222e"
-        var cHunk = isDark ? "#6cb6ff" : "#0969da"
-        var cMeta = isDark ? "#8b949e" : "#8a8a8a"
-        var cNormal = isDark ? "#d0d0d0" : "#1f1f1f"
-        var lines = raw.split("\n")
-        var out = []
-        for (var i = 0; i < lines.length; i++) {
-            var ln = lines[i]
-            var esc = ln.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-            if (esc === "") esc = "&nbsp;"
-            var color = cNormal
-            if (ln.indexOf("+++") === 0 || ln.indexOf("---") === 0 || ln.indexOf("diff ") === 0 || ln.indexOf("index ") === 0)
-                color = cMeta
-            else if (ln.indexOf("@@") === 0) color = cHunk
-            else if (ln.charAt(0) === "+") color = cAdd
-            else if (ln.charAt(0) === "-") color = cDel
-            out.push('<span style="color:' + color + '">' + esc + '</span>')
-        }
-        return '<pre style="margin:0;font-family:Consolas,monospace">' + out.join("<br>") + '</pre>'
     }
 
     Connections {
@@ -145,7 +119,7 @@ Item {
             // 选中的文件已不在变更列表或暂存状态已变 → 清空 diff,避免显示过期内容
             if (root.selectedPath !== "" && !stillThere) {
                 root.selectedPath = ""
-                diffView.text = ""
+                diffViewer.clearDiff()
             }
             root._finishStatusRequest(repoPath)
         }
@@ -161,7 +135,7 @@ Item {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
             // 仅当结果对应当前选中项时才填充(防快速切换的过期结果覆盖)
             if (path === root.selectedPath && staged === root.selectedStaged)
-                diffView.text = root._diffToHtml(content)
+                diffViewer.rawDiff = content || ""
         }
         function onRepoOpened(ok, pathOrErr) {
             if (ok) openButton.rebuildList()
@@ -516,27 +490,11 @@ Item {
                         description: "从左侧变更列表选择一个文件"
                     }
 
-                    Flickable {
-                        id: diffFlick
+                    DiffViewer {
+                        id: diffViewer
                         anchors.fill: parent
                         anchors.margins: Fluent.Enums.spacing.l
-                        clip: true
                         visible: root.selectedPath !== ""
-                        contentWidth: diffView.paintedWidth
-                        contentHeight: diffView.paintedHeight
-
-                        TextEdit {
-                            id: diffView
-                            width: diffFlick.width
-                            readOnly: true
-                            selectByMouse: true
-                            textFormat: TextEdit.RichText
-                            wrapMode: TextEdit.NoWrap
-                            font.family: "Consolas, Cascadia Code, monospace"
-                            font.pixelSize: Fluent.Enums.typography.body
-                            color: Fluent.Enums.textColor.primary
-                            text: ""
-                        }
                     }
                 }
             }
