@@ -204,6 +204,32 @@ class GitService(QObject):
     def repo_path(self) -> Optional[str]:
         return self._repo_path
 
+    @staticmethod
+    def _is_git_work_tree_path(path: str) -> bool:
+        """校验普通仓库或 linked worktree 路径。"""
+        if not path or not os.path.isdir(path):
+            return False
+        git_marker = os.path.join(path, '.git')
+        if not (os.path.isdir(git_marker) or os.path.isfile(git_marker)):
+            return False
+        try:
+            result = subprocess.run(
+                ['git', '-C', path, 'rev-parse', '--is-inside-work-tree'],
+                capture_output=True,
+                text=True,
+                encoding='utf-8',
+                errors='replace',
+                timeout=10,
+                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0,
+            )
+            return result.returncode == 0 and result.stdout.strip().lower() == 'true'
+        except FileNotFoundError:
+            logger.error("Git未安装或不在PATH中")
+            return False
+        except Exception as e:
+            logger.debug(f"校验 Git 工作树失败 {path}: {e}")
+            return False
+
     def set_repo_path(self, path: str, emit_status: bool = True) -> bool:
         """设置仓库路径"""
         logger.info(f"设置仓库路径: {path}")
@@ -216,8 +242,7 @@ class GitService(QObject):
             logger.warning(f"目录权限不足: {path}")
             return False
 
-        git_dir = os.path.join(path, '.git')
-        if not os.path.isdir(git_dir):
+        if not self._is_git_work_tree_path(path):
             logger.warning(f"不是Git仓库: {path}")
             return False
 
@@ -226,7 +251,7 @@ class GitService(QObject):
         if emit_status:
             self.statusChanged.emit()
         return True
-    
+
     def is_large_repo(self) -> bool:
         """检测是否为大仓库（超过1000个提交）"""
         if not self._repo_path:
@@ -251,7 +276,7 @@ class GitService(QObject):
         返回指纹字符串;仓库无效或 status 读取失败时返回空串,
         调用方据此"跳过本轮"而非误触发刷新。
         """
-        if not repo_path or not os.path.isdir(os.path.join(repo_path, '.git')):
+        if not self._is_git_work_tree_path(repo_path):
             return ""
 
         parts: list[str] = []
@@ -1200,7 +1225,6 @@ class GitService(QObject):
         ):
             return True
         return False
-
     def checkout_branch(self, branch: str) -> tuple[bool, str]:
         """切换分支"""
         if self._bad_ref(branch):

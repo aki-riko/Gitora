@@ -500,6 +500,12 @@ class GitServiceCoreTest(unittest.TestCase):
         worktrees = service.list_worktrees()
         self.assertTrue(any(w.path.replace("\\", "/").endswith("repo-topic") and w.branch == "topic" for w in worktrees))
         self.assertTrue((worktree_path / "tracked.txt").exists())
+        self.assertTrue((worktree_path / ".git").is_file())
+
+        worktree_service = GitService()
+        self.assertTrue(worktree_service.set_repo_path(str(worktree_path)))
+        self.assertEqual(worktree_service.get_current_branch(), "topic")
+        self.assertNotEqual(worktree_service.compute_state_fingerprint(str(worktree_path)), "")
 
         ok, msg = service.remove_worktree(str(worktree_path), force=False)
         self.assertTrue(ok, msg)
