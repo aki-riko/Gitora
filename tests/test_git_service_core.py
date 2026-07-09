@@ -443,6 +443,90 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertEqual(run_git(repo, "tag", "--list", "v-light").stdout.strip(), "")
 
+    def test_worktree_add_list_remove_use_real_repo(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+        worktree_path = self.root / "repo-topic"
+
+        ok, msg = service.add_worktree(str(worktree_path), "topic", create_branch=True)
+        self.assertTrue(ok, msg)
+        worktrees = service.list_worktrees()
+        self.assertTrue(any(w.path.replace("\\", "/").endswith("repo-topic") and w.branch == "topic" for w in worktrees))
+        self.assertTrue((worktree_path / "tracked.txt").exists())
+
+        ok, msg = service.remove_worktree(str(worktree_path), force=False)
+        self.assertTrue(ok, msg)
+        self.assertFalse(worktree_path.exists())
+
+    def test_submodule_update_and_sync_use_real_repo(self) -> None:
+        sub = init_repo(self.root / "sub")
+        write_file(sub, "sub.txt", "sub\n")
+        commit_all(sub, "sub")
+
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "root.txt", "root\n")
+        commit_all(repo, "root")
+        run_git(repo, "config", "protocol.file.allow", "always")
+        run_git(repo, "-c", "protocol.file.allow=always", "submodule", "add", str(sub), "libs/sub")
+        commit_all(repo, "add submodule")
+        service = self.service_for(repo)
+
+        modules = service.list_submodules()
+        self.assertEqual(len(modules), 1)
+        self.assertEqual(modules[0].path, "libs/sub")
+
+        run_git(repo, "submodule", "deinit", "-f", "libs/sub")
+        self.assertFalse((repo / "libs" / "sub" / "sub.txt").exists())
+        ok, msg = service.submodule_update(init=True, recursive=True)
+        self.assertTrue(ok, msg)
+        self.assertTrue((repo / "libs" / "sub" / "sub.txt").exists())
+
+        ok, msg = service.submodule_sync(recursive=True)
+        self.assertTrue(ok, msg)
+
+    def test_lfs_status_use_real_repo(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+
+        ok, msg = service.lfs_status()
+        self.assertTrue(ok, msg)
+        self.assertIn("Git LFS", msg)
+
+    def test_bisect_flow_use_real_repo(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "value.txt", "0\n")
+        good_commit = commit_all(repo, "value 0")
+        for value in ("1", "2", "3"):
+            write_file(repo, "value.txt", value + "\n")
+            commit_all(repo, f"value {value}")
+        service = self.service_for(repo)
+
+        ok, msg = service.bisect_start(good_commit, "HEAD")
+        self.assertTrue(ok, msg)
+        self.assertTrue(service.is_bisecting())
+
+        result_text = ""
+        for _ in range(5):
+            value = int((repo / "value.txt").read_text(encoding="utf-8").strip())
+            ok, result_text = service.bisect_bad() if value >= 2 else service.bisect_good()
+            self.assertTrue(ok, result_text)
+            if "first bad commit" in result_text:
+                break
+        self.assertIn("first bad commit", result_text)
+
+        ok, log_text = service.bisect_log()
+        self.assertTrue(ok, log_text)
+        self.assertIn("git bisect start", log_text)
+
+        ok, msg = service.bisect_reset()
+        self.assertTrue(ok, msg)
+        self.assertFalse(service.is_bisecting())
+        self.assertEqual(run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(), "master")
+
 
 if __name__ == "__main__":
     unittest.main()

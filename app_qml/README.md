@@ -40,6 +40,7 @@ app_qml/
     │   ├── TagView.qml          # 标签
     │   ├── StashView.qml        # 暂存(stash)
     │   ├── ConflictView.qml     # 冲突解决
+    │   ├── AdvancedView.qml     # 高级 Git: worktree/submodule/LFS/bisect
     │   └── SettingsView.qml     # 设置
     └── components/          # 可复用对话框/组件
         ├── GuideShell.qml       # 分步引导外壳(Stepper + StackedWidget)

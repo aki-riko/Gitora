@@ -83,10 +83,10 @@
 | 冲突 | abort 中途操作 | 已有 | `abortMerge`, `abortRebase`, `abortCherryPick`, `abortRevert` | 冲突页聚合入口 |
 | 维护 | gc | 已有 | `GitBridge.gc` | 操作反馈统一 |
 | 维护 | clean preview | 已有 | `requestCleanPreview` | 预览必须来自真实 Git 输出 |
-| 高级 | worktree | 高级 | 未发现 | P2 独立设计 |
-| 高级 | submodule | 高级 | 未发现 | P2 独立设计 |
-| 高级 | LFS | 高级 | 未发现 | P2 独立设计 |
-| 高级 | bisect | 高级 | 未发现 | P2 独立设计 |
+| 高级 | worktree | 已有 | `AdvancedView`, `getWorktrees`, `addWorktree`, `removeWorktree`, `pruneWorktrees` | 独立高级页承载 |
+| 高级 | submodule | 已有 | `AdvancedView`, `getSubmodules`, `submoduleUpdate`, `submoduleSync` | 独立高级页承载 |
+| 高级 | LFS | 已有 | `AdvancedView`, `lfsStatus`, `lfsPull`, `lfsPush` | 独立高级页承载 |
+| 高级 | bisect | 已有 | `AdvancedView`, `bisectStart/good/bad/skip/reset/log` | 独立高级页承载 |
 
 ## 危险操作策略
 
@@ -146,7 +146,10 @@
 
 - 无。
 
-P2:
+已完成 P2:
 
 - worktree、submodule、LFS、bisect。
+
+剩余 P2:
+
 - 更高级的 diff 和比较体验。

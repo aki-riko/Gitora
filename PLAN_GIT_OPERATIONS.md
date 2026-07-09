@@ -182,3 +182,4 @@
 | Step 5: 分支/远程基础补全 | 已完成 | `unittest` 重命名/上游/远程重命名场景, QML selftest |
 | Step 6: 历史/中途状态补全 | 已完成 | `unittest` rebase/cherry-pick/revert 真实冲突场景, QML selftest |
 | Step 7: Stash/Tag 安全增强 | 已完成 | `unittest` stash 选项/show 和 tag 类型/远程删除场景, QML selftest |
+| Step 8: 高级 Git 页面 | 已完成 | `unittest` worktree/submodule/LFS/bisect 真实仓库场景, QML selftest |

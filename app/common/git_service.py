@@ -85,6 +85,27 @@ class ConflictInfo:
     has_conflict_markers: bool = False  # 是否有冲突标记
 
 
+@dataclass
+class WorktreeInfo:
+    """worktree 信息"""
+    path: str
+    head: str = ""
+    branch: str = ""
+    detached: bool = False
+    bare: bool = False
+    prunable: bool = False
+    prunable_reason: str = ""
+
+
+@dataclass
+class SubmoduleInfo:
+    """submodule 信息"""
+    path: str
+    hash: str = ""
+    status: str = ""
+    description: str = ""
+
+
 class GitWorker(QThread):
     """异步执行Git命令线程"""
     finished = Signal(bool, str, str)  # success, stdout, stderr
@@ -1694,6 +1715,244 @@ class GitService(QObject):
             self.statusChanged.emit()
             return True, f"已切换到Tag: {name}"
         return False, stderr or "切换Tag失败"
+
+    # ==================== 高级 Git 功能 ====================
+
+    @staticmethod
+    def _bad_revision_arg(rev: str) -> bool:
+        if not rev or rev.startswith('-'):
+            return True
+        return any(c in rev for c in (' ', '\t', '\n', '\r', '\x00'))
+
+    def list_worktrees(self) -> list[WorktreeInfo]:
+        """列出当前仓库关联的 worktree。"""
+        success, stdout, _ = self._run_git_sync(['worktree', 'list', '--porcelain'])
+        if not success:
+            return []
+
+        items: list[WorktreeInfo] = []
+        current: dict[str, object] = {}
+
+        def flush() -> None:
+            if not current:
+                return
+            branch = str(current.get("branch", ""))
+            if branch.startswith("refs/heads/"):
+                branch = branch[len("refs/heads/"):]
+            items.append(WorktreeInfo(
+                path=str(current.get("path", "")),
+                head=str(current.get("head", "")),
+                branch=branch,
+                detached=bool(current.get("detached", False)),
+                bare=bool(current.get("bare", False)),
+                prunable=bool(current.get("prunable", False)),
+                prunable_reason=str(current.get("prunable_reason", "")),
+            ))
+            current.clear()
+
+        for line in stdout.splitlines():
+            if not line:
+                flush()
+                continue
+            if line.startswith("worktree "):
+                flush()
+                current["path"] = line[len("worktree "):]
+            elif line.startswith("HEAD "):
+                current["head"] = line[len("HEAD "):]
+            elif line.startswith("branch "):
+                current["branch"] = line[len("branch "):]
+            elif line == "detached":
+                current["detached"] = True
+            elif line == "bare":
+                current["bare"] = True
+            elif line.startswith("prunable"):
+                current["prunable"] = True
+                current["prunable_reason"] = line[len("prunable"):].strip()
+        flush()
+        return items
+
+    def add_worktree(self, path: str, branch: str = "", create_branch: bool = False) -> tuple[bool, str]:
+        """添加 worktree。"""
+        path = (path or "").strip()
+        branch = (branch or "").strip()
+        if not path:
+            return False, "未指定 worktree 路径"
+        if branch and self._bad_ref(branch):
+            return False, "非法的分支名"
+        if create_branch and not branch:
+            return False, "创建新分支时必须填写分支名"
+
+        args = ['worktree', 'add']
+        if create_branch:
+            args.extend(['-b', branch, path])
+        else:
+            args.append(path)
+            if branch:
+                args.append(branch)
+        success, _, stderr = self._run_git_sync(args, timeout=120)
+        if success:
+            self.statusChanged.emit()
+            return True, f"已添加 worktree: {path}"
+        return False, stderr or "添加 worktree 失败"
+
+    def remove_worktree(self, path: str, force: bool = False) -> tuple[bool, str]:
+        """移除 worktree。"""
+        path = (path or "").strip()
+        if not path:
+            return False, "未指定 worktree 路径"
+        args = ['worktree', 'remove']
+        if force:
+            args.append('--force')
+        args.append(path)
+        success, _, stderr = self._run_git_sync(args, timeout=120)
+        if success:
+            self.statusChanged.emit()
+            return True, f"已移除 worktree: {path}"
+        return False, stderr or "移除 worktree 失败"
+
+    def prune_worktrees(self) -> tuple[bool, str]:
+        """清理失效 worktree 记录。"""
+        success, _, stderr = self._run_git_sync(['worktree', 'prune'])
+        if success:
+            self.statusChanged.emit()
+            return True, "已清理失效 worktree 记录"
+        return False, stderr or "清理 worktree 失败"
+
+    def list_submodules(self) -> list[SubmoduleInfo]:
+        """列出 submodule 状态。"""
+        success, stdout, _ = self._run_git_sync(['submodule', 'status', '--recursive'])
+        if not success or not stdout.strip():
+            return []
+
+        status_text = {
+            ' ': "正常",
+            '-': "未初始化",
+            '+': "提交不一致",
+            'U': "冲突",
+        }
+        modules: list[SubmoduleInfo] = []
+        for line in stdout.splitlines():
+            if not line:
+                continue
+            flag = line[0]
+            rest = line[1:].strip()
+            parts = rest.split(None, 2)
+            if len(parts) < 2:
+                continue
+            modules.append(SubmoduleInfo(
+                path=parts[1],
+                hash=parts[0],
+                status=status_text.get(flag, "未知"),
+                description=parts[2] if len(parts) > 2 else "",
+            ))
+        return modules
+
+    def submodule_update(self, init: bool = True, recursive: bool = True) -> tuple[bool, str]:
+        """初始化/更新 submodule。"""
+        args = ['submodule', 'update']
+        if init:
+            args.append('--init')
+        if recursive:
+            args.append('--recursive')
+        success, _, stderr = self._run_git_sync(args, timeout=300)
+        if success:
+            self.statusChanged.emit()
+            return True, "Submodule 已更新"
+        return False, stderr or "更新 submodule 失败"
+
+    def submodule_sync(self, recursive: bool = True) -> tuple[bool, str]:
+        """同步 submodule URL 配置。"""
+        args = ['submodule', 'sync']
+        if recursive:
+            args.append('--recursive')
+        success, _, stderr = self._run_git_sync(args, timeout=120)
+        if success:
+            return True, "Submodule URL 已同步"
+        return False, stderr or "同步 submodule 失败"
+
+    def lfs_status(self) -> tuple[bool, str]:
+        """获取 Git LFS 状态。"""
+        success, stdout, stderr = self._run_git_sync(['lfs', 'status'])
+        if success:
+            return True, "Git LFS status:\n" + (stdout or "当前没有 LFS 状态输出")
+        return False, stderr or "Git LFS 不可用或当前仓库未初始化 LFS"
+
+    def lfs_pull(self) -> tuple[bool, str]:
+        """拉取 Git LFS 对象。"""
+        success, stdout, stderr = self._run_git_sync(['lfs', 'pull'], timeout=300)
+        if success:
+            self.statusChanged.emit()
+            return True, stdout or "Git LFS pull 完成"
+        return False, stderr or "Git LFS pull 失败"
+
+    def lfs_push(self, remote: str = "origin", branch: str = "HEAD") -> tuple[bool, str]:
+        """推送 Git LFS 对象。"""
+        remote = (remote or "").strip()
+        branch = (branch or "").strip()
+        if self._bad_ref(remote):
+            return False, "非法的远程名"
+        if self._bad_revision_arg(branch):
+            return False, "非法的分支或修订名"
+        success, stdout, stderr = self._run_git_sync(['lfs', 'push', remote, branch], timeout=300)
+        if success:
+            return True, stdout or "Git LFS push 完成"
+        return False, stderr or "Git LFS push 失败"
+
+    def is_bisecting(self) -> bool:
+        return self._git_marker_exists('BISECT_LOG')
+
+    def bisect_start(self, good_rev: str, bad_rev: str = "HEAD") -> tuple[bool, str]:
+        """开始 bisect。"""
+        good_rev = (good_rev or "").strip()
+        bad_rev = (bad_rev or "HEAD").strip()
+        if self._bad_revision_arg(good_rev) or self._bad_revision_arg(bad_rev):
+            return False, "非法的 good/bad 修订名"
+        success, stdout, stderr = self._run_git_sync(['bisect', 'start', bad_rev, good_rev])
+        if success:
+            self.statusChanged.emit()
+            return True, stdout or "Bisect 已开始"
+        return False, stderr or "开始 bisect 失败"
+
+    def bisect_good(self, rev: str = "") -> tuple[bool, str]:
+        return self._bisect_mark("good", rev)
+
+    def bisect_bad(self, rev: str = "") -> tuple[bool, str]:
+        return self._bisect_mark("bad", rev)
+
+    def bisect_skip(self, rev: str = "") -> tuple[bool, str]:
+        return self._bisect_mark("skip", rev)
+
+    def _bisect_mark(self, mark: str, rev: str = "") -> tuple[bool, str]:
+        if not self.is_bisecting():
+            return False, "当前没有 bisect 会话"
+        rev = (rev or "").strip()
+        if rev and self._bad_revision_arg(rev):
+            return False, "非法的修订名"
+        args = ['bisect', mark]
+        if rev:
+            args.append(rev)
+        success, stdout, stderr = self._run_git_sync(args)
+        self.statusChanged.emit()
+        if success:
+            return True, stdout or f"Bisect {mark} 已记录"
+        return False, stderr or f"Bisect {mark} 失败"
+
+    def bisect_reset(self) -> tuple[bool, str]:
+        """结束 bisect 并回到原分支。"""
+        success, stdout, stderr = self._run_git_sync(['bisect', 'reset'])
+        if success:
+            self.statusChanged.emit()
+            return True, stdout or "Bisect 已结束"
+        return False, stderr or "结束 bisect 失败"
+
+    def bisect_log(self) -> tuple[bool, str]:
+        """读取 bisect 日志。"""
+        if not self.is_bisecting():
+            return True, "当前没有 bisect 会话"
+        success, stdout, stderr = self._run_git_sync(['bisect', 'log'])
+        if success:
+            return True, stdout or "Bisect 日志为空"
+        return False, stderr or "读取 bisect 日志失败"
 
     # ==================== 远程仓库管理 ====================
 

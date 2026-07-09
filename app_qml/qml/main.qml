@@ -22,7 +22,8 @@ QtObject {
         { "text": "分支", "icon": iconPath("BranchFork") },
         { "text": "标签", "icon": iconPath("Tag") },
         { "text": "暂存", "icon": iconPath("Archive") },
-        { "text": "冲突", "icon": iconPath("Warning") }
+        { "text": "冲突", "icon": iconPath("Warning") },
+        { "text": "高级", "icon": iconPath("BranchFork") }
     ]
 
     property var bottomNavItems: [
@@ -36,6 +37,7 @@ QtObject {
         Qt.resolvedUrl("views/TagView.qml"),
         Qt.resolvedUrl("views/StashView.qml"),
         Qt.resolvedUrl("views/ConflictView.qml"),
+        Qt.resolvedUrl("views/AdvancedView.qml"),
         Qt.resolvedUrl("views/SettingsView.qml")
     ]
 

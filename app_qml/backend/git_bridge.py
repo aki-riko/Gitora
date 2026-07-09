@@ -13,6 +13,7 @@ from PySide6.QtCore import QObject, Slot, Signal, Property
 
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
+    WorktreeInfo, SubmoduleInfo,
 )
 from app.common.logger import get_logger
 
@@ -62,6 +63,29 @@ def _conflict_to_dict(c: ConflictInfo) -> dict:
         "theirsContent": c.theirs_content,
         "baseContent": c.base_content,
         "hasConflictMarkers": c.has_conflict_markers,
+    }
+
+
+def _worktree_to_dict(w: WorktreeInfo) -> dict:
+    return {
+        "path": w.path,
+        "head": w.head,
+        "shortHead": w.head[:7] if w.head else "",
+        "branch": w.branch,
+        "detached": w.detached,
+        "bare": w.bare,
+        "prunable": w.prunable,
+        "prunableReason": w.prunable_reason,
+    }
+
+
+def _submodule_to_dict(s: SubmoduleInfo) -> dict:
+    return {
+        "path": s.path,
+        "hash": s.hash,
+        "shortHash": s.hash[:7] if s.hash else "",
+        "status": s.status,
+        "description": s.description,
     }
 
 
@@ -270,6 +294,99 @@ class GitBridge(QObject):
     def gc(self):
         """垃圾回收(异步);结果经 operationStarted/operationFinished 信号回传"""
         self._svc.gc()
+
+    # ==================== 高级 Git ====================
+    @Slot(result="QVariantList")
+    def getWorktrees(self) -> list:
+        return [_worktree_to_dict(w) for w in self._svc.list_worktrees()]
+
+    @Slot(str, str, bool, result="QVariantList")
+    def addWorktree(self, path: str, branch: str, create_branch: bool) -> list:
+        ok, msg = self._svc.add_worktree(path, branch, create_branch)
+        return [ok, msg]
+
+    @Slot(str, bool, result="QVariantList")
+    def removeWorktree(self, path: str, force: bool) -> list:
+        ok, msg = self._svc.remove_worktree(path, force)
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def pruneWorktrees(self) -> list:
+        ok, msg = self._svc.prune_worktrees()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def getSubmodules(self) -> list:
+        return [_submodule_to_dict(s) for s in self._svc.list_submodules()]
+
+    @Slot(bool, bool, result="QVariantList")
+    def submoduleUpdate(self, init: bool, recursive: bool) -> list:
+        ok, msg = self._svc.submodule_update(init, recursive)
+        return [ok, msg]
+
+    @Slot(bool, result="QVariantList")
+    def submoduleSync(self, recursive: bool) -> list:
+        ok, msg = self._svc.submodule_sync(recursive)
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def lfsStatus(self) -> list:
+        ok, msg = self._svc.lfs_status()
+        return [ok, msg]
+
+    @Slot()
+    def lfsPull(self):
+        import threading
+        self.operationStarted.emit("正在拉取 Git LFS 对象...")
+        def work():
+            try:
+                ok, msg = self._svc.lfs_pull()
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Git LFS pull 失败: {e}"); ok, msg = False, str(e)
+            self.operationFinished.emit(ok, msg)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str)
+    def lfsPush(self, remote: str, branch: str):
+        import threading
+        self.operationStarted.emit(f"正在推送 Git LFS 对象到 {remote} {branch}...")
+        def work():
+            try:
+                ok, msg = self._svc.lfs_push(remote, branch)
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"Git LFS push 失败: {e}"); ok, msg = False, str(e)
+            self.operationFinished.emit(ok, msg)
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot(str, str, result="QVariantList")
+    def bisectStart(self, good_rev: str, bad_rev: str) -> list:
+        ok, msg = self._svc.bisect_start(good_rev, bad_rev)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def bisectGood(self, rev: str) -> list:
+        ok, msg = self._svc.bisect_good(rev)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def bisectBad(self, rev: str) -> list:
+        ok, msg = self._svc.bisect_bad(rev)
+        return [ok, msg]
+
+    @Slot(str, result="QVariantList")
+    def bisectSkip(self, rev: str) -> list:
+        ok, msg = self._svc.bisect_skip(rev)
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def bisectReset(self) -> list:
+        ok, msg = self._svc.bisect_reset()
+        return [ok, msg]
+
+    @Slot(result="QVariantList")
+    def bisectLog(self) -> list:
+        ok, msg = self._svc.bisect_log()
+        return [ok, msg]
 
     # ==================== 暂存 / 取消暂存 ====================
     @Slot(str, result=bool)
