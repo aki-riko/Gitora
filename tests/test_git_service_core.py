@@ -609,6 +609,56 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertEqual(parsed_between[0].path, "tracked.txt")
         self.assertIn("+four", between)
 
+    def test_parse_diff_handles_rename_delete_and_binary_git_output(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "old-name.txt", "same\ncontent\n")
+        write_file(repo, "delete-me.txt", "remove\n")
+        (repo / "image.bin").write_bytes(bytes([0, 1, 2, 0, 255]))
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+
+        run_git(repo, "mv", "old-name.txt", "new-name.txt")
+        (repo / "delete-me.txt").unlink()
+        (repo / "image.bin").write_bytes(bytes([0, 1, 3, 0, 255, 4]))
+        changed_commit = commit_all(repo, "rename delete binary")
+
+        commit_diff = service.get_commit_diff(changed_commit)
+        parsed = GitService.parse_unified_diff(commit_diff)
+        by_path = {item.path: item for item in parsed}
+
+        renamed = by_path["new-name.txt"]
+        self.assertEqual(renamed.status, "renamed")
+        self.assertEqual(renamed.old_path, "old-name.txt")
+        self.assertEqual(renamed.new_path, "new-name.txt")
+        self.assertEqual(renamed.additions, 0)
+        self.assertEqual(renamed.deletions, 0)
+
+        deleted = by_path["delete-me.txt"]
+        self.assertEqual(deleted.status, "deleted")
+        self.assertEqual(deleted.old_path, "delete-me.txt")
+        self.assertEqual(deleted.new_path, "")
+        self.assertEqual(deleted.additions, 0)
+        self.assertEqual(deleted.deletions, 1)
+
+        binary = by_path["image.bin"]
+        self.assertEqual(binary.status, "modified")
+        self.assertEqual(binary.additions, 0)
+        self.assertEqual(binary.deletions, 0)
+        self.assertEqual(binary.hunks, [])
+        self.assertIn("Binary files", binary.raw)
+
+        rename_filtered = GitService.filter_unified_diff(commit_diff, "old-name.txt")
+        self.assertIn("rename from old-name.txt", rename_filtered)
+        self.assertIn("rename to new-name.txt", rename_filtered)
+        self.assertNotIn("delete-me.txt", rename_filtered)
+
+        delete_filtered = GitService.filter_unified_diff(commit_diff, "delete-me.txt")
+        self.assertIn("deleted file mode", delete_filtered)
+        self.assertNotIn("new-name.txt", delete_filtered)
+
+        binary_filtered = GitService.filter_unified_diff(commit_diff, "image.bin")
+        self.assertIn("Binary files", binary_filtered)
+
 
 if __name__ == "__main__":
     unittest.main()
