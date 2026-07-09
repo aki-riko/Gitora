@@ -835,10 +835,21 @@ class GitService(QObject):
         Returns:
             (success, message)
         """
+        local_branch = (local_branch or "").strip()
+        remote = (remote or "").strip()
+        remote_branch = (remote_branch or "").strip()
+        if self._bad_ref(local_branch) or self._bad_ref(remote_branch):
+            return False, "非法的分支名"
+        if self._bad_ref(remote):
+            return False, "非法的远程名"
+        if remote not in self.get_remotes():
+            return False, f"远程 '{remote}' 不存在"
         args = ['branch', '--set-upstream-to', f'{remote}/{remote_branch}', local_branch]
         success, stdout, stderr = self._run_git_sync(args)
-        msg = stdout if success else (stderr or "设置上游分支失败")
-        return success, msg
+        if success:
+            self.statusChanged.emit()
+            return True, f"已设置 {local_branch} 跟踪 {remote}/{remote_branch}"
+        return False, stderr or "设置上游分支失败"
 
     def pull(self, remote: str = "origin", branch: str = "", rebase: bool = False, callback: Callable[[bool, str], None] = None):
         """拉取远程变更（异步）
@@ -1039,6 +1050,18 @@ class GitService(QObject):
             self.statusChanged.emit()
             return True, f"已删除分支 {branch}"
         return False, stderr or "删除分支失败"
+
+    def rename_branch(self, old_name: str, new_name: str) -> tuple[bool, str]:
+        """重命名本地分支。"""
+        old_name = (old_name or "").strip()
+        new_name = (new_name or "").strip()
+        if self._bad_ref(old_name) or self._bad_ref(new_name):
+            return False, "非法的分支名"
+        success, _, stderr = self._run_git_sync(['branch', '-m', old_name, new_name])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已重命名分支 {old_name} -> {new_name}"
+        return False, stderr or "重命名分支失败"
 
     def merge_branch(self, branch: str, callback: Callable[[bool, str], None] = None):
         """合并分支（异步）"""
@@ -1548,6 +1571,8 @@ class GitService(QObject):
 
     def remove_remote(self, name: str) -> tuple[bool, str]:
         """删除远程仓库"""
+        if self._bad_ref(name):
+            return False, "非法的远程名"
         success, _, stderr = self._run_git_sync(['remote', 'remove', name])
         if success:
             return True, f"已删除远程仓库: {name}"
@@ -1555,10 +1580,26 @@ class GitService(QObject):
 
     def set_remote_url(self, name: str, url: str) -> tuple[bool, str]:
         """修改远程URL"""
+        if self._bad_ref(name):
+            return False, "非法的远程名"
+        if self._bad_url(url):
+            return False, "不支持或不安全的远程地址"
         success, _, stderr = self._run_git_sync(['remote', 'set-url', name, url])
         if success:
             return True, f"已修改远程URL: {name}"
         return False, stderr or "修改远程URL失败"
+
+    def rename_remote(self, old_name: str, new_name: str) -> tuple[bool, str]:
+        """重命名远程仓库配置。"""
+        old_name = (old_name or "").strip()
+        new_name = (new_name or "").strip()
+        if self._bad_ref(old_name) or self._bad_ref(new_name):
+            return False, "非法的远程名"
+        success, _, stderr = self._run_git_sync(['remote', 'rename', old_name, new_name])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已重命名远程 {old_name} -> {new_name}"
+        return False, stderr or "重命名远程失败"
 
     def get_remote_url(self, name: str) -> str:
         """获取远程URL"""

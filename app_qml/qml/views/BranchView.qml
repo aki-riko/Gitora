@@ -40,6 +40,15 @@ Item {
         }
     }
 
+    function _defaultRemoteName() {
+        var remotes = GitBridge ? GitBridge.getRemoteInfo() : []
+        if (!remotes || remotes.length === 0) return "origin"
+        for (var i = 0; i < remotes.length; i++) {
+            if (remotes[i].name === "origin") return "origin"
+        }
+        return remotes[0].name || "origin"
+    }
+
     Connections {
         target: GitBridge
         function onStatusChanged() { root.reload() }
@@ -156,6 +165,25 @@ Item {
                                 }
                             }
                             Fluent.Button {
+                                text: "上游"
+                                style: Fluent.Enums.button.style_transparent
+                                onClicked: {
+                                    upstreamDialog._branch = model.name
+                                    upstreamRemoteInput.text = root._defaultRemoteName()
+                                    upstreamBranchInput.text = model.name
+                                    upstreamDialog.open()
+                                }
+                            }
+                            Fluent.Button {
+                                text: "重命名"
+                                style: Fluent.Enums.button.style_transparent
+                                onClicked: {
+                                    renameBranchDialog._oldBranch = model.name
+                                    renameBranchInput.text = model.name
+                                    renameBranchDialog.open()
+                                }
+                            }
+                            Fluent.Button {
                                 text: "删除"
                                 style: Fluent.Enums.button.style_transparent
                                 visible: !model.isCurrent
@@ -228,6 +256,66 @@ Item {
             if (newBranchInput.text)
                 root._op(GitBridge.createBranch(newBranchInput.text, true))
             newBranchInput.text = ""
+        }
+    }
+
+    // 重命名本地分支
+    Fluent.MessageBox {
+        id: renameBranchDialog
+        title: "重命名分支"
+        confirmText: "保存"
+        cancelText: "取消"
+        property string _oldBranch: ""
+        function validate() { return renameBranchInput.text.trim().length > 0 }
+        Fluent.LineEdit {
+            id: renameBranchInput
+            width: 320
+            placeholderText: "新的分支名称"
+        }
+        onAccepted: {
+            root._op(GitBridge.renameBranch(_oldBranch, renameBranchInput.text))
+            _oldBranch = ""
+            renameBranchInput.text = ""
+        }
+    }
+
+    // 设置本地分支上游
+    Fluent.MessageBox {
+        id: upstreamDialog
+        title: "设置上游分支"
+        confirmText: "保存"
+        cancelText: "取消"
+        property string _branch: ""
+        function validate() {
+            return upstreamRemoteInput.text.trim().length > 0
+                && upstreamBranchInput.text.trim().length > 0
+        }
+        ColumnLayout {
+            width: 360
+            spacing: Fluent.Enums.spacing.m
+            Text {
+                Layout.fillWidth: true
+                text: "本地分支: " + upstreamDialog._branch
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.caption
+            }
+            Fluent.LineEdit {
+                id: upstreamRemoteInput
+                Layout.fillWidth: true
+                placeholderText: "远程名"
+            }
+            Fluent.LineEdit {
+                id: upstreamBranchInput
+                Layout.fillWidth: true
+                placeholderText: "远程分支名(如 main)"
+            }
+        }
+        onAccepted: {
+            root._op(GitBridge.setUpstream(_branch, upstreamRemoteInput.text, upstreamBranchInput.text))
+            _branch = ""
+            upstreamRemoteInput.text = ""
+            upstreamBranchInput.text = ""
         }
     }
 

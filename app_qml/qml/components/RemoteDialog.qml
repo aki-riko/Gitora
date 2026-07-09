@@ -27,6 +27,7 @@ Fluent.DialogBoxCore {
     property var _remotes: []
     property string _pendingDelete: ""   // 待删除的远程名
     property string _editTarget: ""      // 待修改 URL 的远程名
+    property string _renameTarget: ""    // 待重命名的远程名
 
     // 载入远程列表(打开面板时调用)
     function refresh() {
@@ -97,6 +98,15 @@ Fluent.DialogBoxCore {
                         editNameInput.text = model.rName
                         editUrlInput.text = model.rUrl
                         editRemoteBox.open()
+                    }
+                }
+                Fluent.Button {
+                    text: "重命名"
+                    style: Fluent.Enums.button.style_transparent
+                    onClicked: {
+                        dlg._renameTarget = model.rName
+                        renameRemoteInput.text = model.rName
+                        renameRemoteBox.open()
                     }
                 }
                 Fluent.Button {
@@ -197,6 +207,31 @@ Fluent.DialogBoxCore {
                 Layout.fillWidth: true
                 placeholderText: "新的远程 URL"
             }
+        }
+    }
+
+    // 重命名远程
+    Fluent.MessageBox {
+        id: renameRemoteBox
+        title: "重命名远程"
+        confirmText: "保存"
+        cancelText: "取消"
+        function validate() { return renameRemoteInput.text.trim().length > 0 }
+        onAccepted: {
+            var res = GitBridge.renameRemote(dlg._renameTarget, renameRemoteInput.text)
+            if (res[0]) {
+                Fluent.NotificationManager.toast.success(dlg, "已重命名远程", res[1] || "")
+                dlg.refresh()
+            } else {
+                Fluent.NotificationManager.toast.error(dlg, "重命名失败", res[1] || "")
+            }
+            dlg._renameTarget = ""
+            renameRemoteInput.text = ""
+        }
+        Fluent.LineEdit {
+            id: renameRemoteInput
+            width: 320
+            placeholderText: "新的远程名称"
         }
     }
 }

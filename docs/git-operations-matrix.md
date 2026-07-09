@@ -43,8 +43,8 @@
 | 分支 | 删除分支 | 已有 | `deleteBranch(name, false)` | 补强制删除入口和危险确认 |
 | 分支 | 强制删除分支 | 已有 | `deleteBranch(name, true)`, `forceDeleteBranchDanger` | 已走危险确认 |
 | 分支 | 合并分支 | 已有 | `mergeBranch` | 冲突时进入冲突页提示 |
-| 分支 | 分支重命名 | 缺失 | 未发现 | P1 |
-| 分支 | 设置/修改上游 | 缺失 | 后端有 `set_upstream`, UI 未接 | P1 |
+| 分支 | 分支重命名 | 已有 | `renameBranch`, `rename_branch` | 已支持本地分支重命名 |
+| 分支 | 设置/修改上游 | 已有 | `setUpstream`, `set_upstream` | 已支持 remote/branch 输入 |
 | 分支 | rebase 到目标分支 | 缺失 | 未发现 | P1 |
 | 分支 | rebase continue/abort/skip | 缺失 | 未发现 | P1 |
 | 远程 | 查看远程 | 已有 | `getRemoteInfo`, `RemoteDialog` | 保持 URL 安全校验 |
@@ -52,7 +52,7 @@
 | 远程 | 修改远程 URL | 已有 | `setRemoteUrl` | 保持 `_bad_url` 校验 |
 | 远程 | 删除远程 | 已有 | `removeRemote` | 二次确认已存在 |
 | 远程 | prune | 已有 | `pruneRemote` | 支持选择 remote |
-| 远程 | 重命名远程 | 缺失 | 未发现 | P1 |
+| 远程 | 重命名远程 | 已有 | `renameRemote`, `rename_remote` | 只修改本地远程配置 |
 | 历史 | 分页日志 | 已有 | `requestLog` | 保持大仓库虚拟滚动 |
 | 历史 | 搜索提交 | 已有 | `requestSearch` | 测试作者/消息/hash |
 | 历史 | 提交详情 | 已有 | `CommitDetailDialog` | 可补文件列表排序 |
@@ -136,9 +136,12 @@
 
 - 无。
 
-P1:
+已完成 P1:
 
 - 分支重命名、设置上游、远程重命名。
+
+剩余 P1:
+
 - rebase/cherry-pick/revert 中途状态处理。
 - stash 和 tag 安全增强。
 

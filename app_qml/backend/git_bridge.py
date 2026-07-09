@@ -479,6 +479,16 @@ class GitBridge(QObject):
         ok, msg = self._svc.delete_branch(branch, force)
         return [ok, msg]
 
+    @Slot(str, str, result="QVariantList")
+    def renameBranch(self, old_name: str, new_name: str) -> list:
+        ok, msg = self._svc.rename_branch(old_name, new_name)
+        return [ok, msg]
+
+    @Slot(str, str, str, result="QVariantList")
+    def setUpstream(self, local_branch: str, remote: str, remote_branch: str) -> list:
+        ok, msg = self._svc.set_upstream(local_branch, remote, remote_branch)
+        return [ok, msg]
+
     @Slot(str)
     def mergeBranch(self, branch: str):
         """合并分支(异步);结果经 operationFinished 回传"""
@@ -661,6 +671,11 @@ class GitBridge(QObject):
     @Slot(str, str, result="QVariantList")
     def setRemoteUrl(self, name: str, url: str) -> list:
         ok, msg = self._svc.set_remote_url(name, url)
+        return [ok, msg]
+
+    @Slot(str, str, result="QVariantList")
+    def renameRemote(self, old_name: str, new_name: str) -> list:
+        ok, msg = self._svc.rename_remote(old_name, new_name)
         return [ok, msg]
 
     @Slot(str, result=str)

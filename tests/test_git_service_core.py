@@ -193,6 +193,37 @@ class GitServiceCoreTest(unittest.TestCase):
         branches = run_git(repo, "branch", "--list", "feature").stdout.strip()
         self.assertEqual(branches, "")
 
+    def test_rename_branch_set_upstream_and_rename_remote_use_real_repo(self) -> None:
+        remote = init_bare_repo(self.root / "remote.git")
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "base.txt", "base\n")
+        commit_all(repo, "base")
+        run_git(repo, "remote", "add", "origin", str(remote))
+        run_git(repo, "push", "-u", "origin", "master")
+        service = self.service_for(repo)
+
+        ok, msg = service.create_branch("feature", checkout=True)
+        self.assertTrue(ok, msg)
+        write_file(repo, "feature.txt", "feature\n")
+        commit_all(repo, "feature")
+        run_git(repo, "push", "origin", "feature")
+
+        ok, msg = service.rename_branch("feature", "topic")
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(), "topic")
+        self.assertEqual(run_git(repo, "branch", "--list", "feature").stdout.strip(), "")
+        self.assertIn("topic", run_git(repo, "branch", "--list", "topic").stdout)
+
+        ok, msg = service.set_upstream("topic", "origin", "feature")
+        self.assertTrue(ok, msg)
+        upstream = run_git(
+            repo, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
+        self.assertEqual(upstream, "origin/feature")
+
+        ok, msg = service.rename_remote("origin", "upstream")
+        self.assertTrue(ok, msg)
+        self.assertEqual(service.get_remotes(), ["upstream"])
+
     def test_stash_apply_pop_drop_and_clear_use_real_repo(self) -> None:
         repo = init_repo(self.root / "repo")
         write_file(repo, "tracked.txt", "base\n")
