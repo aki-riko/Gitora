@@ -50,6 +50,35 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertIn("ok", result, "Git operation did not finish before timeout")
         return bool(result["ok"]), str(result["msg"])
 
+    def test_clone_uses_target_parent_without_existing_repo_path(self) -> None:
+        service = GitService()
+        self.assertIsNone(service.repo_path)
+        target = self.root / "cloned"
+        seen: dict[str, object] = {}
+
+        def fake_run_git_async(args, callback, timeout=None, cwd=None):
+            seen["args"] = args
+            seen["timeout"] = timeout
+            seen["cwd"] = cwd
+            callback(True, "", "")
+
+        service._run_git_async = fake_run_git_async  # type: ignore[method-assign]
+
+        ok, msg = self.wait_operation(
+            service,
+            lambda: service.clone("git@example.com:Aquila/Test.git", str(target)),
+        )
+
+        self.assertTrue(ok, msg)
+        self.assertEqual(seen["args"], [
+            "clone",
+            "git@example.com:Aquila/Test.git",
+            str(target),
+            "--progress",
+        ])
+        self.assertEqual(seen["timeout"], 300)
+        self.assertEqual(seen["cwd"], str(self.root))
+
     def make_rebase_conflict_repo(self, name: str) -> tuple[Path, GitService]:
         repo = init_repo(self.root / name)
         write_file(repo, "conflict.txt", "base\n")

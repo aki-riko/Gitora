@@ -338,7 +338,13 @@ class GitService(QObject):
             logger.exception(f"Git命令异常: {' '.join(args)}, repo={repo_path}, error: {e}")
             return False, "", str(e)
 
-    def _run_git_async(self, args: list[str], callback: Callable[[bool, str, str], None], timeout: int = None):
+    def _run_git_async(
+        self,
+        args: list[str],
+        callback: Callable[[bool, str, str], None],
+        timeout: int = None,
+        cwd: Optional[str] = None,
+    ):
         """异步执行Git命令
         
         Args:
@@ -346,7 +352,8 @@ class GitService(QObject):
             callback: 完成回调
             timeout: 超时时间（秒），默认根据命令类型自动设置
         """
-        if not self._repo_path:
+        work_dir = cwd or self._repo_path
+        if not work_dir:
             callback(False, "", "未设置仓库路径")
             return
 
@@ -359,7 +366,7 @@ class GitService(QObject):
                 timeout = 30  # 本地操作30秒
 
         cmd = ['git', '-c', 'core.quotepath=false'] + args
-        worker = GitWorker(cmd, self._repo_path, timeout, self)
+        worker = GitWorker(cmd, work_dir, timeout, self)
         worker.finished.connect(callback)
         worker.finished.connect(lambda: self._cleanup_worker(worker))
         self._workers.append(worker)
@@ -2341,6 +2348,14 @@ class GitService(QObject):
             return
         self.operationStarted.emit("正在克隆仓库...")
 
+        parent_dir = os.path.dirname(os.path.abspath(path)) or os.getcwd()
+        if not os.path.isdir(parent_dir):
+            msg = f"目标目录的父路径不存在: {parent_dir}"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
+
         args = ['clone', url, path, '--progress']
         
         def on_finished(success: bool, stdout: str, stderr: str):
@@ -2353,7 +2368,7 @@ class GitService(QObject):
                 callback(success, msg)
         
         # 克隆可能很慢，设置较长超时
-        self._run_git_async(args, on_finished, timeout=300)
+        self._run_git_async(args, on_finished, timeout=300, cwd=parent_dir)
     
     def init(self, path: str) -> tuple[bool, str]:
         """初始化新的Git仓库
