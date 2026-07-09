@@ -169,3 +169,10 @@
 - QML selftest 通过。
 - 本轮产生的每步改动均已 commit。
 - 最终 review 没有 P0/P1 阻断问题。
+
+## 6. 当前进度
+
+| 步骤 | 状态 | 验证 |
+|---|---|---|
+| Step 0: 文档和计划落盘 | 已完成 | `git diff --check`, QML selftest |
+| Step 1: 测试基座 | 已完成 | `.venv/Scripts/python.exe -m unittest discover -s tests -v` |
