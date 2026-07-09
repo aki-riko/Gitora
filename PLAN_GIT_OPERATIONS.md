@@ -176,3 +176,4 @@
 |---|---|---|
 | Step 0: 文档和计划落盘 | 已完成 | `git diff --check`, QML selftest |
 | Step 1: 测试基座 | 已完成 | `.venv/Scripts/python.exe -m unittest discover -s tests -v` |
+| Step 2: 远程覆盖本地 | 已完成 | `unittest` 真实 bare remote 场景, QML selftest |

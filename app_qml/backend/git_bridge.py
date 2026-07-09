@@ -344,6 +344,10 @@ class GitBridge(QObject):
     def fetch(self):
         self._svc.fetch()
 
+    @Slot()
+    def forceResetToUpstream(self):
+        self._svc.force_reset_to_upstream()
+
     @Slot(str)
     def quickCommitPush(self, message: str):
         """一键提交推送(异步);结果经 operationStarted/progressUpdated/operationFinished 回传"""

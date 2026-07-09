@@ -34,7 +34,7 @@
 | 同步 | pull --rebase | 已有 | `GitBridge.pullRebase` | 支持选择 remote/branch |
 | 同步 | push | 已有 | `GitBridge.push` | 支持选择 remote/branch |
 | 同步 | force push | 已有 | `RepoView.forcePushDanger`, `pushForce` | 继续使用 `--force-with-lease` |
-| 同步 | 远程强制覆盖本地 | 缺失 | 未发现 | P0: fetch 后 reset hard 到上游,必须危险确认 |
+| 同步 | 远程强制覆盖本地 | 已有 | `forceResetToUpstream`, `force_reset_to_upstream_sync` | 支持当前分支上游,已走危险确认 |
 | 同步 | 设置上游推送 | 部分 | `GitService.push_with_upstream`, `set_upstream` | 暴露到 UI 并测试 |
 | 分支 | 列出本地/远程分支 | 已有 | `requestBranches`, `BranchView` | 保持 ahead/behind 显示 |
 | 分支 | 创建并切换 | 已有 | `createBranch(name, true)` | 增加“不切换创建”选项可选 |
@@ -126,10 +126,13 @@
 
 ## 当前优先级
 
-P0:
+已完成 P0:
 
 - 测试基座。
 - 远程强制覆盖本地。
+
+剩余 P0:
+
 - 同步操作 remote/branch 选择。
 - 强制删除分支 UI。
 

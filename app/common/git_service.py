@@ -897,6 +897,82 @@ class GitService(QObject):
 
         self._run_git_async(['fetch', remote], on_finished)
 
+    def _resolve_current_upstream(self) -> tuple[bool, str, str, str]:
+        """解析当前分支上游 -> (ok, remote, upstream, msg)。"""
+        has_head, _, _ = self._run_git_sync(['rev-parse', '--verify', 'HEAD'])
+        if not has_head:
+            return False, "", "", "当前仓库还没有提交,无法用远程覆盖本地"
+
+        branch = self.get_current_branch()
+        if not branch or branch == "HEAD":
+            return False, "", "", "当前处于分离头指针状态,无法确定要覆盖的本地分支"
+
+        ok, remote, _ = self._run_git_sync(['config', '--get', f'branch.{branch}.remote'])
+        remote = remote.strip()
+        if not ok or not remote:
+            return False, "", "", "当前分支未设置上游,请先设置跟踪分支"
+        if remote not in self.get_remotes():
+            return False, "", "", f"上游远程 '{remote}' 不存在,请检查远程配置"
+
+        ok, upstream, _ = self._run_git_sync(
+            ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}'])
+        upstream = upstream.strip()
+        if not ok or not upstream:
+            return False, "", "", "当前分支未设置有效上游,请先设置跟踪分支"
+        return True, remote, upstream, ""
+
+    def force_reset_to_upstream_sync(self) -> tuple[bool, str]:
+        """用当前分支的上游覆盖本地分支。
+
+        等价流程:解析当前分支上游 -> fetch 对应远程 -> reset --hard @{u}。
+        该操作会丢弃已跟踪文件的本地改动,并让本地分支回到上游位置。
+        """
+        ok, remote, upstream, msg = self._resolve_current_upstream()
+        if not ok:
+            return False, msg
+
+        success, _, stderr = self._run_git_sync(['fetch', remote], timeout=60)
+        if not success:
+            return False, stderr or "获取远程更新失败"
+
+        success, _, stderr = self._run_git_sync(['rev-parse', '--verify', '@{u}'])
+        if not success:
+            return False, stderr or f"上游分支不可用: {upstream}"
+
+        success, _, stderr = self._run_git_sync(['reset', '--hard', '@{u}'])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已用上游 {upstream} 覆盖本地"
+        return False, stderr or "远程覆盖本地失败"
+
+    def force_reset_to_upstream(self, callback: Callable[[bool, str], None] = None):
+        """异步执行远程覆盖本地。"""
+        from PySide6.QtCore import QThread
+
+        class ForceResetWorker(QThread):
+            finished = Signal(bool, str)
+
+            def __init__(self, service):
+                super().__init__()
+                self.service = service
+
+            def run(self):
+                success, msg = self.service.force_reset_to_upstream_sync()
+                self.finished.emit(success, msg)
+
+        worker = ForceResetWorker(self)
+
+        def on_worker_finished(success: bool, msg: str):
+            self.operationFinished.emit(success, msg)
+            if callback:
+                callback(success, msg)
+
+        self.operationStarted.emit("正在用远程覆盖本地...")
+        worker.finished.connect(on_worker_finished)
+        worker.finished.connect(lambda *_: self._cleanup_worker(worker))
+        self._workers.append(worker)
+        worker.start()
+
     # ==================== 分支操作 ====================
 
     @staticmethod

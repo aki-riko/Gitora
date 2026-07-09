@@ -232,19 +232,21 @@ Item {
             }
             Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
             Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
-            // 拉取:主按钮 pull;下拉出「拉取(变基)」「抓取(fetch)」
+            // 拉取:主按钮 pull;下拉出「拉取(变基)」「抓取(fetch)」「远程覆盖本地」
             Fluent.Button {
                 text: "拉取"
                 icon: Fluent.Enums.icon.arrow_download
                 feature: Fluent.Enums.button.feature_split
                 menuItems: [
                     { "text": "拉取(变基)", "icon": Fluent.Enums.icon.arrow_download },
-                    { "text": "抓取(fetch)", "icon": Fluent.Enums.icon.arrow_sync }
+                    { "text": "抓取(fetch)", "icon": Fluent.Enums.icon.arrow_sync },
+                    { "text": "远程覆盖本地", "icon": Fluent.Enums.icon.warning }
                 ]
                 onClicked: GitBridge.pull()
                 onMenuItemClicked: function(index, text) {
                     if (index === 0) GitBridge.pullRebase()
                     else if (index === 1) GitBridge.fetch()
+                    else if (index === 2) forceResetToUpstreamDanger.start()
                 }
             }
             // 推送:主按钮 push;下拉出「强制推送」(破坏性,走危险确认)
@@ -580,6 +582,18 @@ Item {
         countdown: 3
         // 异步执行,结果经全局 operationFinished 统一弹 toast(与普通 push 一致)
         onConfirmed: GitBridge.pushForce()
+    }
+
+    // 危险操作:远程覆盖本地二次确认(会丢弃已跟踪文件的本地改动和本地未推送提交)
+    DangerDialog {
+        id: forceResetToUpstreamDanger
+        title: "确认远程覆盖本地"
+        content: "远程覆盖本地会先抓取当前分支的上游,再将本地分支 hard reset 到上游。\n"
+            + "已跟踪文件的本地未提交改动和本地未推送提交都会被丢弃。\n"
+            + "此操作不可恢复,请确认远程版本就是要保留的版本。"
+        countdown: 3
+        // 异步执行,结果经全局 operationFinished 统一弹 toast(与普通 pull/push 一致)
+        onConfirmed: GitBridge.forceResetToUpstream()
     }
 
     // 危险操作:修补「已推送」的提交(会与远端历史分叉,之后需强制推送才能同步)
