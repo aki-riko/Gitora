@@ -761,6 +761,11 @@ class GitBridge(QObject):
         ok, msg = self._svc.stash_show(stash_id)
         return [ok, msg]
 
+    @Slot(str, str, result="QVariantList")
+    def stashBranch(self, branch: str, stash_id: str) -> list:
+        ok, msg = self._svc.stash_branch(branch, stash_id)
+        return [ok, msg]
+
     # ==================== Tag ====================
     @Slot()
     def requestTags(self):

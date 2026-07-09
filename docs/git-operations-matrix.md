@@ -69,7 +69,7 @@
 | Stash | drop | 已有 | `stashDrop`, `dropStashDanger` | 已走危险确认 |
 | Stash | clear | 已有 | `stashClear`, `clearStashDanger` | 已走危险确认 |
 | Stash | show 内容 | 已有 | `stashShow`, `stashShowDialog` | 已显示 diffstat + patch |
-| Stash | 从 stash 建分支 | 缺失 | 未发现 | P2 |
+| Stash | 从 stash 建分支 | 已有 | `stashBranch`, `stash_branch`, `StashView` | 已支持从指定 stash 创建并切换分支 |
 | Tag | 列出 tag | 已有 | `requestTags` | 保持异步 |
 | Tag | 创建 tag | 已有 | `createTag(name, message, annotated)` | 已显式区分轻量/附注 tag |
 | Tag | checkout tag | 已有 | `checkoutTag` | 分离 HEAD 提示复核 |
@@ -151,7 +151,8 @@
 
 - worktree、submodule、LFS、bisect。
 - 更高级的 diff 和比较体验。
+- 从 stash 建分支。
 
 剩余 P2:
 
-- 从 stash 建分支。
+- 无。

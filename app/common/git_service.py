@@ -1193,6 +1193,12 @@ class GitService(QObject):
         # ref 名不能含空格/控制字符/git 特殊序列
         if any(c in name for c in (' ', '\t', '\n', '\r', '~', '^', ':', '?', '*', '[', '\\')):
             return True
+        if (
+            '..' in name or '@{' in name or '//' in name
+            or name.startswith(('/', '.')) or name.endswith(('/', '.'))
+            or name.endswith('.lock')
+        ):
+            return True
         return False
 
     def checkout_branch(self, branch: str) -> tuple[bool, str]:
@@ -1713,6 +1719,19 @@ class GitService(QObject):
                 stdout = stdout[:max_size] + "\n\n[内容过大,已截断]"
             return True, stdout or "该 stash 没有可显示的内容"
         return False, stderr or "查看 stash 失败"
+
+    def stash_branch(self, branch: str, stash_id: str = "stash@{0}") -> tuple[bool, str]:
+        """从 stash 创建并切换到新分支。"""
+        branch = (branch or "").strip()
+        if self._bad_ref(branch):
+            return False, "非法的分支名"
+        if self._bad_stash_id(stash_id):
+            return False, "非法的 stash 引用"
+        success, stdout, stderr = self._run_git_sync(['stash', 'branch', branch, stash_id])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已从 {stash_id} 创建分支 {branch}"
+        return False, stderr or "从 stash 创建分支失败"
 
     # ==================== 文件历史 ====================
 

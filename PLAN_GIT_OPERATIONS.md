@@ -175,6 +175,17 @@
   - 工作区修改、新增文件、提交 diff、两提交文件 diff 均来自真实 Git 输出。
   - QML selftest 通过,三处 diff 入口均能加载。
 
+### Step 10: Stash 建分支补齐
+
+- 目标:
+  - 每条 stash 提供“建分支”入口。
+  - 后端封装 `git stash branch <branch> <stash>`。
+  - 分支名和 stash 引用继续走安全校验。
+- 验证:
+  - 真实仓库中从 stash 创建并切换到新分支。
+  - stash 内容恢复到新分支工作区。
+  - 成功后 stash 列表按 Git 行为移除对应记录。
+
 ## 5. 完成定义
 
 全部完成必须同时满足:
@@ -200,3 +211,4 @@
 | Step 7: Stash/Tag 安全增强 | 已完成 | `unittest` stash 选项/show 和 tag 类型/远程删除场景, QML selftest |
 | Step 8: 高级 Git 页面 | 已完成 | `unittest` worktree/submodule/LFS/bisect 真实仓库场景, QML selftest |
 | Step 9: Diff 和比较体验增强 | 已完成 | `unittest` 真实 diff 解析/过滤/两提交比较场景, QML selftest |
+| Step 10: Stash 建分支补齐 | 已完成 | `unittest` 真实 stash branch 场景, QML selftest |

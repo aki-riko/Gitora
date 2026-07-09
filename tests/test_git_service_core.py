@@ -412,6 +412,27 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertIn("staged", cached_diff)
         self.assertEqual(run_git(repo, "diff", "--", "tracked.txt").stdout, "")
 
+    def test_stash_branch_creates_branch_from_real_stash(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+
+        write_file(repo, "tracked.txt", "stashed branch\n")
+        ok, msg = service.stash_save("branch me")
+        self.assertTrue(ok, msg)
+        stash_id = service.stash_list()[0][0]
+
+        ok, msg = service.stash_branch("from-stash", stash_id)
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(), "from-stash")
+        self.assertEqual((repo / "tracked.txt").read_text(encoding="utf-8"), "stashed branch\n")
+        self.assertEqual(service.stash_list(), [])
+
+        ok, msg = service.stash_branch("../bad", stash_id)
+        self.assertFalse(ok)
+        self.assertIn("非法", msg)
+
     def test_tag_types_and_remote_delete_use_real_repo(self) -> None:
         remote = init_bare_repo(self.root / "remote.git")
         repo = init_repo(self.root / "repo")

@@ -9,6 +9,7 @@ Item {
     id: root
     property string _stashRequestRepoPath: ""
     property string _pendingDrop: ""
+    property string _pendingBranchStash: ""
     property string _showTitle: ""
     ListModel { id: stashModel }
 
@@ -30,6 +31,13 @@ Item {
         } else {
             Fluent.NotificationManager.toast.error(root, "失败", res[1] || "操作失败")
         }
+    }
+
+    function _openBranchDialog(stashId) {
+        root._pendingBranchStash = stashId
+        var match = /stash@\{(\d+)\}/.exec(stashId)
+        stashBranchNameInput.text = match ? ("stash-" + match[1]) : ""
+        stashBranchDialog.open()
     }
 
     Connections {
@@ -166,6 +174,11 @@ Item {
                         Fluent.Button { text: "应用"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.stashApply(model.id)) }
                         Fluent.Button { text: "恢复"; onClicked: root._op(GitBridge.stashPop(model.id)) }
                         Fluent.Button {
+                            text: "建分支"
+                            style: Fluent.Enums.button.style_transparent
+                            onClicked: root._openBranchDialog(model.id)
+                        }
+                        Fluent.Button {
                             text: "删除"
                             style: Fluent.Enums.button.style_transparent
                             onClicked: {
@@ -176,6 +189,42 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    Fluent.MessageBox {
+        id: stashBranchDialog
+        title: "从 Stash 建分支"
+        confirmText: "创建"
+        cancelText: "取消"
+        ColumnLayout {
+            width: 420
+            spacing: Fluent.Enums.spacing.m
+            Text {
+                Layout.fillWidth: true
+                text: root._pendingBranchStash
+                color: Fluent.Enums.textColor.tertiary
+                font.family: "Consolas, monospace"
+                font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
+            }
+            Text {
+                Layout.fillWidth: true
+                text: "成功后会切换到新分支,并按 Git 行为移除这条 stash 记录。"
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.caption
+                wrapMode: Text.WordWrap
+            }
+            Fluent.LineEdit {
+                id: stashBranchNameInput
+                Layout.fillWidth: true
+                placeholderText: "新分支名"
+            }
+        }
+        onAccepted: {
+            root._op(GitBridge.stashBranch(stashBranchNameInput.text, root._pendingBranchStash))
+            root._pendingBranchStash = ""
         }
     }
 
