@@ -757,6 +757,8 @@ class GitService(QObject):
             callback: 完成回调
         """
         self.operationStarted.emit("正在推送...")
+        remote = (remote or "").strip()
+        branch = (branch or "").strip()
 
         # 边界检查:远程不存在 / 当前无分支(空仓库/分离头)
         remotes = self.get_remotes()
@@ -770,8 +772,14 @@ class GitService(QObject):
         # 如果没有指定分支，获取当前分支
         if not branch:
             branch = self.get_current_branch()
-        if not branch:
+        if not branch or branch == "HEAD":
             msg = "当前没有可推送的分支(空仓库或处于分离头指针状态,请先提交)"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
+        if self._bad_ref(branch):
+            msg = "非法的分支名"
             self.operationFinished.emit(False, msg)
             if callback:
                 callback(False, msg)
@@ -842,11 +850,19 @@ class GitService(QObject):
             callback: 完成回调
         """
         self.operationStarted.emit("正在拉取...")
+        remote = (remote or "").strip()
+        branch = (branch or "").strip()
 
         # 边界检查:远程不存在
         remotes = self.get_remotes()
         if remote not in remotes:
             msg = f"未配置远程 '{remote}',请先添加远程仓库" if not remotes else f"远程 '{remote}' 不存在,可用: {', '.join(remotes)}"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
+        if branch and self._bad_ref(branch):
+            msg = "非法的分支名"
             self.operationFinished.emit(False, msg)
             if callback:
                 callback(False, msg)
@@ -879,6 +895,7 @@ class GitService(QObject):
     def fetch(self, remote: str = "origin", callback: Callable[[bool, str], None] = None):
         """获取远程更新（异步）"""
         self.operationStarted.emit("正在获取远程更新...")
+        remote = (remote or "").strip()
 
         if remote not in self.get_remotes():
             msg = f"未配置远程 '{remote}',请先添加远程仓库"

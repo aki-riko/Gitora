@@ -332,6 +332,14 @@ class GitBridge(QObject):
     def pushForce(self):
         self._svc.push(force=True)
 
+    @Slot(str, str)
+    def pushTo(self, remote: str, branch: str):
+        self._svc.push(remote=remote, branch=branch)
+
+    @Slot(str, str)
+    def pushForceTo(self, remote: str, branch: str):
+        self._svc.push(remote=remote, branch=branch, force=True)
+
     @Slot()
     def pull(self):
         self._svc.pull()
@@ -340,9 +348,21 @@ class GitBridge(QObject):
     def pullRebase(self):
         self._svc.pull(rebase=True)
 
+    @Slot(str, str)
+    def pullFrom(self, remote: str, branch: str):
+        self._svc.pull(remote=remote, branch=branch)
+
+    @Slot(str, str)
+    def pullRebaseFrom(self, remote: str, branch: str):
+        self._svc.pull(remote=remote, branch=branch, rebase=True)
+
     @Slot()
     def fetch(self):
         self._svc.fetch()
+
+    @Slot(str)
+    def fetchRemote(self, remote: str):
+        self._svc.fetch(remote=remote)
 
     @Slot()
     def forceResetToUpstream(self):

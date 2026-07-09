@@ -81,6 +81,20 @@ Item {
         }
     }
 
+    function _defaultRemoteName() {
+        var remotes = GitBridge ? GitBridge.getRemoteInfo() : []
+        if (!remotes || remotes.length === 0) return "origin"
+        for (var i = 0; i < remotes.length; i++) {
+            if (remotes[i].name === "origin") return "origin"
+        }
+        return remotes[0].name || "origin"
+    }
+
+    function _defaultBranchName() {
+        var branch = GitBridge ? GitBridge.getCurrentBranch() : ""
+        return branch === "HEAD" ? "" : branch
+    }
+
     // diff 纯文本 -> 按行着色的 HTML(+绿/-红/@@蓝/文件头灰)
     function _diffToHtml(raw) {
         if (!raw) return ""
@@ -232,7 +246,7 @@ Item {
             }
             Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
             Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
-            // 拉取:主按钮 pull;下拉出「拉取(变基)」「抓取(fetch)」「远程覆盖本地」
+            // 拉取:主按钮 pull;下拉出变基/抓取/指定同步/远程覆盖本地
             Fluent.Button {
                 text: "拉取"
                 icon: Fluent.Enums.icon.arrow_download
@@ -240,26 +254,39 @@ Item {
                 menuItems: [
                     { "text": "拉取(变基)", "icon": Fluent.Enums.icon.arrow_download },
                     { "text": "抓取(fetch)", "icon": Fluent.Enums.icon.arrow_sync },
+                    { "text": "指定拉取", "icon": Fluent.Enums.icon.branch },
+                    { "text": "指定变基拉取", "icon": Fluent.Enums.icon.branch },
+                    { "text": "指定抓取远程", "icon": Fluent.Enums.icon.arrow_sync },
                     { "text": "远程覆盖本地", "icon": Fluent.Enums.icon.warning }
                 ]
                 onClicked: GitBridge.pull()
                 onMenuItemClicked: function(index, text) {
                     if (index === 0) GitBridge.pullRebase()
                     else if (index === 1) GitBridge.fetch()
-                    else if (index === 2) forceResetToUpstreamDanger.start()
+                    else if (index === 2) syncDialog.openFor("pull")
+                    else if (index === 3) syncDialog.openFor("pullRebase")
+                    else if (index === 4) syncDialog.openFor("fetch")
+                    else if (index === 5) forceResetToUpstreamDanger.start()
                 }
             }
-            // 推送:主按钮 push;下拉出「强制推送」(破坏性,走危险确认)
+            // 推送:主按钮 push;下拉出指定推送和强制推送(破坏性,走危险确认)
             Fluent.Button {
                 text: "推送"
                 icon: Fluent.Enums.icon.arrow_upload
                 feature: Fluent.Enums.button.feature_split
                 menuItems: [
-                    { "text": "强制推送", "icon": Fluent.Enums.icon.warning }
+                    { "text": "指定推送", "icon": Fluent.Enums.icon.branch },
+                    { "text": "强制推送", "icon": Fluent.Enums.icon.warning },
+                    { "text": "指定强制推送", "icon": Fluent.Enums.icon.warning }
                 ]
                 onClicked: GitBridge.push()
                 onMenuItemClicked: function(index, text) {
-                    if (index === 0) forcePushDanger.start()
+                    if (index === 0) syncDialog.openFor("push")
+                    else if (index === 1) {
+                        forcePushDanger._remote = ""
+                        forcePushDanger._branch = ""
+                        forcePushDanger.start()
+                    } else if (index === 2) syncDialog.openFor("pushForce")
                 }
             }
         }
@@ -558,6 +585,69 @@ Item {
     // 文件历史
     FileHistoryDialog { id: fileHistoryDialog }
 
+    // 指定远程/分支执行同步操作
+    Fluent.MessageBox {
+        id: syncDialog
+        property string _mode: "pull"
+        title: {
+            if (_mode === "pull") return "指定拉取"
+            if (_mode === "pullRebase") return "指定变基拉取"
+            if (_mode === "fetch") return "指定抓取远程"
+            if (_mode === "push") return "指定推送"
+            return "指定强制推送"
+        }
+        confirmText: _mode === "pushForce" ? "继续" : "执行"
+        cancelText: "取消"
+
+        function openFor(mode) {
+            _mode = mode
+            syncRemoteInput.text = root._defaultRemoteName()
+            syncBranchInput.text = root._defaultBranchName()
+            open()
+        }
+
+        function validate() {
+            var remote = syncRemoteInput.text.trim()
+            var branch = syncBranchInput.text.trim()
+            if (remote.length === 0) return false
+            return _mode === "fetch" || branch.length > 0
+        }
+
+        onAccepted: {
+            var remote = syncRemoteInput.text.trim()
+            var branch = syncBranchInput.text.trim()
+            if (_mode === "fetch") {
+                GitBridge.fetchRemote(remote)
+            } else if (_mode === "pull") {
+                GitBridge.pullFrom(remote, branch)
+            } else if (_mode === "pullRebase") {
+                GitBridge.pullRebaseFrom(remote, branch)
+            } else if (_mode === "push") {
+                GitBridge.pushTo(remote, branch)
+            } else if (_mode === "pushForce") {
+                forcePushDanger._remote = remote
+                forcePushDanger._branch = branch
+                forcePushDanger.start()
+            }
+        }
+
+        ColumnLayout {
+            width: 360
+            spacing: Fluent.Enums.spacing.m
+            Fluent.LineEdit {
+                id: syncRemoteInput
+                Layout.fillWidth: true
+                placeholderText: "远程名"
+            }
+            Fluent.LineEdit {
+                id: syncBranchInput
+                Layout.fillWidth: true
+                visible: syncDialog._mode !== "fetch"
+                placeholderText: "分支名"
+            }
+        }
+    }
+
     // 危险操作:丢弃工作区改动二次确认(不可恢复)
     DangerDialog {
         id: discardDanger
@@ -577,11 +667,19 @@ Item {
     DangerDialog {
         id: forcePushDanger
         title: "确认强制推送"
+        property string _remote: ""
+        property string _branch: ""
         content: "⚠️ 强制推送(--force-with-lease)会用本地分支覆盖远端。\n"
             + "若远端有你本地没有的提交,可能造成丢失。\n此操作不可恢复,请确认远端历史可被覆盖。"
+            + (_remote !== "" ? "\n目标: " + _remote + "/" + _branch : "")
         countdown: 3
         // 异步执行,结果经全局 operationFinished 统一弹 toast(与普通 push 一致)
-        onConfirmed: GitBridge.pushForce()
+        onConfirmed: {
+            if (_remote !== "") GitBridge.pushForceTo(_remote, _branch)
+            else GitBridge.pushForce()
+            _remote = ""
+            _branch = ""
+        }
     }
 
     // 危险操作:远程覆盖本地二次确认(会丢弃已跟踪文件的本地改动和本地未推送提交)

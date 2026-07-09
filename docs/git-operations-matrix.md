@@ -29,11 +29,11 @@
 | 提交 | 普通提交 | 已有 | `RepoView.commit`, `GitBridge.commit` | 测试空消息/无变更提示 |
 | 提交 | amend | 已有 | `RepoView.amendDanger`, `GitBridge.amendCommit` | 已推送 HEAD 告警继续保留 |
 | 提交 | 一键提交推送 | 已有 | `quickCommitPush` | 补失败阶段的分步错误测试 |
-| 同步 | fetch | 已有 | `RepoView`, `BranchView`, `GitBridge.fetch` | 支持选择 remote |
-| 同步 | pull | 已有 | `GitBridge.pull` | 支持选择 remote/branch |
-| 同步 | pull --rebase | 已有 | `GitBridge.pullRebase` | 支持选择 remote/branch |
-| 同步 | push | 已有 | `GitBridge.push` | 支持选择 remote/branch |
-| 同步 | force push | 已有 | `RepoView.forcePushDanger`, `pushForce` | 继续使用 `--force-with-lease` |
+| 同步 | fetch | 已有 | `fetchRemote(remote)`, `syncDialog` | 已支持选择 remote |
+| 同步 | pull | 已有 | `pullFrom(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
+| 同步 | pull --rebase | 已有 | `pullRebaseFrom(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
+| 同步 | push | 已有 | `pushTo(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
+| 同步 | force push | 已有 | `pushForceTo(remote, branch)`, `forcePushDanger` | 继续使用 `--force-with-lease`,已支持选择 remote/branch |
 | 同步 | 远程强制覆盖本地 | 已有 | `forceResetToUpstream`, `force_reset_to_upstream_sync` | 支持当前分支上游,已走危险确认 |
 | 同步 | 设置上游推送 | 部分 | `GitService.push_with_upstream`, `set_upstream` | 暴露到 UI 并测试 |
 | 分支 | 列出本地/远程分支 | 已有 | `requestBranches`, `BranchView` | 保持 ahead/behind 显示 |
@@ -134,7 +134,7 @@
 
 剩余 P0:
 
-- 同步操作 remote/branch 选择。
+- 无。
 
 P1:
 

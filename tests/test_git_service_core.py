@@ -5,6 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
+
 from app.common.git_service import FileStatus, GitService
 
 from git_test_utils import (
@@ -29,6 +31,24 @@ class GitServiceCoreTest(unittest.TestCase):
         service = GitService()
         self.assertTrue(service.set_repo_path(str(repo)))
         return service
+
+    def wait_operation(self, service: GitService, starter, timeout_ms: int = 10000) -> tuple[bool, str]:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        loop = QEventLoop()
+        result: dict[str, object] = {}
+
+        def on_finished(ok: bool, msg: str) -> None:
+            result["ok"] = ok
+            result["msg"] = msg
+            loop.quit()
+
+        service.operationFinished.connect(on_finished)
+        QTimer.singleShot(timeout_ms, loop.quit)
+        starter()
+        loop.exec()
+        service.operationFinished.disconnect(on_finished)
+        self.assertIn("ok", result, "Git operation did not finish before timeout")
+        return bool(result["ok"]), str(result["msg"])
 
     def test_stage_commit_and_hard_reset_use_real_repo(self) -> None:
         repo = init_repo(self.root / "repo")
@@ -115,6 +135,43 @@ class GitServiceCoreTest(unittest.TestCase):
         ok, msg = service.force_reset_to_upstream_sync()
         self.assertFalse(ok)
         self.assertIn("上游", msg)
+
+    def test_fetch_pull_and_push_accept_explicit_remote_and_branch(self) -> None:
+        remote = init_bare_repo(self.root / "remote.git")
+        seed = init_repo(self.root / "seed")
+        write_file(seed, "tracked.txt", "base\n")
+        commit_all(seed, "base")
+        run_git(seed, "remote", "add", "upstream", str(remote))
+        run_git(seed, "push", "-u", "upstream", "master")
+
+        clone = clone_repo(remote, self.root / "clone")
+        run_git(clone, "remote", "rename", "origin", "upstream")
+        service = self.service_for(clone)
+
+        write_file(seed, "tracked.txt", "remote update\n")
+        commit_all(seed, "remote update")
+        run_git(seed, "push", "upstream", "master")
+
+        ok, msg = self.wait_operation(service, lambda: service.fetch("upstream"))
+        self.assertTrue(ok, msg)
+        fetched = run_git(clone, "rev-parse", "refs/remotes/upstream/master").stdout.strip()
+        self.assertEqual(
+            fetched,
+            run_git(seed, "rev-parse", "HEAD").stdout.strip(),
+        )
+
+        ok, msg = self.wait_operation(service, lambda: service.pull("upstream", "master"))
+        self.assertTrue(ok, msg)
+        self.assertEqual((clone / "tracked.txt").read_text(encoding="utf-8"), "remote update\n")
+
+        ok, msg = service.create_branch("feature", checkout=True)
+        self.assertTrue(ok, msg)
+        write_file(clone, "feature.txt", "feature\n")
+        commit_all(clone, "feature")
+        ok, msg = self.wait_operation(service, lambda: service.push("upstream", "feature"))
+        self.assertTrue(ok, msg)
+        pushed = run_git(remote, "rev-parse", "refs/heads/feature").stdout.strip()
+        self.assertEqual(pushed, run_git(clone, "rev-parse", "feature").stdout.strip())
 
     def test_unmerged_branch_requires_force_delete(self) -> None:
         repo = init_repo(self.root / "repo")

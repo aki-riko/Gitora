@@ -178,3 +178,4 @@
 | Step 1: 测试基座 | 已完成 | `.venv/Scripts/python.exe -m unittest discover -s tests -v` |
 | Step 2: 远程覆盖本地 | 已完成 | `unittest` 真实 bare remote 场景, QML selftest |
 | Step 3: 强制删除分支 UI | 已完成 | `unittest` 未合并分支场景, QML selftest |
+| Step 4: 同步 remote/branch 选择 | 已完成 | `unittest` 显式 remote/branch 场景, QML selftest |
