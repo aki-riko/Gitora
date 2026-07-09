@@ -190,7 +190,7 @@ Item {
                     for (var i = 0; i < pathList.length; i++)
                         items.push({ "text": pathList[i], "icon": Fluent.Enums.icon.folder })
                     if (items.length === 0) {
-                        var scannerActive = (typeof RepoScanner !== "undefined") && RepoScanner.scanning
+                        var scannerActive = (typeof RepoScanner !== "undefined") && RepoScanner !== null && RepoScanner.scanning
                         items.push({ "text": scannerActive ? "正在扫描磁盘..." : "暂无最近仓库", "icon": Fluent.Enums.icon.info })
                     }
                     return items
@@ -199,7 +199,7 @@ Item {
                     var seen = ({})
                     var merged = []
                     var recent = GitBridge ? GitBridge.getRecentRepos() : []
-                    var scanned = (typeof RepoScanner !== "undefined") ? RepoScanner.getResults() : []
+                    var scanned = (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner.getResults() : []
                     var all = recent.concat(scanned)
                     for (var i = 0; i < all.length; i++) {
                         var p = all[i]
@@ -216,7 +216,7 @@ Item {
                 }
                 // 扫描有新结果时刷新下拉
                 Connections {
-                    target: typeof RepoScanner !== "undefined" ? RepoScanner : null
+                    target: (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner : null
                     function onScanFinished(n) { openButton.rebuildList() }
                 }
             }
@@ -225,9 +225,8 @@ Item {
                 icon: Fluent.Enums.icon.history
                 onClicked: recentReposDialog.openPanel()
             }
-            Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
             Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
-            // 拉取:主按钮 pull;下拉出变基/抓取/指定同步/远程覆盖本地
+            // 拉取:主按钮 pull;下拉出变基/抓取/克隆/指定同步/远程覆盖本地
             Fluent.Button {
                 text: "拉取"
                 icon: Fluent.Enums.icon.arrow_download
@@ -235,6 +234,7 @@ Item {
                 menuItems: [
                     { "text": "拉取(变基)", "icon": Fluent.Enums.icon.arrow_download },
                     { "text": "抓取(fetch)", "icon": Fluent.Enums.icon.arrow_sync },
+                    { "text": "克隆仓库", "icon": Fluent.Enums.icon.cloud },
                     { "text": "指定拉取", "icon": Fluent.Enums.icon.branch },
                     { "text": "指定变基拉取", "icon": Fluent.Enums.icon.branch },
                     { "text": "指定抓取远程", "icon": Fluent.Enums.icon.arrow_sync },
@@ -244,10 +244,11 @@ Item {
                 onMenuItemClicked: function(index, text) {
                     if (index === 0) GitBridge.pullRebase()
                     else if (index === 1) GitBridge.fetch()
-                    else if (index === 2) syncDialog.openFor("pull")
-                    else if (index === 3) syncDialog.openFor("pullRebase")
-                    else if (index === 4) syncDialog.openFor("fetch")
-                    else if (index === 5) forceResetToUpstreamDanger.start()
+                    else if (index === 2) cloneDialog.open()
+                    else if (index === 3) syncDialog.openFor("pull")
+                    else if (index === 4) syncDialog.openFor("pullRebase")
+                    else if (index === 5) syncDialog.openFor("fetch")
+                    else if (index === 6) forceResetToUpstreamDanger.start()
                 }
             }
             // 推送:主按钮 push;下拉出指定推送和强制推送(破坏性,走危险确认)
