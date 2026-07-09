@@ -17,7 +17,7 @@
 | 仓库 | 打开仓库 | 已有 | `RepoView.openButton`, `GitBridge.openRepoAsync` | 保持最近仓库和扫描结果去重 |
 | 仓库 | 克隆 | 已有 | `CloneDialog`, `GitBridge.clone`, `GitService.clone` | 增加 clone 后自动打开的失败提示复核 |
 | 仓库 | 初始化 | 已有 | `InitRepoGuide`, `GitBridge.initRepo` | 保持远程可选配置 |
-| 仓库 | 最近仓库管理 | 部分 | `getRecentRepos/removeRecentRepo/clearRecentRepos` | 需要 UI 管理入口复核 |
+| 仓库 | 最近仓库管理 | 已有 | `recentReposDialog`, `getRecentRepos/removeRecentRepo/clearRecentRepos` | 已支持打开、移除、清空最近仓库记录 |
 | 工作区 | 查看状态 | 已有 | `requestStatus`, `statusReady` | 继续保持异步和过期结果丢弃 |
 | 工作区 | 查看 diff | 已有 | `requestDiff`, `diffReady`, `DiffViewer` | 已支持统一/分栏视图、文件摘要和真实 diff 解析测试 |
 | 工作区 | 暂存文件 | 已有 | `GitBridge.stageFile` | 真实仓库回归测试 |
@@ -35,11 +35,11 @@
 | 同步 | push | 已有 | `pushTo(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
 | 同步 | force push | 已有 | `pushForceTo(remote, branch)`, `forcePushDanger` | 继续使用 `--force-with-lease`,已支持选择 remote/branch |
 | 同步 | 远程强制覆盖本地 | 已有 | `forceResetToUpstream`, `force_reset_to_upstream_sync` | 支持当前分支上游,已走危险确认 |
-| 同步 | 设置上游推送 | 部分 | `GitService.push_with_upstream`, `set_upstream` | 暴露到 UI 并测试 |
+| 同步 | 设置上游推送 | 已有 | `GitService.push`, `pushTo(remote, branch)` | 普通/指定推送均使用 `git push -u`,真实远端测试已验证上游 |
 | 分支 | 列出本地/远程分支 | 已有 | `requestBranches`, `BranchView` | 保持 ahead/behind 显示 |
 | 分支 | 创建并切换 | 已有 | `createBranch(name, true)` | 增加“不切换创建”选项可选 |
 | 分支 | 切换本地分支 | 已有 | `checkoutBranch` | 脏工作区失败提示复核 |
-| 分支 | 检出远程分支 | 部分 | `checkoutBranch(model.name)` | 明确创建本地跟踪分支流程 |
+| 分支 | 检出远程分支 | 已有 | `checkoutRemoteBranch`, `checkout_remote_branch`, `remoteCheckoutDialog` | 已明确创建本地跟踪分支流程 |
 | 分支 | 删除分支 | 已有 | `deleteBranch(name, false)` | 补强制删除入口和危险确认 |
 | 分支 | 强制删除分支 | 已有 | `deleteBranch(name, true)`, `forceDeleteBranchDanger` | 已走危险确认 |
 | 分支 | 合并分支 | 已有 | `mergeBranch` | 冲突时进入冲突页提示 |

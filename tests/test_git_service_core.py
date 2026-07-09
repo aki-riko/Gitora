@@ -207,6 +207,9 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         pushed = run_git(remote, "rev-parse", "refs/heads/feature").stdout.strip()
         self.assertEqual(pushed, run_git(clone, "rev-parse", "feature").stdout.strip())
+        upstream = run_git(
+            clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
+        self.assertEqual(upstream, "upstream/feature")
 
     def test_unmerged_branch_requires_force_delete(self) -> None:
         repo = init_repo(self.root / "repo")
@@ -258,6 +261,27 @@ class GitServiceCoreTest(unittest.TestCase):
         ok, msg = service.rename_remote("origin", "upstream")
         self.assertTrue(ok, msg)
         self.assertEqual(service.get_remotes(), ["upstream"])
+
+    def test_checkout_remote_branch_creates_tracking_local_branch(self) -> None:
+        remote = init_bare_repo(self.root / "remote.git")
+        seed = init_repo(self.root / "seed")
+        write_file(seed, "base.txt", "base\n")
+        commit_all(seed, "base")
+        run_git(seed, "checkout", "-b", "feature")
+        write_file(seed, "feature.txt", "feature\n")
+        feature_commit = commit_all(seed, "feature")
+        run_git(seed, "remote", "add", "origin", str(remote))
+        run_git(seed, "push", "-u", "origin", "master", "feature")
+
+        clone = clone_repo(remote, self.root / "clone")
+        service = self.service_for(clone)
+        ok, msg = service.checkout_remote_branch("origin/feature", "local-feature")
+        self.assertTrue(ok, msg)
+        self.assertEqual(run_git(clone, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(), "local-feature")
+        self.assertEqual(run_git(clone, "rev-parse", "HEAD").stdout.strip(), feature_commit)
+        upstream = run_git(
+            clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
+        self.assertEqual(upstream, "origin/feature")
 
     def test_rebase_continue_skip_and_abort_use_real_conflicts(self) -> None:
         repo, service = self.make_rebase_conflict_repo("rebase-continue")

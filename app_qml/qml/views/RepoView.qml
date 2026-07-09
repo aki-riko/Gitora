@@ -218,6 +218,11 @@ Item {
                     function onScanFinished(n) { openButton.rebuildList() }
                 }
             }
+            Fluent.Button {
+                text: "最近"
+                icon: Fluent.Enums.icon.history
+                onClicked: recentReposDialog.openPanel()
+            }
             Fluent.Button { text: "克隆"; icon: Fluent.Enums.icon.cloud; onClicked: cloneDialog.open() }
             Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
             // 拉取:主按钮 pull;下拉出变基/抓取/指定同步/远程覆盖本地
@@ -542,6 +547,106 @@ Item {
 
     // 文件历史
     FileHistoryDialog { id: fileHistoryDialog }
+
+    // 最近仓库管理
+    Fluent.MessageBox {
+        id: recentReposDialog
+        title: "最近仓库"
+        confirmText: "关闭"
+        cancelButtonVisible: false
+        ListModel { id: recentRepoModel }
+
+        function refresh() {
+            recentRepoModel.clear()
+            var repos = GitBridge ? GitBridge.getRecentRepos() : []
+            for (var i = 0; i < repos.length; i++)
+                recentRepoModel.append({ "path": repos[i] })
+        }
+
+        function openPanel() {
+            refresh()
+            open()
+        }
+
+        ColumnLayout {
+            width: 620
+            spacing: Fluent.Enums.spacing.m
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: recentRepoModel.count + " 个记录"
+                    color: Fluent.Enums.textColor.secondary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                }
+                Fluent.Button {
+                    text: "清空"
+                    enabled: recentRepoModel.count > 0
+                    style: Fluent.Enums.button.style_transparent
+                    onClicked: {
+                        GitBridge.clearRecentRepos()
+                        recentReposDialog.refresh()
+                        openButton.rebuildList()
+                    }
+                }
+            }
+            ListView {
+                id: recentRepoList
+                Layout.fillWidth: true
+                Layout.preferredHeight: Math.min(recentRepoModel.count * 40 + 4, 280)
+                clip: true
+                model: recentRepoModel
+                delegate: Rectangle {
+                    width: recentRepoList.width
+                    height: 40
+                    color: recentHover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
+                    radius: Fluent.Enums.radius.micro
+                    HoverHandler { id: recentHover }
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: Fluent.Enums.spacing.s
+                        anchors.rightMargin: Fluent.Enums.spacing.s
+                        spacing: Fluent.Enums.spacing.s
+                        Text {
+                            Layout.fillWidth: true
+                            text: model.path
+                            color: Fluent.Enums.textColor.primary
+                            font.family: "Consolas, monospace"
+                            font.pixelSize: Fluent.Enums.typography.caption
+                            elide: Text.ElideMiddle
+                        }
+                        Fluent.Button {
+                            text: "打开"
+                            style: Fluent.Enums.button.style_transparent
+                            onClicked: {
+                                GitBridge.openRepoAsync(model.path)
+                                recentReposDialog.reject()
+                            }
+                        }
+                        Fluent.Button {
+                            text: "移除"
+                            style: Fluent.Enums.button.style_transparent
+                            onClicked: {
+                                GitBridge.removeRecentRepo(model.path)
+                                recentReposDialog.refresh()
+                                openButton.rebuildList()
+                            }
+                        }
+                    }
+                }
+            }
+            Text {
+                Layout.fillWidth: true
+                visible: recentRepoModel.count === 0
+                text: "暂无最近仓库记录"
+                color: Fluent.Enums.textColor.tertiary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
+                horizontalAlignment: Text.AlignHCenter
+            }
+        }
+    }
 
     // 指定远程/分支执行同步操作
     Fluent.MessageBox {

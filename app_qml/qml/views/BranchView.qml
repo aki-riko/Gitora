@@ -11,6 +11,7 @@ Item {
     property string currentBranch: ""
     property string _mergeTarget: ""   // 待合并到当前分支的目标分支名
     property string _rebaseTarget: ""  // 当前分支要 rebase 到的目标分支名
+    property string _remoteCheckoutTarget: ""
     property string _branchesRequestRepoPath: ""
     ListModel { id: localModel }
     ListModel { id: remoteModel }
@@ -48,6 +49,11 @@ Item {
             if (remotes[i].name === "origin") return "origin"
         }
         return remotes[0].name || "origin"
+    }
+
+    function _localNameForRemote(remoteBranch) {
+        var idx = remoteBranch.indexOf("/")
+        return idx >= 0 ? remoteBranch.substring(idx + 1) : remoteBranch
     }
 
     Connections {
@@ -242,7 +248,11 @@ Item {
                             }
                             Fluent.Button {
                                 text: "检出"
-                                onClicked: root._op(GitBridge.checkoutBranch(model.name))
+                                onClicked: {
+                                    root._remoteCheckoutTarget = model.name
+                                    remoteCheckoutLocalInput.text = root._localNameForRemote(model.name)
+                                    remoteCheckoutDialog.open()
+                                }
                             }
                         }
                     }
@@ -326,6 +336,37 @@ Item {
             _branch = ""
             upstreamRemoteInput.text = ""
             upstreamBranchInput.text = ""
+        }
+    }
+
+    // 从远程分支创建本地跟踪分支
+    Fluent.MessageBox {
+        id: remoteCheckoutDialog
+        title: "检出远程分支"
+        confirmText: "检出"
+        cancelText: "取消"
+        function validate() { return remoteCheckoutLocalInput.text.trim().length > 0 }
+        ColumnLayout {
+            width: 360
+            spacing: Fluent.Enums.spacing.m
+            Text {
+                Layout.fillWidth: true
+                text: "远程分支: " + root._remoteCheckoutTarget
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
+            }
+            Fluent.LineEdit {
+                id: remoteCheckoutLocalInput
+                Layout.fillWidth: true
+                placeholderText: "本地分支名"
+            }
+        }
+        onAccepted: {
+            root._op(GitBridge.checkoutRemoteBranch(root._remoteCheckoutTarget, remoteCheckoutLocalInput.text))
+            root._remoteCheckoutTarget = ""
+            remoteCheckoutLocalInput.text = ""
         }
     }
 

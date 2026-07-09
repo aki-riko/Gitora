@@ -613,6 +613,11 @@ class GitBridge(QObject):
         ok, msg = self._svc.checkout_branch(branch)
         return [ok, msg]
 
+    @Slot(str, str, result="QVariantList")
+    def checkoutRemoteBranch(self, remote_branch: str, local_branch: str) -> list:
+        ok, msg = self._svc.checkout_remote_branch(remote_branch, local_branch)
+        return [ok, msg]
+
     @Slot(str, bool, result="QVariantList")
     def deleteBranch(self, branch: str, force: bool) -> list:
         ok, msg = self._svc.delete_branch(branch, force)

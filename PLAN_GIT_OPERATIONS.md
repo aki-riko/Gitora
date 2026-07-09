@@ -186,6 +186,17 @@
   - stash 内容恢复到新分支工作区。
   - 成功后 stash 列表按 Git 行为移除对应记录。
 
+### Step 11: 剩余部分入口收口
+
+- 目标:
+  - 最近仓库记录提供打开、移除、清空 UI。
+  - 远程分支检出改为创建本地跟踪分支的明确流程。
+  - 明确普通/指定推送会设置上游并用真实远端测试验证。
+- 验证:
+  - 真实仓库中 `push -u` 后 `@{u}` 指向目标远程分支。
+  - 真实仓库中远程分支检出后本地分支跟踪远程分支。
+  - QML selftest 和页面组件加载通过。
+
 ## 5. 完成定义
 
 全部完成必须同时满足:
@@ -212,3 +223,4 @@
 | Step 8: 高级 Git 页面 | 已完成 | `unittest` worktree/submodule/LFS/bisect 真实仓库场景, QML selftest |
 | Step 9: Diff 和比较体验增强 | 已完成 | `unittest` 真实 diff 解析/过滤/两提交比较场景, QML selftest |
 | Step 10: Stash 建分支补齐 | 已完成 | `unittest` 真实 stash branch 场景, QML selftest |
+| Step 11: 剩余部分入口收口 | 已完成 | `unittest` push -u/远程跟踪检出场景, QML selftest |

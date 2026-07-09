@@ -1211,6 +1211,23 @@ class GitService(QObject):
             return True, f"已切换到分支 {branch}"
         return False, stderr or "切换分支失败"
 
+    def checkout_remote_branch(self, remote_branch: str, local_branch: str = "") -> tuple[bool, str]:
+        """从远程分支创建本地跟踪分支并切换过去。"""
+        remote_branch = (remote_branch or "").strip()
+        local_branch = (local_branch or "").strip()
+        if not local_branch and "/" in remote_branch:
+            local_branch = remote_branch.split("/", 1)[1]
+        if self._bad_ref(remote_branch) or self._bad_ref(local_branch):
+            return False, "非法的分支名"
+        ok, stdout, _ = self._run_git_sync(['branch', '-r', '--list', remote_branch])
+        if not ok or not stdout.strip():
+            return False, f"远程分支不存在: {remote_branch}"
+        success, _, stderr = self._run_git_sync(['checkout', '-b', local_branch, '--track', remote_branch])
+        if success:
+            self.statusChanged.emit()
+            return True, f"已检出 {remote_branch} 为本地分支 {local_branch}"
+        return False, stderr or "检出远程分支失败"
+
     def create_branch(self, branch: str, checkout: bool = True) -> tuple[bool, str]:
         """创建分支"""
         if self._bad_ref(branch):
