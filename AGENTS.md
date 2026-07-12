@@ -21,11 +21,12 @@
 
 ## 三、版本号规范
 
-语义化版本 `vX.Y.Z`。bugfix 升 Z,功能升 Y。**版本号必须同步三处**(改一处漏两处会导致产物版本不一致):
+语义化版本 `vX.Y.Z`。bugfix 升 Z,功能升 Y。**版本号必须同步四处**(改一处漏其他位置会导致产物版本不一致):
 
 1. [app/common/setting.py](app/common/setting.py) 的 `VERSION = "vX.Y.Z"`(带 v 前缀)
 2. [build_nuitka.py](build_nuitka.py) 的 `--product-version=X.Y.Z`(不带 v)
-3. [installer.iss](installer.iss) 的 `#define MyAppVersion "X.Y.Z"`(不带 v)
+3. [build_nuitka_mac.py](build_nuitka_mac.py) 的 `--product-version=X.Y.Z`(不带 v)
+4. [installer.iss](installer.iss) 的 `#define MyAppVersion "X.Y.Z"`(不带 v)
 
 ## 四、升级 PrismQML 引擎依赖
 
@@ -77,7 +78,7 @@ macOS 的 .app/.dmg **不能在本地(Windows)构建**,必须触发 CI:
 
 ## 八、发版检查清单
 
-- [ ] 版本号三处已同步(setting.py / build_nuitka.py / installer.iss)
+- [ ] 版本号四处已同步(setting.py / build_nuitka.py / build_nuitka_mac.py / installer.iss)
 - [ ] 引擎依赖已升级并确认版本
 - [ ] `git push` main/master 到 github + origin **两个**远程
 - [ ] Windows 安装包已出并本地验证能启动
