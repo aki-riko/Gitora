@@ -498,6 +498,10 @@ class GitBridge(QObject):
     def fetch(self):
         self._svc.fetch()
 
+    @Slot()
+    def fetchAll(self):
+        self._svc.fetch_all()
+
     @Slot(str)
     def fetchRemote(self, remote: str):
         self._svc.fetch(remote=remote)

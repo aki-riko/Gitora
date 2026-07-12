@@ -1117,7 +1117,7 @@ class GitService(QObject):
         self._run_git_async(args, on_finished)
 
     def fetch(self, remote: str = "origin", callback: Callable[[bool, str], None] = None):
-        """获取远程更新（异步）"""
+        """获取指定远程更新并清理已删除的远程跟踪引用（异步）"""
         self.operationStarted.emit("正在获取远程更新...")
         remote = (remote or "").strip()
 
@@ -1136,7 +1136,28 @@ class GitService(QObject):
             if callback:
                 callback(success, msg)
 
-        self._run_git_async(['fetch', remote], on_finished)
+        self._run_git_async(['fetch', '--prune', remote], on_finished)
+
+    def fetch_all(self, callback: Callable[[bool, str], None] = None):
+        """获取全部远程更新并清理已删除的远程跟踪引用（异步）。"""
+        self.operationStarted.emit("正在获取全部远程更新...")
+        remotes = self.get_remotes()
+        if not remotes:
+            msg = "未配置远程仓库,请先添加远程仓库"
+            self.operationFinished.emit(False, msg)
+            if callback:
+                callback(False, msg)
+            return
+
+        def on_finished(success: bool, stdout: str, stderr: str):
+            if success:
+                self.statusChanged.emit()
+            msg = "全部远程更新获取成功" if success else (stderr or stdout or "获取全部远程更新失败")
+            self.operationFinished.emit(success, msg)
+            if callback:
+                callback(success, msg)
+
+        self._run_git_async(['fetch', '--all', '--prune'], on_finished)
 
     def _resolve_current_upstream(self) -> tuple[bool, str, str, str]:
         """解析当前分支上游 -> (ok, remote, upstream, msg)。"""

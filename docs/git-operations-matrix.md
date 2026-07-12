@@ -29,7 +29,7 @@
 | 提交 | 普通提交 | 已有 | `RepoView.commit`, `GitBridge.commit` | 测试空消息/无变更提示 |
 | 提交 | amend | 已有 | `RepoView.amendDanger`, `GitBridge.amendCommit` | 已推送 HEAD 告警继续保留 |
 | 提交 | 一键提交推送 | 已有 | `quickCommitPush` | 补失败阶段的分步错误测试 |
-| 同步 | fetch | 已有 | `fetchRemote(remote)`, `syncDialog` | 已支持选择 remote |
+| 同步 | fetch | 已有 | `fetchAll()`, `fetchRemote(remote)`, `BranchView`, `syncDialog` | 分支页会 fetch + prune 全部远程;仓库页支持选择 remote |
 | 同步 | pull | 已有 | `pullFrom(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
 | 同步 | pull --rebase | 已有 | `pullRebaseFrom(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
 | 同步 | push | 已有 | `pushTo(remote, branch)`, `syncDialog` | 已支持选择 remote/branch |
@@ -51,7 +51,7 @@
 | 远程 | 添加远程 | 已有 | `addRemote` | 保持 `_bad_url` 校验 |
 | 远程 | 修改远程 URL | 已有 | `setRemoteUrl` | 保持 `_bad_url` 校验 |
 | 远程 | 删除远程 | 已有 | `removeRemote` | 二次确认已存在 |
-| 远程 | prune | 已有 | `pruneRemote` | 支持选择 remote |
+| 远程 | prune | 已有 | `fetchAll`, `prune_remote(remote)` | 分支页 fetch 全部远程时自动 prune |
 | 远程 | 重命名远程 | 已有 | `renameRemote`, `rename_remote` | 只修改本地远程配置 |
 | 历史 | 分页日志 | 已有 | `requestLog` | 保持大仓库虚拟滚动 |
 | 历史 | 搜索提交 | 已有 | `requestSearch` | 测试作者/消息/hash |

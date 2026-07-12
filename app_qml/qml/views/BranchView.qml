@@ -97,8 +97,7 @@ Item {
                     font.family: Fluent.Enums.fontFamily
                 }
                 Item { Layout.fillWidth: true }
-                Fluent.Button { text: "Fetch"; icon: Fluent.Enums.icon.arrow_sync; onClicked: GitBridge.fetch() }
-                Fluent.Button { text: "Prune"; onClicked: root._op(GitBridge.pruneRemote()) }
+                Fluent.Button { text: "刷新全部远程"; icon: Fluent.Enums.icon.arrow_sync; onClicked: GitBridge.fetchAll() }
                 Fluent.Button {
                     text: "远程"
                     icon: Fluent.Enums.icon.globe
