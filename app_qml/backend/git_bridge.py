@@ -140,6 +140,7 @@ class GitBridge(QObject):
         self._svc.operationStarted.connect(self.operationStarted)
         self._svc.operationFinished.connect(self.operationFinished)
         self._svc.progressUpdated.connect(self.progressUpdated)
+        self._search_request_serial = 0
         self._tags_request_serial = 0
 
         # ---- 外部变化轮询 ----
@@ -534,8 +535,8 @@ class GitBridge(QObject):
 
         def work():
             try:
-                fast = self._svc.is_large_repo()
-                batch = [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast)]
+                fast = self._svc.is_large_repo_at(repo)
+                batch = [_commit_to_dict(c) for c in self._svc.get_log_at(repo, count, skip, fast)]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取提交历史失败: {e}")
                 batch = []
@@ -548,13 +549,22 @@ class GitBridge(QObject):
         """后台搜索提交,完成发 searchReady(repoPath, list)。"""
         import threading
         repo = self._svc.repo_path or ""
+        self._search_request_serial += 1
+        request_serial = self._search_request_serial
 
         def work():
             try:
-                results = [_commit_to_dict(c) for c in self._svc.search_commits(query, search_type, 100)]
+                results = [
+                    _commit_to_dict(c)
+                    for c in self._svc.search_commits_at(repo, query, search_type, 100)
+                ]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"搜索提交失败: {e}")
                 results = []
+            if request_serial != self._search_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
             self.searchReady.emit(repo, results)
 
         threading.Thread(target=work, daemon=True).start()

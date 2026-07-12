@@ -254,10 +254,14 @@ class GitService(QObject):
 
     def is_large_repo(self) -> bool:
         """检测是否为大仓库（超过1000个提交）"""
-        if not self._repo_path:
+        return self.is_large_repo_at(self._repo_path or "")
+
+    def is_large_repo_at(self, repo_path: str) -> bool:
+        """检测指定仓库是否为大仓库，不读取可变的当前仓库路径。"""
+        if not repo_path:
             return False
-        
-        success, stdout, _ = self._run_git_sync(['rev-list', '--count', 'HEAD'])
+
+        success, stdout, _ = self._run_git_sync_at(repo_path, ['rev-list', '--count', 'HEAD'])
         if success:
             try:
                 count = int(stdout.strip())
@@ -550,6 +554,12 @@ class GitService(QObject):
             skip: 跳过前N条记录（用于分页）
             fast_mode: 快速模式（大仓库优化）
         """
+        return self.get_log_at(self._repo_path or "", count, skip, fast_mode)
+
+    def get_log_at(
+        self, repo_path: str, count: int = 50, skip: int = 0, fast_mode: bool = False
+    ) -> list[CommitInfo]:
+        """获取指定仓库快照的提交历史。"""
         format_str = '%H|%h|%an|%ae|%ad|%s'
         cmd = [
             'log',
@@ -565,13 +575,17 @@ class GitService(QObject):
         if skip > 0:
             cmd.append(f'--skip={skip}')
 
-        success, stdout, _ = self._run_git_sync(cmd)
+        success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
 
         if not success:
             return []
 
+        return self._parse_commit_log(stdout, repo_path)
+
+    def _parse_commit_log(self, stdout: str, repo_path: str) -> list[CommitInfo]:
+        """解析统一的提交日志格式。"""
         commits = []
-        current_branch = self.get_current_branch()
+        current_branch = self.get_current_branch_at(repo_path)
 
         for line in stdout.strip().split('\n'):
             if not line:
@@ -590,69 +604,99 @@ class GitService(QObject):
                 ))
 
         return commits
+
+    def _resolve_commit_hash(self, repo_path: str, query: str) -> str:
+        """解析当前 HEAD 历史内唯一的提交对象前缀，避免十六进制引用名误命中。"""
+        if not re.fullmatch(r"[0-9a-fA-F]{4,64}", query):
+            return ""
+
+        success, stdout, _ = self._run_git_sync_at(repo_path, [
+            'rev-parse', f'--disambiguate={query.lower()}'
+        ])
+        candidates = stdout.splitlines() if success else []
+        if len(candidates) != 1:
+            return ""
+
+        commit_hash = candidates[0]
+        success, object_type, _ = self._run_git_sync_at(
+            repo_path, ['cat-file', '-t', commit_hash]
+        )
+        if not success or object_type.strip() != 'commit':
+            return ""
+
+        reachable, _, _ = self._run_git_sync_at(repo_path, [
+            'merge-base', '--is-ancestor', commit_hash, 'HEAD'
+        ])
+        return commit_hash if reachable else ""
+
+    def _search_text_commit_hashes(self, repo_path: str, query: str, count: int) -> list[str]:
+        """分别按消息和作者搜索候选提交，并去重。"""
+        hashes = []
+        for filter_arg in (f'--grep={query}', f'--author={query}'):
+            success, stdout, _ = self._run_git_sync_at(repo_path, [
+                'log', f'-{count}', '--format=%H', filter_arg,
+                '--regexp-ignore-case', '--fixed-strings'
+            ])
+            if success:
+                hashes.extend(line for line in stdout.splitlines() if line)
+
+        return list(dict.fromkeys(hashes))
+
+    def _build_commit_search_command(
+        self, repo_path: str, query: str, search_type: str, count: int
+    ) -> list[str]:
+        """构造提交搜索命令；空列表表示没有候选结果。"""
+        format_str = '%H|%h|%an|%ae|%ad|%s'
+        cmd = [
+            'log', f'-{count}', f'--format={format_str}',
+            '--date=format:%Y-%m-%d %H:%M'
+        ]
+        text_filters = {
+            'message': f'--grep={query}',
+            'author': f'--author={query}',
+        }
+        if search_type in text_filters:
+            cmd.extend([text_filters[search_type], '--regexp-ignore-case', '--fixed-strings'])
+            return cmd
+
+        resolved_hash = self._resolve_commit_hash(repo_path, query)
+        hashes = (
+            [resolved_hash]
+            if resolved_hash
+            else self._search_text_commit_hashes(repo_path, query, count)
+        )
+        if not hashes:
+            return []
+        cmd.extend(['--no-walk=sorted', *hashes])
+        return cmd
 
     def search_commits(self, query: str, search_type: str = "all", count: int = 50) -> list[CommitInfo]:
         """搜索提交记录
         
         Args:
             query: 搜索关键词
-            search_type: 搜索类型（"all"=全部, "message"=提交信息, "author"=作者）
+            search_type: 搜索类型（"all"=消息/作者/哈希, "message"=提交信息, "author"=作者）
             count: 最大返回数量
         """
-        if not query or not query.strip():
-            return self.get_log(count=count)
-        
-        format_str = '%H|%h|%an|%ae|%ad|%s'
-        cmd = [
-            'log',
-            f'-{count}',
-            f'--format={format_str}',
-            '--date=format:%Y-%m-%d %H:%M'
-        ]
-        
-        # 根据搜索类型添加过滤条件
-        if search_type == "message":
-            cmd.append(f'--grep={query}')
-            cmd.append('--regexp-ignore-case')
-        elif search_type == "author":
-            cmd.append(f'--author={query}')
-            cmd.append('--regexp-ignore-case')
-        else:
-            # 全部搜索：消息或作者（OR逻辑）
-            # 注意：Git的--grep和--author默认是AND逻辑
-            # 需要使用--all-match的反向或分别搜索
-            # 这里使用基本正则表达式实现OR
-            cmd.append(f'--grep={query}')
-            cmd.append('--regexp-ignore-case')
-            # 添加--all-match的反向：不使用--all-match时，多个--grep是OR
-            # 但--grep和--author混用是AND，所以需要特殊处理
-            # 简化方案：只搜索消息，如果需要作者也搜索，用户可以选择"author"类型
-        
-        success, stdout, _ = self._run_git_sync(cmd)
-        
+        repo_path = self._repo_path or ""
+        return self.search_commits_at(repo_path, query, search_type, count)
+
+    def search_commits_at(
+        self, repo_path: str, query: str, search_type: str = "all", count: int = 50
+    ) -> list[CommitInfo]:
+        """搜索指定仓库快照，避免异步切仓库导致多步命令串读。"""
+        query = query.strip()
+        if not query:
+            return self.get_log_at(repo_path, count=count)
+
+        cmd = self._build_commit_search_command(repo_path, query, search_type, count)
+        if not cmd:
+            return []
+        success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
         if not success:
             return []
-        
-        commits = []
-        current_branch = self.get_current_branch()
-        
-        for line in stdout.strip().split('\n'):
-            if not line:
-                continue
-            
-            parts = line.split('|', 5)
-            if len(parts) == 6:
-                commits.append(CommitInfo(
-                    hash=parts[0],
-                    short_hash=parts[1],
-                    author=parts[2],
-                    email=parts[3],
-                    date=parts[4],
-                    message=parts[5],
-                    branch=current_branch
-                ))
-        
-        return commits
+
+        return self._parse_commit_log(stdout, repo_path)
 
     def _path_in_repo(self, file_path: str) -> bool:
         """校验文件路径在仓库内(防 ../ 遍历或绝对路径越界)。"""
