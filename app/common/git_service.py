@@ -1839,16 +1839,20 @@ class GitService(QObject):
 
     def get_tags(self) -> list[tuple[str, str, str]]:
         """获取Tag列表
-        
+
         Returns:
             list of (tag_name, commit_hash, message)
         """
-        success, stdout, _ = self._run_git_sync([
+        return self.get_tags_at(self._repo_path or "")
+
+    def get_tags_at(self, repo_path: str) -> list[tuple[str, str, str]]:
+        """获取指定仓库快照路径的 Tag 列表,避免异步切仓库串读。"""
+        success, stdout, _ = self._run_git_sync_at(repo_path, [
             'tag', '-l', '--format=%(refname:short)|%(objectname:short)|%(contents:subject)'
         ])
         if not success:
             return []
-        
+
         tags = []
         for line in stdout.strip().split('\n'):
             if not line:
@@ -1859,7 +1863,7 @@ class GitService(QObject):
                 commit_hash = parts[1]
                 message = parts[2] if len(parts) == 3 else ""
                 tags.append((tag_name, commit_hash, message))
-        
+
         return tags
 
     def create_tag(

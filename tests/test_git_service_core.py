@@ -517,6 +517,19 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertEqual(run_git(repo, "tag", "--list", "v-light").stdout.strip(), "")
 
+    def test_get_tags_at_uses_captured_repository_path(self) -> None:
+        repo_a = init_repo(self.root / "repo-a")
+        repo_b = init_repo(self.root / "repo-b")
+        for repo, tag in ((repo_a, "tag-a"), (repo_b, "tag-b")):
+            write_file(repo, "tracked.txt", tag + "\n")
+            commit_all(repo, tag)
+            run_git(repo, "tag", tag)
+
+        service = self.service_for(repo_b)
+
+        self.assertEqual([item[0] for item in service.get_tags_at(str(repo_a))], ["tag-a"])
+        self.assertEqual([item[0] for item in service.get_tags()], ["tag-b"])
+
     def test_worktree_add_list_remove_use_real_repo(self) -> None:
         repo = init_repo(self.root / "repo")
         write_file(repo, "tracked.txt", "base\n")

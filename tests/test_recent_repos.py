@@ -60,10 +60,19 @@ class RecentReposTest(unittest.TestCase):
         previous_manager = recent_module.recentReposManager
         bridge = GitBridge()
         recent_module.recentReposManager = manager
+        repo_path_events: list[str] = []
+        status_events: list[bool] = []
+        bridge.repoPathChanged.connect(repo_path_events.append)
+        bridge.statusChanged.connect(lambda: status_events.append(True))
 
         try:
             self.assertTrue(bridge.setRepoPath(str(repo_a)))
             self.assertEqual(bridge.getRecentRepos(), [str(repo_a)])
+            self.assertEqual(repo_path_events, [str(repo_a)])
+            self.assertEqual(status_events, [])
+
+            repo_path_events.clear()
+            status_events.clear()
 
             result: dict[str, object] = {}
             loop = QEventLoop()
@@ -81,6 +90,8 @@ class RecentReposTest(unittest.TestCase):
 
             self.assertTrue(result.get("ok"), result)
             self.assertEqual(bridge.getRecentRepos(), [str(repo_b), str(repo_a)])
+            self.assertEqual(repo_path_events, [str(repo_b)])
+            self.assertEqual(status_events, [])
 
             bridge.removeRecentRepo(str(repo_b))
             self.assertEqual(bridge.getRecentRepos(), [str(repo_a)])

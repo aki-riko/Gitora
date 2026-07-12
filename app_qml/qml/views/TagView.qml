@@ -8,6 +8,8 @@ import "../components"
 Item {
     id: root
     property string _tagsRequestRepoPath: ""
+    property bool _tagsRequesting: false
+    property bool _reloadPending: false
     property string _pendingLocalDelete: ""
     property string _pendingRemoteDelete: ""
     property string _pendingRemoteName: ""
@@ -15,11 +17,27 @@ Item {
 
     function clearModel() {
         root._tagsRequestRepoPath = ""
+        root._tagsRequesting = false
         tagModel.clear()
     }
 
     function reload() {
-        if (!GitBridge || !GitBridge.repoPath) { clearModel(); return }
+        if (!GitBridge || !GitBridge.repoPath) {
+            clearModel()
+            root._reloadPending = false
+            return
+        }
+        // 已加载但不在前台的标签页不抢占切仓库主流程；重新显示时再刷新。
+        if (!root.visible) {
+            root._reloadPending = true
+            return
+        }
+        if (root._tagsRequesting) {
+            root._reloadPending = true
+            return
+        }
+        root._tagsRequesting = true
+        root._reloadPending = false
         root._tagsRequestRepoPath = GitBridge.repoPath
         GitBridge.requestTags()  // 异步,结果经 tagsReady 回传
     }
@@ -55,72 +73,81 @@ Item {
 
     Connections {
         target: GitBridge
-        function onStatusChanged() { root.reload() }
+        function onStatusChanged() {
+            root._reloadPending = true
+            if (root.visible) root.reload()
+        }
         function onRepoPathChanged(path) {
             root.clearModel()
-            root.reload()
+            root._reloadPending = true
+            if (root.visible) Qt.callLater(function() { root.reload() })
         }
         function onTagsReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._tagsRequestRepoPath) return
             tagModel.clear()
             for (var i = 0; i < list.length; i++) tagModel.append(list[i])
+            root._tagsRequesting = false
+            root._tagsRequestRepoPath = ""
+            if (root._reloadPending && root.visible)
+                Qt.callLater(function() { root.reload() })
         }
     }
-    Component.onCompleted: root.reload()
+    onVisibleChanged: {
+        if (visible && root._reloadPending)
+            Qt.callLater(function() { root.reload() })
+    }
+    Component.onCompleted: {
+        root._reloadPending = true
+        if (root.visible) Qt.callLater(function() { root.reload() })
+    }
 
-    Fluent.ScrollArea {
+    ColumnLayout {
         anchors.fill: parent
-        Column {
-            id: tagCol
-            width: parent ? parent.width : 0
-            spacing: Fluent.Enums.spacing.l
-            topPadding: Fluent.Enums.spacing.xl
-            bottomPadding: Fluent.Enums.spacing.xl
-            // 内容最大宽度受限,超宽屏左右留白(用 padding 让内容靠左但不贴边/不拉满)
-            property real sidePad: Math.max(Fluent.Enums.spacing.xxl, (width - 980) / 2)
-            leftPadding: sidePad
-            rightPadding: sidePad
-            readonly property real cw: width - sidePad * 2
+        anchors.margins: Fluent.Enums.spacing.xl
+        spacing: Fluent.Enums.spacing.l
 
-            RowLayout {
-                width: parent.cw
-                Text {
-                    text: "标签 (Tag)"
-                    font.pixelSize: Fluent.Enums.typography.displayLarge
-                    font.bold: true
-                    color: Fluent.Enums.textColor.primary
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Item { Layout.fillWidth: true }
-                Fluent.Button { text: "刷新"; icon: Fluent.Enums.icon.arrow_sync; onClicked: root.reload() }
-                Fluent.Button {
-                    text: "推送所有"
-                    enabled: tagModel.count > 0
-                    onClicked: GitBridge.pushAllTags()  // 异步,反馈经全局 operationFinished
-                }
-                Fluent.Button {
-                    text: "创建标签"
-                    style: Fluent.Enums.button.style_primary
-                    icon: Fluent.Enums.icon.add
-                    onClicked: createTagDialog.open()
-                }
-            }
-
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: 980
+            Layout.alignment: Qt.AlignHCenter
             Text {
-                width: parent.cw
-                visible: tagModel.count === 0
-                text: "暂无 Tag"
-                color: Fluent.Enums.textColor.tertiary
+                text: "标签 (Tag)"
+                font.pixelSize: Fluent.Enums.typography.displayLarge
+                font.bold: true
+                color: Fluent.Enums.textColor.primary
                 font.family: Fluent.Enums.fontFamily
-                font.pixelSize: Fluent.Enums.typography.body
-                horizontalAlignment: Text.AlignHCenter
-                topPadding: Fluent.Enums.spacing.xxl
             }
+            Item { Layout.fillWidth: true }
+            Fluent.Button { text: "刷新"; icon: Fluent.Enums.icon.arrow_sync; onClicked: root.reload() }
+            Fluent.Button {
+                text: "推送所有"
+                enabled: tagModel.count > 0
+                onClicked: GitBridge.pushAllTags()  // 异步,反馈经全局 operationFinished
+            }
+            Fluent.Button {
+                text: "创建标签"
+                style: Fluent.Enums.button.style_primary
+                icon: Fluent.Enums.icon.add
+                onClicked: createTagDialog.open()
+            }
+        }
 
-            Repeater {
+        Item {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.maximumWidth: 980
+            Layout.alignment: Qt.AlignHCenter
+
+            ListView {
+                id: tagList
+                anchors.fill: parent
+                clip: true
+                spacing: Fluent.Enums.spacing.m
+                cacheBuffer: 400
+                reuseItems: true
                 model: tagModel
                 delegate: Fluent.Card {
-                    width: tagCol.cw
+                    width: tagList.width
                     height: tagRow.implicitHeight + Fluent.Enums.spacing.l * 2
                     RowLayout {
                         id: tagRow
@@ -178,6 +205,16 @@ Item {
                         }
                     }
                 }
+            }
+
+            Text {
+                anchors.centerIn: parent
+                visible: tagModel.count === 0
+                text: root._tagsRequesting ? "正在加载 Tag..." : "暂无 Tag"
+                color: Fluent.Enums.textColor.tertiary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
+                horizontalAlignment: Text.AlignHCenter
             }
         }
     }

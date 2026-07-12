@@ -140,6 +140,7 @@ class GitBridge(QObject):
         self._svc.operationStarted.connect(self.operationStarted)
         self._svc.operationFinished.connect(self.operationFinished)
         self._svc.progressUpdated.connect(self.progressUpdated)
+        self._tags_request_serial = 0
 
         # ---- 外部变化轮询 ----
         # 定期计算仓库状态指纹,变了就 emit statusChanged,让所有视图统一刷新。
@@ -215,12 +216,11 @@ class GitBridge(QObject):
             recentReposManager.add(self._svc.repo_path or path)
             self._reset_poll_baseline()
             self.repoPathChanged.emit(self._svc.repo_path or "")
-            self.statusChanged.emit()
         return ok
 
     @Slot(str)
     def openRepoAsync(self, path: str):
-        """后台打开仓库,不阻塞主线程;完成后发 repoOpened(ok, path/err) +(成功时)statusChanged。"""
+        """后台打开仓库,不阻塞主线程;成功时由 repoPathChanged 驱动各视图刷新。"""
         import threading
 
         def work():
@@ -236,7 +236,6 @@ class GitBridge(QObject):
                 # 信号跨线程 emit 是线程安全的(排队到主线程)
                 self.repoPathChanged.emit(self._svc.repo_path or "")
                 self.repoOpened.emit(True, self._svc.repo_path or path)
-                self.statusChanged.emit()
             else:
                 self.repoOpened.emit(False, path)
 
@@ -777,12 +776,19 @@ class GitBridge(QObject):
         """后台获取标签列表,完成发 tagsReady(repoPath,list)。"""
         import threading
         repo = self._svc.repo_path or ""
+        self._tags_request_serial += 1
+        request_serial = self._tags_request_serial
 
         def work():
             try:
-                data = [{"name": n, "hash": h, "message": m} for n, h, m in self._svc.get_tags()]
+                data = [
+                    {"name": n, "hash": h, "message": m}
+                    for n, h, m in self._svc.get_tags_at(repo)
+                ]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取标签失败: {e}"); data = []
+            if request_serial != self._tags_request_serial:
+                return
             self.tagsReady.emit(repo, data)
         threading.Thread(target=work, daemon=True).start()
 
