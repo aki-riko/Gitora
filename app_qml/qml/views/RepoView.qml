@@ -17,11 +17,13 @@ Item {
     property bool _reloadPending: false
     property string _statusRequestRepoPath: ""
     property bool _changeListActive: false
+    readonly property var changeModel: GitBridge ? GitBridge.fileChangeModel : null
+    readonly property int changeCount: changeModel ? changeModel.count : 0
 
     // ==================== 数据加载 ====================
     function _resetRepoUi() {
         branchLabel.text = ""
-        changeModel.clear()
+        if (changeModel) changeModel.clear()
         root._changeListActive = false
         root.selectedPath = ""
         root.selectedStaged = false
@@ -42,7 +44,7 @@ Item {
             root._reloadPending = true
             return
         }
-        // 后台获取,结果经 statusReady/branchReady 回填,不阻塞主线程
+        // 后台获取,结果批量写入 fileChangeModel 后经 statusReady/branchReady 通知
         root._statusRequesting = true
         root._reloadPending = false
         root._statusRequestRepoPath = GitBridge.repoPath
@@ -105,17 +107,12 @@ Item {
             root._resetRepoUi()
             root.reload()
         }
-        function onStatusReady(repoPath, list) {
+        function onStatusReady(repoPath, count) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return  // 过期/切仓库,丢弃
-            changeModel.clear()
-            var stillThere = false
-            for (var i = 0; i < list.length; i++) {
-                changeModel.append(list[i])
-                // 同时匹配 path 和 staged:暂存状态变了也算"已变",清空过期 diff
-                if (list[i].path === root.selectedPath && list[i].staged === root.selectedStaged)
-                    stillThere = true
-            }
-            root._changeListActive = changeModel.count > 0
+            // 同时匹配 path 和 staged:暂存状态变了也算"已变",清空过期 diff
+            var stillThere = root.selectedPath !== ""
+                && changeModel.contains(root.selectedPath, root.selectedStaged)
+            root._changeListActive = count > 0
             // 选中的文件已不在变更列表或暂存状态已变 → 清空 diff,避免显示过期内容
             if (root.selectedPath !== "" && !stillThere) {
                 root.selectedPath = ""
@@ -144,8 +141,6 @@ Item {
     }
 
     Component.onCompleted: root.reload()
-
-    ListModel { id: changeModel }
 
     // 外部变化的刷新由后端 GitBridge 统一轮询驱动:检测到指纹变化 → 发 statusChanged,
     // 上方 Connections.onStatusChanged 已接管刷新,故此处不再需要视图自轮询 Timer。
@@ -354,7 +349,7 @@ Item {
                     RowLayout {
                         Layout.fillWidth: true
                         Text {
-                            text: "变更 (" + changeModel.count + ")"
+                            text: "变更 (" + root.changeCount + ")"
                             color: Fluent.Enums.textColor.primary
                             font.family: Fluent.Enums.fontFamily
                             font.pixelSize: Fluent.Enums.typography.bodyLarge
@@ -385,7 +380,7 @@ Item {
                         // 空状态:工作区干净
                         Fluent.EmptyState {
                             anchors.centerIn: parent
-                            visible: changeModel.count === 0
+                            visible: root.changeCount === 0
                             icon: Fluent.Enums.icon.checkmark_circle
                             title: "工作区干净"
                             description: "没有未提交的变更"
@@ -395,7 +390,7 @@ Item {
                             id: changeListLoader
                             anchors.fill: parent
                             anchors.margins: Fluent.Enums.spacing.xs
-                            active: root._changeListActive && changeModel.count > 0
+                            active: root._changeListActive && root.changeCount > 0
                             visible: active
                             sourceComponent: changeListComponent
                         }
@@ -410,7 +405,7 @@ Item {
                                 itemHeight: 40
                                 listSpacing: 2
                                 listCacheBuffer: 0
-                                reuseItems: false
+                                reuseItems: true
                                 bounceEnabled: false
                                 padding: 0
 

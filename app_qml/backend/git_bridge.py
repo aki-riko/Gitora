@@ -9,13 +9,14 @@ GitBridge - GitService 的 QML 对接壳
 """
 from typing import Optional
 
-from PySide6.QtCore import QObject, Slot, Signal, Property
+from PySide6.QtCore import QObject, Slot, Signal, Property, Qt
 
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
     WorktreeInfo, SubmoduleInfo, DiffFile,
 )
 from app.common.logger import get_logger
+from app_qml.backend.file_change_model import FileChangeListModel
 
 logger = get_logger("GitBridge")
 
@@ -111,7 +112,7 @@ class GitBridge(QObject):
     progressUpdated = Signal(int, str)
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
-    statusReady = Signal(str, "QVariantList")  # 后台状态就绪(repoPath, 变更列表)
+    statusReady = Signal(str, int)              # 后台状态就绪(repoPath, 变更数量)
     branchReady = Signal(str, str)             # 后台当前分支就绪(repoPath, 分支)
     logReady = Signal(str, int, "QVariantList")    # 后台提交分页就绪(repoPath, skip, 批次)
     searchReady = Signal(str, "QVariantList")       # 后台搜索结果就绪(repoPath, 结果)
@@ -128,6 +129,7 @@ class GitBridge(QObject):
     stashListReady = Signal(str, "QVariantList")         # (repoPath, stash 列表)
     cleanPreviewReady = Signal(str, "QVariantList")      # (repoPath, 待清理文件列表)
     reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
+    _statusFetched = Signal(str, object, str)             # 工作线程 -> GUI线程
 
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
     _POLL_INTERVAL_MS = 2000
@@ -135,6 +137,11 @@ class GitBridge(QObject):
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
         self._svc = GitService(self)
+        self._file_change_model = FileChangeListModel(self)
+        self._statusFetched.connect(
+            self._apply_status_result,
+            Qt.ConnectionType.QueuedConnection,
+        )
         # 转发底层信号
         self._svc.statusChanged.connect(self.statusChanged)
         self._svc.operationStarted.connect(self.operationStarted)
@@ -208,6 +215,10 @@ class GitBridge(QObject):
     def repoPath(self) -> str:
         return self._svc.repo_path or ""
 
+    @Property(QObject, constant=True)
+    def fileChangeModel(self) -> FileChangeListModel:
+        return self._file_change_model
+
     # ==================== 仓库 ====================
     @Slot(str, result=bool)
     def setRepoPath(self, path: str) -> bool:
@@ -259,21 +270,30 @@ class GitBridge(QObject):
         recentReposManager.clear()
 
     # ==================== 状态 ====================
+
+    @Slot(str, object, str)
+    def _apply_status_result(self, repo: str, changes: list[FileChange], branch: str):
+        """在 GUI 线程批量更新模型，并丢弃切仓库后的过期结果。"""
+        if repo != (self._svc.repo_path or ""):
+            return
+        self._file_change_model.replace(changes)
+        self.statusReady.emit(repo, len(changes))
+        self.branchReady.emit(repo, branch)
+
     @Slot()
     def requestStatus(self):
-        """后台获取工作区状态,完成发 statusReady(repoPath,list)+branchReady(repoPath,str)。"""
+        """后台获取状态，回到 GUI 线程批量刷新 fileChangeModel。"""
         import threading
         repo = self._svc.repo_path or ""
 
         def work():
             try:
-                changes = [_file_change_to_dict(fc) for fc in self._svc.get_status_at(repo)]
+                changes = self._svc.get_status_at(repo)
                 branch = self._svc.get_current_branch_at(repo)
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取状态失败: {e}")
                 changes, branch = [], ""
-            self.statusReady.emit(repo, changes)
-            self.branchReady.emit(repo, branch)
+            self._statusFetched.emit(repo, changes, branch)
 
         threading.Thread(target=work, daemon=True).start()
 

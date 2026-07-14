@@ -7,11 +7,47 @@ import unittest
 
 from PySide6.QtCore import QCoreApplication
 
-from app.common.git_service import CommitInfo
+from app.common.git_service import CommitInfo, FileChange, FileStatus
 from app_qml.backend.git_bridge import GitBridge
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_status_result_replaces_backend_model(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        bridge._svc.get_status_at = lambda repo: [  # type: ignore[method-assign]
+            FileChange(f"{repo}/main.py", FileStatus.MODIFIED, False)
+        ]
+        bridge._svc.get_current_branch_at = lambda _repo: "master"  # type: ignore[method-assign]
+        emitted: list[tuple[str, int]] = []
+        bridge.statusReady.connect(lambda repo, count: emitted.append((repo, count)))
+
+        bridge.requestStatus()
+
+        self.assertTrue(self._wait_until(app, lambda: emitted == [("repo", 1)]))
+        self.assertEqual(bridge.fileChangeModel.count, 1)
+        self.assertTrue(bridge.fileChangeModel.contains("repo/main.py", False))
+        bridge.deleteLater()
+        app.processEvents()
+
+    def test_stale_status_result_does_not_replace_current_repo_model(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo-new"
+
+        bridge._apply_status_result(
+            "repo-old",
+            [FileChange("stale.txt", FileStatus.MODIFIED, False)],
+            "master",
+        )
+
+        self.assertEqual(bridge.fileChangeModel.count, 0)
+        bridge.deleteLater()
+        app.processEvents()
+
     def _configure_delayed_search(self, bridge: GitBridge):
         started = [threading.Event() for _ in range(3)]
         release = [threading.Event() for _ in range(3)]
