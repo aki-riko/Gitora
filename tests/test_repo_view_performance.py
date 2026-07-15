@@ -20,6 +20,7 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("running: root.visible && !!GitBridge && !!GitBridge.repoPath", source)
         self.assertIn("if (!root._advancedRequesting) root.reload()", source)
         self.assertIn("onVisibleChanged", source)
+        self.assertNotIn("正在后台读取高级仓库信息", source)
         self.assertNotIn("GitBridge.getWorktrees()", source)
         self.assertNotIn("GitBridge.getSubmodules()", source)
 

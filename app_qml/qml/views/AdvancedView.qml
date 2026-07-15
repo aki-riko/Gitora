@@ -132,14 +132,6 @@ Item {
                 font.family: Fluent.Enums.fontFamily
             }
 
-            Text {
-                visible: root._advancedRequesting
-                text: "正在后台读取高级仓库信息…"
-                color: Fluent.Enums.textColor.secondary
-                font.family: Fluent.Enums.fontFamily
-                font.pixelSize: Fluent.Enums.typography.body
-            }
-
             Fluent.SettingsCardGroup {
                 title: "多工作树"
                 width: contentCol.cw
