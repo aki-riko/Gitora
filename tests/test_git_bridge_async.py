@@ -7,11 +7,28 @@ import unittest
 
 from PySide6.QtCore import QCoreApplication
 
-from app.common.git_service import CommitInfo, FileChange, FileStatus
+from app.common.git_service import (
+    CommitInfo,
+    FileChange,
+    FileStatus,
+    SubmoduleInfo,
+    WorktreeInfo,
+)
 from app_qml.backend.git_bridge import GitBridge
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_poll_interval_is_exposed_for_page_level_probes(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+
+        try:
+            self.assertEqual(bridge.pollIntervalMs, bridge._POLL_INTERVAL_MS)
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_status_result_replaces_backend_model(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()
@@ -131,6 +148,60 @@ class GitBridgeAsyncTest(unittest.TestCase):
 
             self.assertEqual(calls, ["repo-a", "repo-b", "repo-a"])
             self.assertEqual(emitted, [("repo-a", "tag-2")])
+        finally:
+            for event in release:
+                event.set()
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_latest_advanced_state_request_wins_across_a_b_a_switch(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+
+        started = [threading.Event() for _ in range(3)]
+        release = [threading.Event() for _ in range(3)]
+        calls: list[str] = []
+        emitted: list[tuple[str, str, str]] = []
+        call_lock = threading.Lock()
+
+        def fake_worktrees(repo_path: str):
+            with call_lock:
+                index = len(calls)
+                calls.append(repo_path)
+            started[index].set()
+            release[index].wait(5)
+            return [WorktreeInfo(path=f"{repo_path}/worktree-{index}")]
+
+        def fake_submodules(repo_path: str):
+            return [SubmoduleInfo(path=f"{repo_path}/submodule")]
+
+        bridge._svc.list_worktrees_at = fake_worktrees  # type: ignore[method-assign]
+        bridge._svc.list_submodules_at = fake_submodules  # type: ignore[method-assign]
+        bridge.advancedStateReady.connect(
+            lambda repo, worktrees, submodules: emitted.append(
+                (repo, worktrees[0]["path"], submodules[0]["path"])
+            )
+        )
+
+        try:
+            for index, repo in enumerate(("repo-a", "repo-b", "repo-a")):
+                bridge._svc._repo_path = repo
+                bridge.requestAdvancedState()
+                self.assertTrue(started[index].wait(5), f"request {index} did not start")
+
+            release[2].set()
+            self.assertTrue(self._wait_until(app, lambda: len(emitted) == 1))
+            release[0].set()
+            release[1].set()
+            time.sleep(0.1)
+            app.processEvents()
+
+            self.assertEqual(calls, ["repo-a", "repo-b", "repo-a"])
+            self.assertEqual(
+                emitted,
+                [("repo-a", "repo-a/worktree-2", "repo-a/submodule")],
+            )
         finally:
             for event in release:
                 event.set()

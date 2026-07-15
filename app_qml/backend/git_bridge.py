@@ -129,6 +129,7 @@ class GitBridge(QObject):
     stashListReady = Signal(str, "QVariantList")         # (repoPath, stash 列表)
     cleanPreviewReady = Signal(str, "QVariantList")      # (repoPath, 待清理文件列表)
     reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
+    advancedStateReady = Signal(str, "QVariantList", "QVariantList")  # (repoPath, worktree, submodule)
     _statusFetched = Signal(str, object, str)             # 工作线程 -> GUI线程
 
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
@@ -149,6 +150,7 @@ class GitBridge(QObject):
         self._svc.progressUpdated.connect(self.progressUpdated)
         self._search_request_serial = 0
         self._tags_request_serial = 0
+        self._advanced_request_serial = 0
 
         # ---- 外部变化轮询 ----
         # 定期计算仓库状态指纹,变了就 emit statusChanged,让所有视图统一刷新。
@@ -218,6 +220,11 @@ class GitBridge(QObject):
     @Property(QObject, constant=True)
     def fileChangeModel(self) -> FileChangeListModel:
         return self._file_change_model
+
+    @Property(int, constant=True)
+    def pollIntervalMs(self) -> int:
+        """供需要页面级探查的视图复用统一轮询间隔。"""
+        return self._POLL_INTERVAL_MS
 
     # ==================== 仓库 ====================
     @Slot(str, result=bool)
@@ -328,6 +335,33 @@ class GitBridge(QObject):
         self._svc.gc()
 
     # ==================== 高级 Git ====================
+    @Slot()
+    def requestAdvancedState(self):
+        """后台读取 worktree/submodule，避免切仓库时阻塞 QML 主线程。"""
+        import threading
+        repo = self._svc.repo_path or ""
+        self._advanced_request_serial += 1
+        request_serial = self._advanced_request_serial
+
+        def work():
+            try:
+                worktrees = [
+                    _worktree_to_dict(w) for w in self._svc.list_worktrees_at(repo)
+                ]
+                submodules = [
+                    _submodule_to_dict(s) for s in self._svc.list_submodules_at(repo)
+                ]
+            except Exception as e:  # noqa: BLE001
+                logger.warning(f"获取高级仓库状态失败: {e}")
+                worktrees, submodules = [], []
+            if request_serial != self._advanced_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
+            self.advancedStateReady.emit(repo, worktrees, submodules)
+
+        threading.Thread(target=work, daemon=True).start()
+
     @Slot(result="QVariantList")
     def getWorktrees(self) -> list:
         return [_worktree_to_dict(w) for w in self._svc.list_worktrees()]

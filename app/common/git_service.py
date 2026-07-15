@@ -2022,7 +2022,14 @@ class GitService(QObject):
 
     def list_worktrees(self) -> list[WorktreeInfo]:
         """列出当前仓库关联的 worktree。"""
-        success, stdout, _ = self._run_git_sync(['worktree', 'list', '--porcelain'])
+        return self.list_worktrees_at(self._repo_path or "")
+
+    def list_worktrees_at(self, repo_path: str) -> list[WorktreeInfo]:
+        """列出指定仓库快照关联的 worktree，避免异步切仓库时串读。"""
+        success, stdout, _ = self._run_git_sync_at(
+            repo_path,
+            ['worktree', 'list', '--porcelain'],
+        )
         if not success:
             return []
 
@@ -2116,7 +2123,14 @@ class GitService(QObject):
 
     def list_submodules(self) -> list[SubmoduleInfo]:
         """列出 submodule 状态。"""
-        success, stdout, _ = self._run_git_sync(['submodule', 'status', '--recursive'])
+        return self.list_submodules_at(self._repo_path or "")
+
+    def list_submodules_at(self, repo_path: str) -> list[SubmoduleInfo]:
+        """列出指定仓库快照的 submodule 状态，避免异步切仓库时串读。"""
+        success, stdout, _ = self._run_git_sync_at(
+            repo_path,
+            ['submodule', 'status', '--recursive'],
+        )
         if not success or not stdout.strip():
             return []
 

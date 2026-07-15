@@ -541,6 +541,11 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         worktrees = service.list_worktrees()
         self.assertTrue(any(w.path.replace("\\", "/").endswith("repo-topic") and w.branch == "topic" for w in worktrees))
+        snapshot_worktrees = service.list_worktrees_at(str(repo))
+        self.assertEqual(
+            [w.path for w in snapshot_worktrees],
+            [w.path for w in worktrees],
+        )
         self.assertTrue((worktree_path / "tracked.txt").exists())
         self.assertTrue((worktree_path / ".git").is_file())
 
@@ -569,6 +574,8 @@ class GitServiceCoreTest(unittest.TestCase):
         modules = service.list_submodules()
         self.assertEqual(len(modules), 1)
         self.assertEqual(modules[0].path, "libs/sub")
+        snapshot_modules = service.list_submodules_at(str(repo))
+        self.assertEqual([m.path for m in snapshot_modules], ["libs/sub"])
 
         run_git(repo, "submodule", "deinit", "-f", "libs/sub")
         self.assertFalse((repo / "libs" / "sub" / "sub.txt").exists())

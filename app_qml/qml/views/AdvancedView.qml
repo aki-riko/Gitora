@@ -11,6 +11,9 @@ Item {
     property string _pendingWorktreeRemove: ""
     property string _lfsOutput: ""
     property string _bisectOutput: ""
+    property string _advancedRequestRepoPath: ""
+    property bool _advancedRequesting: false
+    property bool _reloadPending: false
     ListModel { id: worktreeModel }
     ListModel { id: submoduleModel }
 
@@ -19,6 +22,9 @@ Item {
         submoduleModel.clear()
         root._lfsOutput = ""
         root._bisectOutput = ""
+        root._advancedRequestRepoPath = ""
+        root._advancedRequesting = false
+        root._reloadPending = false
     }
 
     function reload() {
@@ -26,13 +32,18 @@ Item {
             clearModels()
             return
         }
-        worktreeModel.clear()
-        var worktrees = GitBridge.getWorktrees()
-        for (var i = 0; i < worktrees.length; i++) worktreeModel.append(worktrees[i])
-
-        submoduleModel.clear()
-        var modules = GitBridge.getSubmodules()
-        for (var j = 0; j < modules.length; j++) submoduleModel.append(modules[j])
+        if (!root.visible) {
+            root._reloadPending = true
+            return
+        }
+        if (root._advancedRequesting) {
+            root._reloadPending = true
+            return
+        }
+        root._advancedRequestRepoPath = GitBridge.repoPath
+        root._advancedRequesting = true
+        root._reloadPending = false
+        GitBridge.requestAdvancedState()
     }
 
     function _op(res) {
@@ -55,13 +66,49 @@ Item {
 
     Connections {
         target: GitBridge
-        function onStatusChanged() { root.reload() }
+        function onStatusChanged() {
+            root._reloadPending = true
+            if (root.visible) root.reload()
+        }
         function onRepoPathChanged(path) {
             root.clearModels()
-            root.reload()
+            root._reloadPending = true
+            if (root.visible) Qt.callLater(function() { root.reload() })
+        }
+        function onAdvancedStateReady(repoPath, worktrees, submodules) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || repoPath !== root._advancedRequestRepoPath) return
+            worktreeModel.clear()
+            for (var i = 0; i < worktrees.length; i++) worktreeModel.append(worktrees[i])
+            submoduleModel.clear()
+            for (var j = 0; j < submodules.length; j++) submoduleModel.append(submodules[j])
+            root._advancedRequesting = false
+            root._advancedRequestRepoPath = ""
+            if (root._reloadPending && root.visible)
+                Qt.callLater(function() { root.reload() })
         }
     }
-    Component.onCompleted: root.reload()
+
+    // worktree/submodule 的外部变化不一定改变 status/refs，需在本页可见时单独探查。
+    Timer {
+        interval: GitBridge.pollIntervalMs
+        running: root.visible && !!GitBridge && !!GitBridge.repoPath
+        repeat: true
+        onTriggered: {
+            if (!root._advancedRequesting) root.reload()
+        }
+    }
+
+    onVisibleChanged: {
+        if (visible) {
+            root._reloadPending = true
+            Qt.callLater(function() { root.reload() })
+        }
+    }
+    Component.onCompleted: {
+        root._reloadPending = true
+        if (root.visible) Qt.callLater(function() { root.reload() })
+    }
 
     Fluent.ScrollArea {
         anchors.fill: parent
@@ -83,6 +130,14 @@ Item {
                 font.bold: true
                 color: Fluent.Enums.textColor.primary
                 font.family: Fluent.Enums.fontFamily
+            }
+
+            Text {
+                visible: root._advancedRequesting
+                text: "正在后台读取高级仓库信息…"
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
             }
 
             Fluent.SettingsCardGroup {
