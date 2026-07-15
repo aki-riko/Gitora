@@ -86,7 +86,7 @@ Item {
             }
 
             Fluent.SettingsCardGroup {
-                title: "Worktree"
+                title: "多工作树"
                 width: contentCol.cw
 
                 Fluent.Card {
@@ -103,7 +103,7 @@ Item {
                             Fluent.LineEdit {
                                 id: worktreePathInput
                                 Layout.fillWidth: true
-                                placeholderText: "Worktree 路径"
+                                placeholderText: "工作树路径"
                             }
                             Fluent.LineEdit {
                                 id: worktreeBranchInput
@@ -120,7 +120,7 @@ Item {
                                 onClicked: root._op(GitBridge.addWorktree(worktreePathInput.text, worktreeBranchInput.text, worktreeCreateBranchCheck.checked))
                             }
                             Fluent.Button {
-                                text: "Prune"
+                                text: "清理失效项"
                                 style: Fluent.Enums.button.style_transparent
                                 onClicked: root._op(GitBridge.pruneWorktrees())
                             }
@@ -156,7 +156,7 @@ Item {
                                 }
                                 Text {
                                     Layout.fillWidth: true
-                                    text: (model.branch || (model.detached ? "detached" : "")) + "  " + model.shortHead
+                                    text: (model.branch || (model.detached ? "游离状态" : "")) + "  " + model.shortHead
                                     color: Fluent.Enums.textColor.tertiary
                                     font.family: "Consolas, monospace"
                                     font.pixelSize: Fluent.Enums.typography.caption
@@ -177,7 +177,7 @@ Item {
             }
 
             Fluent.SettingsCardGroup {
-                title: "Submodule"
+                title: "子模块"
                 width: contentCol.cw
 
                 Fluent.Card {
@@ -190,17 +190,17 @@ Item {
                         spacing: Fluent.Enums.spacing.m
                         Text {
                             Layout.fillWidth: true
-                            text: submoduleModel.count > 0 ? ("已配置 " + submoduleModel.count + " 个 submodule") : "当前仓库没有 submodule"
+                            text: submoduleModel.count > 0 ? ("已配置 " + submoduleModel.count + " 个子模块") : "当前仓库没有子模块"
                             color: Fluent.Enums.textColor.primary
                             font.family: Fluent.Enums.fontFamily
                             font.pixelSize: Fluent.Enums.typography.body
                         }
                         Fluent.Button {
-                            text: "Update"
+                            text: "更新"
                             onClicked: root._op(GitBridge.submoduleUpdate(true, true))
                         }
                         Fluent.Button {
-                            text: "Sync"
+                            text: "同步"
                             style: Fluent.Enums.button.style_transparent
                             onClicked: root._op(GitBridge.submoduleSync(true))
                         }
@@ -247,7 +247,7 @@ Item {
             }
 
             Fluent.SettingsCardGroup {
-                title: "Git LFS"
+                title: "Git 大文件存储（LFS）"
                 width: contentCol.cw
 
                 Fluent.Card {
@@ -265,26 +265,26 @@ Item {
                                 id: lfsRemoteInput
                                 Layout.preferredWidth: 160
                                 text: "origin"
-                                placeholderText: "remote"
+                                placeholderText: "远程仓库"
                             }
                             Fluent.LineEdit {
                                 id: lfsBranchInput
                                 Layout.preferredWidth: 160
                                 text: "HEAD"
-                                placeholderText: "branch"
+                                placeholderText: "分支或引用"
                             }
                             Item { Layout.fillWidth: true }
                             Fluent.Button {
-                                text: "Status"
+                                text: "查看状态"
                                 onClicked: root._setOutput(GitBridge.lfsStatus(), "lfs")
                             }
                             Fluent.Button {
-                                text: "Pull"
+                                text: "拉取"
                                 style: Fluent.Enums.button.style_transparent
                                 onClicked: GitBridge.lfsPull()
                             }
                             Fluent.Button {
-                                text: "Push"
+                                text: "推送"
                                 style: Fluent.Enums.button.style_transparent
                                 onClicked: GitBridge.lfsPush(lfsRemoteInput.text, lfsBranchInput.text)
                             }
@@ -317,7 +317,7 @@ Item {
             }
 
             Fluent.SettingsCardGroup {
-                title: "Bisect"
+                title: "二分定位"
                 width: contentCol.cw
 
                 Fluent.Card {
@@ -334,16 +334,16 @@ Item {
                             Fluent.LineEdit {
                                 id: bisectGoodInput
                                 Layout.fillWidth: true
-                                placeholderText: "good revision"
+                                placeholderText: "已知正常的版本"
                             }
                             Fluent.LineEdit {
                                 id: bisectBadInput
                                 Layout.fillWidth: true
                                 text: "HEAD"
-                                placeholderText: "bad revision"
+                                placeholderText: "已知异常的版本"
                             }
                             Fluent.Button {
-                                text: "Start"
+                                text: "开始定位"
                                 style: Fluent.Enums.button.style_primary
                                 onClicked: root._setOutput(GitBridge.bisectStart(bisectGoodInput.text, bisectBadInput.text), "bisect")
                             }
@@ -354,13 +354,13 @@ Item {
                             Fluent.LineEdit {
                                 id: bisectMarkInput
                                 Layout.fillWidth: true
-                                placeholderText: "revision(留空为当前)"
+                                placeholderText: "版本（留空为当前版本）"
                             }
-                            Fluent.Button { text: "Good"; onClicked: root._setOutput(GitBridge.bisectGood(bisectMarkInput.text), "bisect") }
-                            Fluent.Button { text: "Bad"; onClicked: root._setOutput(GitBridge.bisectBad(bisectMarkInput.text), "bisect") }
-                            Fluent.Button { text: "Skip"; style: Fluent.Enums.button.style_transparent; onClicked: root._setOutput(GitBridge.bisectSkip(bisectMarkInput.text), "bisect") }
-                            Fluent.Button { text: "Log"; style: Fluent.Enums.button.style_transparent; onClicked: root._setOutput(GitBridge.bisectLog(), "bisect") }
-                            Fluent.Button { text: "Reset"; style: Fluent.Enums.button.style_transparent; onClicked: root._setOutput(GitBridge.bisectReset(), "bisect") }
+                            Fluent.Button { text: "标记正常"; onClicked: root._setOutput(GitBridge.bisectGood(bisectMarkInput.text), "bisect") }
+                            Fluent.Button { text: "标记异常"; onClicked: root._setOutput(GitBridge.bisectBad(bisectMarkInput.text), "bisect") }
+                            Fluent.Button { text: "跳过"; style: Fluent.Enums.button.style_transparent; onClicked: root._setOutput(GitBridge.bisectSkip(bisectMarkInput.text), "bisect") }
+                            Fluent.Button { text: "查看记录"; style: Fluent.Enums.button.style_transparent; onClicked: root._setOutput(GitBridge.bisectLog(), "bisect") }
+                            Fluent.Button { text: "结束定位"; style: Fluent.Enums.button.style_transparent; onClicked: root._setOutput(GitBridge.bisectReset(), "bisect") }
                         }
                         Rectangle {
                             Layout.fillWidth: true
@@ -393,9 +393,9 @@ Item {
 
     DangerDialog {
         id: removeWorktreeDanger
-        title: "确认移除 Worktree"
+        title: "确认移除工作树"
         countdown: 3
-        content: "将移除 worktree:\n" + root._pendingWorktreeRemove + "\n请确认该 worktree 中没有需要保留的未提交修改。"
+        content: "将移除工作树：\n" + root._pendingWorktreeRemove + "\n请确认该工作树中没有需要保留的未提交修改。"
         onConfirmed: {
             if (root._pendingWorktreeRemove)
                 root._op(GitBridge.removeWorktree(root._pendingWorktreeRemove, false))
