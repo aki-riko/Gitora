@@ -245,13 +245,14 @@ Item {
             }
         }
 
-        Flickable {
+        Fluent.ScrollArea {
+            id: fileFilterScrollArea
             Layout.fillWidth: true
             Layout.preferredHeight: fileModel.count > 1 ? 34 : 0
             visible: fileModel.count > 1
-            clip: true
-            contentWidth: fileFilterRow.implicitWidth
-            contentHeight: fileFilterRow.implicitHeight
+            orientation: Qt.Horizontal
+            showScrollBar: false
+            padding: 0
 
             Row {
                 id: fileFilterRow
@@ -272,17 +273,17 @@ Item {
             }
         }
 
-        Flickable {
-            id: diffFlick
+        Fluent.ScrollArea {
+            id: diffScrollArea
             Layout.fillWidth: true
             Layout.fillHeight: true
-            clip: true
-            contentWidth: Math.max(diffArea.paintedWidth, width)
-            contentHeight: Math.max(diffArea.paintedHeight, height)
+            orientation: Qt.Horizontal | Qt.Vertical
+            padding: 0
 
             TextEdit {
                 id: diffArea
-                width: diffFlick.width
+                width: Math.max(parent ? parent.width : 0, paintedWidth)
+                height: Math.max(1, paintedHeight)
                 readOnly: true
                 selectByMouse: true
                 textFormat: TextEdit.RichText

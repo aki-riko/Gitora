@@ -62,19 +62,25 @@ Fluent.MessageBox {
             checked: true
         }
 
-        ListView {
+        Fluent.ScrollArea {
             id: previewList
             Layout.fillWidth: true
-            Layout.preferredHeight: Math.min(previewModel.count * 24 + 8, 200)
-            clip: true
+            Layout.preferredHeight: Math.min(previewModel.count * itemHeight + Fluent.Enums.spacing.m, 200)
+            type: Fluent.Enums.scroll.type_list
+            itemHeight: Fluent.Enums.typography.caption + Fluent.Enums.spacing.l
+            reuseItems: true
+            bounceEnabled: false
+            padding: 0
             model: previewModel
             delegate: Text {
-                width: previewList.width
+                width: ListView.view ? ListView.view.width : 0
+                height: previewList.itemHeight
                 text: model.path
                 color: Fluent.Enums.textColor.secondary
                 font.family: "Consolas, monospace"
                 font.pixelSize: Fluent.Enums.typography.caption
                 elide: Text.ElideMiddle
+                verticalAlignment: Text.AlignVCenter
             }
         }
 

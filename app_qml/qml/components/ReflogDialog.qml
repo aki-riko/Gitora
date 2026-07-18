@@ -41,16 +41,20 @@ Fluent.MessageBox {
     ColumnLayout {
         width: 520
 
-        ListView {
+        Fluent.ScrollArea {
             id: reflogList
             Layout.fillWidth: true
             Layout.preferredHeight: 360
-            clip: true
-            spacing: Fluent.Enums.spacing.s
+            type: Fluent.Enums.scroll.type_list
+            itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.m * 2
+            listSpacing: Fluent.Enums.spacing.s
+            reuseItems: true
+            bounceEnabled: false
+            padding: 0
             model: reflogModel
             delegate: Fluent.Card {
-                width: reflogList.width
-                height: rlRow.implicitHeight + Fluent.Enums.spacing.m * 2
+                width: ListView.view ? ListView.view.width : 0
+                height: reflogList.itemHeight
                 RowLayout {
                     id: rlRow
                     anchors.fill: parent

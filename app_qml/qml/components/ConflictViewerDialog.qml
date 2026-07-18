@@ -43,20 +43,26 @@ Fluent.MessageBox {
             border.width: Fluent.Enums.border.normal
             border.color: Fluent.Enums.stateColor.border
 
-            ListView {
+            Fluent.ScrollArea {
                 id: lineList
                 anchors.fill: parent
                 anchors.margins: Fluent.Enums.spacing.s
-                clip: true
+                type: Fluent.Enums.scroll.type_list
+                itemHeight: Fluent.Enums.typography.caption + Fluent.Enums.spacing.m
+                reuseItems: true
+                bounceEnabled: false
+                padding: 0
                 model: lineModel
                 delegate: Text {
-                    width: lineList.width
+                    width: ListView.view ? ListView.view.width : 0
+                    height: lineList.itemHeight
                     text: model.line
                     color: dlg._lineColor(model.line)
                     font.family: "Consolas, monospace"
                     font.pixelSize: Fluent.Enums.typography.caption
                     textFormat: Text.PlainText
                     wrapMode: Text.NoWrap
+                    verticalAlignment: Text.AlignVCenter
                 }
             }
         }

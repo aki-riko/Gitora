@@ -14,7 +14,9 @@ class TagViewPerformanceTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn("id: tagList", source)
-        self.assertIn("ListView {", source)
+        self.assertIn("Fluent.ScrollArea {", source)
+        self.assertIn("type: Fluent.Enums.scroll.type_list", source)
+        self.assertNotRegex(source, r"(?m)^\s*ListView\s*\{")
         self.assertNotIn("Repeater {", source)
         self.assertIn("if (!root.visible)", source)
         self.assertIn("property bool _tagsRequesting", source)

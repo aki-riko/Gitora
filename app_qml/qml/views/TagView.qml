@@ -138,17 +138,20 @@ Item {
             Layout.maximumWidth: 980
             Layout.alignment: Qt.AlignHCenter
 
-            ListView {
+            Fluent.ScrollArea {
                 id: tagList
                 anchors.fill: parent
-                clip: true
-                spacing: Fluent.Enums.spacing.m
-                cacheBuffer: 400
+                type: Fluent.Enums.scroll.type_list
+                itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.l * 2
+                listSpacing: Fluent.Enums.spacing.m
+                listCacheBuffer: 400
                 reuseItems: true
+                bounceEnabled: false
+                padding: 0
                 model: tagModel
                 delegate: Fluent.Card {
-                    width: tagList.width
-                    height: tagRow.implicitHeight + Fluent.Enums.spacing.l * 2
+                    width: ListView.view ? ListView.view.width : 0
+                    height: tagList.itemHeight
                     RowLayout {
                         id: tagRow
                         anchors.fill: parent

@@ -108,16 +108,20 @@ Fluent.MessageBox {
             border.width: Fluent.Enums.border.normal
             border.color: Fluent.Enums.stateColor.border
 
-            ListView {
+            Fluent.ScrollArea {
                 id: histList
                 anchors.fill: parent
                 anchors.margins: Fluent.Enums.spacing.xs
-                clip: true
-                spacing: 2
+                type: Fluent.Enums.scroll.type_list
+                itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.xl
+                listSpacing: Fluent.Enums.spacing.xxs
+                reuseItems: true
+                bounceEnabled: false
+                padding: 0
                 model: histModel
                 delegate: Rectangle {
-                    width: histList.width
-                    height: 48
+                    width: ListView.view ? ListView.view.width : 0
+                    height: histList.itemHeight
                     radius: Fluent.Enums.radius.micro
                     readonly property bool isSel: dlg.selected.indexOf(model.hash) >= 0
                     color: isSel ? Fluent.Enums.stateColor.hover : (hov.hovered ? Fluent.Enums.stateColor.hover : "transparent")
@@ -159,15 +163,17 @@ Fluent.MessageBox {
             border.width: Fluent.Enums.border.normal
             border.color: Fluent.Enums.stateColor.border
 
-            Flickable {
+            Fluent.ScrollArea {
+                id: rightScrollArea
                 anchors.fill: parent
                 anchors.margins: Fluent.Enums.spacing.s
-                clip: true
                 visible: !dlg._showingDiff
-                contentWidth: rightArea.paintedWidth
-                contentHeight: rightArea.paintedHeight
+                orientation: Qt.Horizontal | Qt.Vertical
+                padding: 0
                 TextEdit {
                     id: rightArea
+                    width: Math.max(parent ? parent.width : 0, paintedWidth)
+                    height: Math.max(1, paintedHeight)
                     readOnly: true
                     selectByMouse: true
                     wrapMode: TextEdit.NoWrap

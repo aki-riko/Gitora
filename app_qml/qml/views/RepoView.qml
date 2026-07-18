@@ -606,15 +606,19 @@ Item {
                     }
                 }
             }
-            ListView {
+            Fluent.ScrollArea {
                 id: recentRepoList
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(recentRepoModel.count * 40 + 4, 280)
-                clip: true
+                Layout.preferredHeight: Math.min(recentRepoModel.count * itemHeight + Fluent.Enums.spacing.xs, 280)
+                type: Fluent.Enums.scroll.type_list
+                itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.m
+                reuseItems: true
+                bounceEnabled: false
+                padding: 0
                 model: recentRepoModel
                 delegate: Rectangle {
-                    width: recentRepoList.width
-                    height: 40
+                    width: ListView.view ? ListView.view.width : 0
+                    height: recentRepoList.itemHeight
                     color: recentHover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
                     radius: Fluent.Enums.radius.micro
                     HoverHandler { id: recentHover }
