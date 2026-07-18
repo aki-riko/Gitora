@@ -9,6 +9,8 @@ import "../components"
 
 Item {
     id: root
+    readonly property real _repoPathMenuTextWidth: Fluent.Enums.controlSize.cardWidth
+        + Fluent.Enums.spacing.xxxl * 3
 
     // 当前选中的文件(用于 diff)
     property string selectedPath: ""
@@ -20,6 +22,17 @@ Item {
     property bool _quickCommitPushPending: false
     property string _quickCommitPushMessage: ""
     property string _quickCommitPushRepoPath: ""
+
+    FontMetrics {
+        id: repoPathFontMetrics
+        font.family: Fluent.Enums.fontFamily
+        font.pixelSize: Fluent.Enums.typography.body
+    }
+
+    function _displayRepoPath(path) {
+        return repoPathFontMetrics.elidedText(
+            path || "", Text.ElideMiddle, root._repoPathMenuTextWidth)
+    }
     readonly property var changeModel: GitBridge ? GitBridge.fileChangeModel : null
     readonly property int changeCount: changeModel ? changeModel.count : 0
 
@@ -198,7 +211,7 @@ Item {
                 menuItems: {
                     var items = []
                     for (var i = 0; i < pathList.length; i++)
-                        items.push({ "text": pathList[i], "icon": Fluent.Enums.icon.folder })
+                        items.push({ "text": root._displayRepoPath(pathList[i]), "icon": Fluent.Enums.icon.folder })
                     if (items.length === 0) {
                         var scannerActive = (typeof RepoScanner !== "undefined") && RepoScanner !== null && RepoScanner.scanning
                         items.push({ "text": scannerActive ? "正在扫描磁盘..." : "暂无最近仓库", "icon": Fluent.Enums.icon.info })

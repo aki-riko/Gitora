@@ -23,6 +23,15 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertNotIn("ListModel { id: changeModel }", source)
         self.assertNotIn("changeModel.append", source)
 
+    def test_repository_dropdown_limits_display_width_but_opens_original_path(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("repoPathFontMetrics.elidedText(", source)
+        self.assertIn("Text.ElideMiddle", source)
+        self.assertIn('"text": root._displayRepoPath(pathList[i])', source)
+        self.assertIn("GitBridge.openRepoAsync(pathList[index])", source)
+        self.assertNotIn('"text": pathList[i]', source)
+
     def test_advanced_view_loads_repository_state_in_background(self) -> None:
         source = Path("app_qml/qml/views/AdvancedView.qml").read_text(encoding="utf-8")
 
