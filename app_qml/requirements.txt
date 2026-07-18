@@ -9,5 +9,5 @@ PySide6>=6.5.0
 # 多皮肤 UI 引擎(Fluent + Neobrutalism)。自动更新所需组件:
 #   Updater(检测/下载/ShellExecute open 提权安装)+ UpdateDialog(Markdown 更新说明)
 #   + Toast 确定/不确定进度环。均自原 fqml 0.2.9~0.2.13 演进,PrismQML 首发版 0.2.14 起继承。
-# 0.2.24.9: Gitora 稳定引擎基线；Windows 与 macOS 发版必须使用同一版本
-prismqml==0.2.24.9
+# 0.3.1.1: Gitora 稳定引擎基线；Windows 与 macOS 发版必须使用同一版本
+prismqml==0.3.1.1

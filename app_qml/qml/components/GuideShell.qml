@@ -9,6 +9,7 @@
 //       onPageChanged: (index) => { ... }  // 翻页时校验
 //   }
 import QtQuick
+import QtQml.Models
 
 import PrismQML as Fluent
 
@@ -17,7 +18,7 @@ Fluent.WindowsCore {
 
     // ==================== 公开属性 ====================
     property var stepTitles: []                  // 步骤标题数组
-    property alias pageComponents: stack.pageComponents  // Component 列表(推荐)
+    property list<Component> pageComponents: []  // Component 列表(推荐)
     property int currentIndex: 0
     readonly property int count: stepTitles.length
     readonly property bool isLastPage: currentIndex >= count - 1
@@ -44,6 +45,19 @@ Fluent.WindowsCore {
     }
     function goBack() {
         if (!isFirstPage) currentIndex--
+    }
+
+    Instantiator {
+        model: shell.pageComponents.length
+
+        delegate: Loader {
+            required property int index
+
+            parent: stack.containerItem
+            width: stack.width
+            height: stack.height
+            sourceComponent: shell.pageComponents[index]
+        }
     }
 
     // ==================== 布局 ====================
