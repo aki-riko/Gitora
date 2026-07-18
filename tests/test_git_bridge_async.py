@@ -18,6 +18,30 @@ from app_qml.backend.git_bridge import GitBridge
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_quick_commit_push_emits_dedicated_completion_signal(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        emitted: list[tuple[bool, str]] = []
+        seen: dict[str, str] = {}
+
+        def fake_quick_commit_push(message: str, callback=None):
+            seen["message"] = message
+            callback(False, "仓库被占用")
+
+        bridge._svc.quick_commit_push = fake_quick_commit_push  # type: ignore[method-assign]
+        bridge.quickCommitPushFinished.connect(
+            lambda ok, msg: emitted.append((ok, msg))
+        )
+
+        try:
+            bridge.quickCommitPush("保留这条提交信息")
+            self.assertEqual(seen["message"], "保留这条提交信息")
+            self.assertEqual(emitted, [(False, "仓库被占用")])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_poll_interval_is_exposed_for_page_level_probes(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

@@ -3,6 +3,18 @@ import unittest
 
 
 class RepoViewPerformanceTest(unittest.TestCase):
+    def test_quick_commit_message_is_only_cleared_after_matching_success(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("property bool _quickCommitPushPending: false", source)
+        self.assertIn("function onQuickCommitPushFinished(ok, msg)", source)
+        self.assertIn("if (ok && GitBridge && GitBridge.repoPath === submittedRepoPath", source)
+        self.assertIn("commitInput.text === submittedMessage", source)
+        self.assertNotIn(
+            'GitBridge.quickCommitPush(commitInput.text)\n                    commitInput.text = ""',
+            source,
+        )
+
     def test_change_list_uses_backend_model_and_reuses_delegates(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 

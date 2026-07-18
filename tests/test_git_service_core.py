@@ -144,6 +144,22 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertEqual((repo / "tracked.txt").read_text(encoding="utf-8"), "one\n")
         self.assertEqual(service.get_status(), [])
 
+    def test_commit_index_lock_returns_actionable_chinese_message(self) -> None:
+        repo = init_repo(self.root / "locked-repo")
+        service = self.service_for(repo)
+        write_file(repo, "tracked.txt", "content\n")
+        self.assertTrue(service.stage_all())
+        lock_path = repo / ".git" / "index.lock"
+        lock_path.write_bytes(b"")
+
+        ok, msg = service.commit("will not be lost")
+
+        self.assertFalse(ok)
+        self.assertIn("另一个 Git 操作占用", msg)
+        self.assertIn(".git/index.lock", msg)
+        self.assertIn("删除", msg)
+        self.assertNotIn("fatal:", msg)
+
     def test_is_head_pushed_tracks_upstream_with_real_remote(self) -> None:
         remote = init_bare_repo(self.root / "remote.git")
         seed = init_repo(self.root / "seed")

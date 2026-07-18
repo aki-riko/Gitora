@@ -109,6 +109,7 @@ class GitBridge(QObject):
     statusChanged = Signal()
     operationStarted = Signal(str)
     operationFinished = Signal(bool, str)
+    quickCommitPushFinished = Signal(bool, str)
     progressUpdated = Signal(int, str)
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
@@ -568,7 +569,10 @@ class GitBridge(QObject):
     @Slot(str)
     def quickCommitPush(self, message: str):
         """一键提交推送(异步);结果经 operationStarted/progressUpdated/operationFinished 回传"""
-        self._svc.quick_commit_push(message)
+        self._svc.quick_commit_push(
+            message,
+            callback=lambda ok, msg: self.quickCommitPushFinished.emit(ok, msg),
+        )
 
     @Slot(result="QVariantList")
     def getRemoteInfo(self) -> list:

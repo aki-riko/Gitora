@@ -17,6 +17,9 @@ Item {
     property bool _reloadPending: false
     property string _statusRequestRepoPath: ""
     property bool _changeListActive: false
+    property bool _quickCommitPushPending: false
+    property string _quickCommitPushMessage: ""
+    property string _quickCommitPushRepoPath: ""
     readonly property var changeModel: GitBridge ? GitBridge.fileChangeModel : null
     readonly property int changeCount: changeModel ? changeModel.count : 0
 
@@ -127,6 +130,18 @@ Item {
         function onOperationFinished(ok, msg) {
             if (ok)
                 root.reload()
+        }
+        function onQuickCommitPushFinished(ok, msg) {
+            if (!root._quickCommitPushPending) return
+            var submittedMessage = root._quickCommitPushMessage
+            var submittedRepoPath = root._quickCommitPushRepoPath
+            root._quickCommitPushPending = false
+            root._quickCommitPushMessage = ""
+            root._quickCommitPushRepoPath = ""
+            // 失败时保留原文；成功后也不覆盖用户在执行期间新输入的内容。
+            if (ok && GitBridge && GitBridge.repoPath === submittedRepoPath
+                    && commitInput.text === submittedMessage)
+                commitInput.text = ""
         }
         function onDiffReady(repoPath, path, staged, content) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
@@ -290,7 +305,7 @@ Item {
             Fluent.Button {
                 text: "提交"
                 style: Fluent.Enums.button.style_primary
-                enabled: commitInput.text.length > 0
+                enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
                 feature: Fluent.Enums.button.feature_split
                 // 下拉:修补上次提交(commit --amend),用输入框内容作为新提交消息
                 menuItems: [
@@ -322,10 +337,12 @@ Item {
             }
             Fluent.Button {
                 text: "一键提交推送"
-                enabled: commitInput.text.length > 0
+                enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
                 onClicked: {
-                    GitBridge.quickCommitPush(commitInput.text)
-                    commitInput.text = ""
+                    root._quickCommitPushPending = true
+                    root._quickCommitPushMessage = commitInput.text
+                    root._quickCommitPushRepoPath = GitBridge.repoPath
+                    GitBridge.quickCommitPush(root._quickCommitPushMessage)
                 }
             }
         }

@@ -342,6 +342,21 @@ class GitService(QObject):
             logger.exception(f"Git命令异常: {' '.join(args)}, repo={repo_path}, error: {e}")
             return False, "", str(e)
 
+    @staticmethod
+    def _friendly_git_error(error: str, fallback: str) -> str:
+        """把需要用户处理的常见 Git 错误转换为可执行的中文提示。"""
+        detail = (error or "").strip()
+        lowered = detail.lower()
+        if "index.lock" in lowered and (
+            "file exists" in lowered or "another git process" in lowered
+        ):
+            return (
+                "仓库正被另一个 Git 操作占用，本次操作未执行。"
+                "请等待其他 Git 操作结束后重试；若确认没有 Git 操作在运行，"
+                "请关闭相关 Git 工具，删除仓库中的 .git/index.lock 后再重试。"
+            )
+        return detail or fallback
+
     def _run_git_async(
         self,
         args: list[str],
@@ -877,10 +892,16 @@ class GitService(QObject):
 
     def stage_all(self) -> bool:
         """暂存所有变更"""
-        success, _, stderr = self._run_git_sync(['add', '-A'])
+        success, _ = self._stage_all_result()
+        return success
+
+    def _stage_all_result(self) -> tuple[bool, str]:
+        """暂存所有变更，并保留可供组合操作展示的失败原因。"""
+        success, stdout, stderr = self._run_git_sync(['add', '-A'])
         if success:
             self.statusChanged.emit()
-        return success
+            return True, "暂存成功"
+        return False, self._friendly_git_error(stderr or stdout, "暂存失败")
 
     def unstage_file(self, file_path: str) -> bool:
         """取消暂存单个文件"""
@@ -954,9 +975,10 @@ class GitService(QObject):
             return True, "提交成功"
         
         # 详细的错误处理
-        error_msg = stderr.strip() if stderr.strip() else stdout.strip()
-        if not error_msg:
-            error_msg = "提交失败（未知原因）"
+        error_msg = self._friendly_git_error(
+            stderr if stderr.strip() else stdout,
+            "提交失败（未知原因）",
+        )
         
         # 常见错误的友好提示
         if "nothing to commit" in error_msg.lower() or "no changes added" in error_msg.lower():
@@ -1480,8 +1502,9 @@ class GitService(QObject):
             # 步骤2：如果有未暂存的变更，暂存所有
             if has_unstaged:
                 self.progressUpdated.emit(10, "暂存所有变更...")
-                if not self.stage_all():
-                    return False, "暂存失败"
+                staged_ok, stage_msg = self._stage_all_result()
+                if not staged_ok:
+                    return False, stage_msg
                 has_staged = True  # 暂存后就有已暂存的了
             
             # 步骤3：如果有已暂存的变更，提交
