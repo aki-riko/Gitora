@@ -3,7 +3,7 @@
 ; 前提: 先跑 build_nuitka.py 生成 build_dist\main_qml.dist\
 
 #define MyAppName "Gitora"
-#define MyAppVersion "1.2.12"
+#define MyAppVersion "1.2.13"
 #define MyAppPublisher "aki-riko"
 #define MyAppExeName "Gitora.exe"
 #define MyDistDir "build_dist\main_qml.dist"
