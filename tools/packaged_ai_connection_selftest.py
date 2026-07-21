@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import subprocess
+import sys
 import tempfile
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -75,6 +76,8 @@ def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
             "GITESS_QML_SELFTEST": "1",
             "GITESS_AI_CONNECTION_SELFTEST": "1",
             "QT_QPA_PLATFORM": "offscreen",
+            "PYTHONUTF8": "1",
+            "PYTHONIOENCODING": "utf-8",
         }
     )
     return environment
@@ -151,7 +154,15 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _configure_console_output() -> None:
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is not None:
+            reconfigure(errors="backslashreplace")
+
+
 def main(argv: Sequence[str] | None = None) -> int:
+    _configure_console_output()
     args = build_parser().parse_args(argv)
     try:
         output = run_connection_selftest(args.executable, args.timeout_seconds)

@@ -59,6 +59,10 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         self.assertEqual(
             self.captured["environment"]["GITESS_AI_CONNECTION_SELFTEST"], "1"
         )
+        self.assertEqual(self.captured["environment"]["PYTHONUTF8"], "1")
+        self.assertEqual(
+            self.captured["environment"]["PYTHONIOENCODING"], "utf-8"
+        )
 
     def test_rejects_success_marker_without_loopback_request(self) -> None:
         def disconnected_runner(args, **_kwargs):
