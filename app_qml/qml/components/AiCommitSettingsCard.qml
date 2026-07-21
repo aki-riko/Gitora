@@ -9,6 +9,7 @@ Fluent.SettingsCardGroup {
 
     property bool _loading: false
     property var _providerValues: ["ollama", "openai_responses"]
+    property var _scopeValues: ["staged", "all"]
 
     Component.onCompleted: root.loadSettings()
 
@@ -85,13 +86,11 @@ Fluent.SettingsCardGroup {
                     currentIndex: 0
                 }
 
-                Text {
+                Fluent.ComboBox {
+                    id: scopeCombo
                     Layout.fillWidth: true
-                    text: "当前生成范围：仅已暂存差异"
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    verticalAlignment: Text.AlignVCenter
+                    model: ["文件级规划：仅已暂存差异", "文件级规划：全部工作区改动"]
+                    currentIndex: 0
                 }
 
                 Fluent.LineEdit {
@@ -197,6 +196,8 @@ Fluent.SettingsCardGroup {
         remoteModelInput.text = settings.remoteModel || ""
         apiKeyEnvInput.text = settings.apiKeyEnv || ""
         bodyCheck.checked = settings.generateBody
+        var scopeIndex = root._scopeValues.indexOf(settings.remoteScope)
+        scopeCombo.currentIndex = scopeIndex >= 0 ? scopeIndex : 0
         root._loading = false
     }
 
@@ -211,7 +212,7 @@ Fluent.SettingsCardGroup {
             remoteModelInput.text.trim(),
             apiKeyEnvInput.text.trim(),
             bodyCheck.checked,
-            AiCommitBridge.getSettings().remoteScope
+            root._scopeValues[scopeCombo.currentIndex]
         )
         if (!result[0]) {
             Fluent.NotificationManager.toast.error(root, "保存失败", result[1] || "")

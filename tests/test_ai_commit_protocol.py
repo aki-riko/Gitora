@@ -182,6 +182,15 @@ class AiCommitProtocolTest(unittest.TestCase):
             "level_mismatch", "invalid_group_id", "duplicate_dependency",
         }.issubset(codes))
 
+    def test_validator_rejects_manual_order_that_precedes_dependency(self) -> None:
+        mapping = self.valid_mapping()
+        mapping["groups"].reverse()
+        result = CommitPlanValidator().validate(
+            CommitPlan.from_mapping(mapping), self.make_snapshot()
+        )
+        self.assertFalse(result.valid)
+        self.assertIn("dependency_order", {issue.code for issue in result.issues})
+
     def test_static_provider_records_request_and_honours_cancellation(self) -> None:
         request = PlannerRequest(self.make_snapshot(), "plan", "file")
         provider = StaticModelProvider(self.valid_mapping())

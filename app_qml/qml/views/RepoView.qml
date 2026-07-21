@@ -363,6 +363,13 @@ Item {
                 }
             }
             Fluent.Button {
+                text: "规划提交"
+                enabled: AiCommitPlanBridge && GitBridge
+                    && GitBridge.repoPath.length > 0
+                    && !root._quickCommitPushPending
+                onClicked: aiCommitPlanDialog.openPlanner()
+            }
+            Fluent.Button {
                 text: "提交"
                 style: Fluent.Enums.button.style_primary
                 enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
@@ -800,6 +807,10 @@ Item {
             AiCommitBridge.cancelPrepared(root._aiPreparedRequestId)
             root._aiPreparedRequestId = ""
         }
+    }
+
+    AiCommitPlanDialog {
+        id: aiCommitPlanDialog
     }
 
     // 危险操作:丢弃工作区改动二次确认(不可恢复)

@@ -157,6 +157,14 @@ class AiCommitBridge(QObject):
         self._session_api_key = ""
         self.settingsChanged.emit()
 
+    def planning_settings(self) -> AiCommitSettings:
+        """供同进程文件级规划桥读取当前不可变配置快照。"""
+        return self._settings
+
+    def create_provider_for(self, settings: AiCommitSettings) -> ModelProvider:
+        """复用同一提供方工厂和会话密钥，不把密钥暴露给 QML。"""
+        return self._provider_factory(settings, self._resolve_api_key())
+
     @Slot()
     def prepareCommitMessage(self) -> None:
         if not self._settings.enabled:

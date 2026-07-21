@@ -377,6 +377,9 @@ class CommitPlanValidator:
             issues.append(ValidationIssue("assigned_and_unassigned", "改动同时处于已分配和未分配状态"))
 
         known_groups = set(group_ids)
+        group_positions = {
+            group_id: index for index, group_id in enumerate(group_ids)
+        }
         for group in plan.groups:
             if (
                 not group.group_id.strip()
@@ -394,6 +397,12 @@ class CommitPlanValidator:
                 issues.append(ValidationIssue("duplicate_dependency", "提交组依赖存在重复"))
             if set(group.depends_on) - known_groups:
                 issues.append(ValidationIssue("unknown_dependency", "提交组依赖未知组"))
+            if any(
+                dependency in group_positions
+                and group_positions[dependency] >= group_positions.get(group.group_id, -1)
+                for dependency in group.depends_on
+            ):
+                issues.append(ValidationIssue("dependency_order", "提交组顺序早于其依赖"))
 
         ordered = self._topological_order(plan.groups)
         if len(ordered) != len(plan.groups):
