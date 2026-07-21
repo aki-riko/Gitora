@@ -6,6 +6,7 @@ import unittest
 
 from app.common.ai_commit_models import (
     ChangeSnapshot,
+    CommitStyleProfile,
     CommitPlan,
     CommitPlanValidator,
     FileChangeSnapshot,
@@ -147,6 +148,39 @@ class AiCommitProtocolTest(unittest.TestCase):
         self.assertEqual(file_payload["snapshot"]["changes"][0]["hunks"][0]["content"], "")
         self.assertEqual(hunk_payload["snapshot"]["changes"][0]["patch"], "")
         self.assertIn("+new", hunk_payload["snapshot"]["changes"][0]["hunks"][0]["content"])
+        self.assertEqual(file_payload["snapshot"]["history_style"], {
+            "language": "zh",
+            "uses_conventional_commits": True,
+            "common_types": ["fix"],
+            "sample_count": 1,
+        })
+
+    def test_history_style_extraction_handles_mixed_repository_history(self) -> None:
+        profile = CommitStyleProfile.from_titles((
+            "feat(ui): 增加规划界面",
+            "fix: repair stale plan",
+            "普通中文标题",
+            "",
+        ))
+        self.assertEqual(profile.language, "zh")
+        self.assertTrue(profile.uses_conventional_commits)
+        self.assertEqual(profile.common_types, ("feat", "fix"))
+        self.assertEqual(profile.sample_count, 3)
+
+    def test_validator_rejects_level_downgrade_and_ambiguous_group_ids(self) -> None:
+        mapping = self.valid_mapping("hunk")
+        mapping["groups"][0]["group_id"] = " code "
+        mapping["groups"][1]["depends_on"] = [" code ", " code "]
+        result = CommitPlanValidator().validate(
+            CommitPlan.from_mapping(mapping),
+            self.make_snapshot(),
+            expected_level="file",
+        )
+        codes = {issue.code for issue in result.issues}
+        self.assertFalse(result.valid)
+        self.assertTrue({
+            "level_mismatch", "invalid_group_id", "duplicate_dependency",
+        }.issubset(codes))
 
     def test_static_provider_records_request_and_honours_cancellation(self) -> None:
         request = PlannerRequest(self.make_snapshot(), "plan", "file")

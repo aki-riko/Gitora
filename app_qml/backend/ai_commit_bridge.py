@@ -244,7 +244,9 @@ class AiCommitBridge(QObject):
                 )
                 raw_plan = provider.generate_plan(prepared.request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
-                result = self._validator.validate(plan, prepared.snapshot)
+                result = self._validator.validate(
+                    plan, prepared.snapshot, expected_level=prepared.request.level
+                )
                 if not result.valid:
                     details = "；".join(issue.message for issue in result.issues)
                     raise PlanProtocolError(details or "模型计划校验失败")

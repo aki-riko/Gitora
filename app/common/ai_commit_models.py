@@ -2,6 +2,8 @@
 """AI 提交规划器的结构化协议与确定性校验。"""
 from __future__ import annotations
 
+import re
+from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Mapping, Sequence
 
@@ -12,6 +14,13 @@ PLAN_LEVELS = {"file", "hunk"}
 
 class PlanProtocolError(ValueError):
     """模型响应不符合结构化协议。"""
+
+
+_CONVENTIONAL_TITLE = re.compile(
+    r"^(?P<type>[a-z][a-z0-9-]*)(?:\([^)]+\))?!?:\s+(?P<subject>.+)$"
+)
+_CJK_CHARACTER = re.compile(r"[\u3400-\u9fff]")
+_LATIN_CHARACTER = re.compile(r"[A-Za-z]")
 
 
 def _strict_keys(data: Mapping[str, Any], allowed: set[str], context: str) -> None:
@@ -31,6 +40,64 @@ def _string_list(value: Any, context: str) -> tuple[str, ...]:
     if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
         raise PlanProtocolError(f"{context} 必须是字符串数组")
     return tuple(value)
+
+
+@dataclass(frozen=True)
+class CommitStyleProfile:
+    """从真实历史标题提取的轻量风格提示，不替代原始样本。"""
+
+    language: str
+    uses_conventional_commits: bool
+    common_types: tuple[str, ...]
+    sample_count: int
+
+    @classmethod
+    def from_titles(cls, titles: Sequence[str]) -> "CommitStyleProfile":
+        type_counts: Counter[str] = Counter()
+        cjk_count = 0
+        latin_count = 0
+        sample_count = 0
+        conventional_count = 0
+        for raw_title in titles:
+            title = raw_title.strip()
+            if not title:
+                continue
+            sample_count += 1
+            match = _CONVENTIONAL_TITLE.match(title)
+            subject = title
+            if match:
+                conventional_count += 1
+                type_counts[match.group("type").lower()] += 1
+                subject = match.group("subject")
+            if _CJK_CHARACTER.search(subject):
+                cjk_count += 1
+            if _LATIN_CHARACTER.search(subject):
+                latin_count += 1
+
+        if sample_count == 0:
+            language = "unknown"
+        elif cjk_count > latin_count:
+            language = "zh"
+        elif latin_count > cjk_count:
+            language = "en"
+        else:
+            language = "mixed"
+        return cls(
+            language=language,
+            uses_conventional_commits=(
+                sample_count > 0 and conventional_count * 2 >= sample_count
+            ),
+            common_types=tuple(item for item, _count in type_counts.most_common(3)),
+            sample_count=sample_count,
+        )
+
+    def to_prompt_payload(self) -> dict[str, Any]:
+        return {
+            "language": self.language,
+            "uses_conventional_commits": self.uses_conventional_commits,
+            "common_types": list(self.common_types),
+            "sample_count": self.sample_count,
+        }
 
 
 @dataclass(frozen=True)
@@ -148,6 +215,9 @@ class ChangeSnapshot:
             "complete": self.complete,
             "changes": [change.to_prompt_payload(level) for change in self.changes],
             "recent_titles": list(self.recent_titles),
+            "history_style": CommitStyleProfile.from_titles(
+                self.recent_titles
+            ).to_prompt_payload(),
             "instructions": [
                 {"name": name, "content": content}
                 for name, content in self.instructions
@@ -269,7 +339,10 @@ class CommitPlanValidator:
     """只根据可信快照验证模型计划，不猜测或修补模型输出。"""
 
     def validate(
-        self, plan: CommitPlan, snapshot: ChangeSnapshot
+        self,
+        plan: CommitPlan,
+        snapshot: ChangeSnapshot,
+        expected_level: str | None = None,
     ) -> PlanValidationResult:
         issues: list[ValidationIssue] = []
         if plan.schema_version != SCHEMA_VERSION:
@@ -281,6 +354,8 @@ class CommitPlanValidator:
             expected: set[str] = set()
         else:
             expected = set(snapshot.expected_ids(plan.level))
+        if expected_level is not None and plan.level != expected_level:
+            issues.append(ValidationIssue("level_mismatch", "计划级别与请求不一致"))
 
         group_ids = [group.group_id for group in plan.groups]
         duplicate_groups = self._duplicates(group_ids)
@@ -303,14 +378,20 @@ class CommitPlanValidator:
 
         known_groups = set(group_ids)
         for group in plan.groups:
-            if not group.group_id.strip():
-                issues.append(ValidationIssue("empty_group_id", "提交组标识不能为空"))
+            if (
+                not group.group_id.strip()
+                or group.group_id != group.group_id.strip()
+                or self._has_control_character(group.group_id)
+            ):
+                issues.append(ValidationIssue("invalid_group_id", "提交组标识格式无效"))
             if not group.title.strip() or self._has_control_character(group.title):
                 issues.append(ValidationIssue("invalid_title", "提交标题为空或包含控制字符"))
             if not group.change_ids:
                 issues.append(ValidationIssue("empty_group", "提交组没有改动"))
             if group.group_id in group.depends_on:
                 issues.append(ValidationIssue("self_dependency", "提交组不能依赖自身"))
+            if self._duplicates(group.depends_on):
+                issues.append(ValidationIssue("duplicate_dependency", "提交组依赖存在重复"))
             if set(group.depends_on) - known_groups:
                 issues.append(ValidationIssue("unknown_dependency", "提交组依赖未知组"))
 
