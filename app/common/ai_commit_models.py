@@ -422,6 +422,17 @@ class CommitPlanValidator:
             if unsupported:
                 executable = False
                 issues.append(ValidationIssue("unsupported_change", "计划包含不可自动执行的改动", "warning"))
+        if plan.level == "file":
+            path_states: dict[str, set[bool]] = {}
+            for change in snapshot.changes:
+                path_states.setdefault(change.path, set()).add(change.staged)
+            if any(len(states) > 1 for states in path_states.values()):
+                executable = False
+                issues.append(ValidationIssue(
+                    "partially_staged_path",
+                    "同一文件同时有已暂存和未暂存改动，文件级计划只能查看",
+                    "warning",
+                ))
         return PlanValidationResult(valid, executable, tuple(ordered), tuple(issues))
 
     @staticmethod

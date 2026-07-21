@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import threading
 import unittest
+from dataclasses import replace
 
 from app.common.ai_commit_models import (
     ChangeSnapshot,
@@ -190,6 +191,29 @@ class AiCommitProtocolTest(unittest.TestCase):
         )
         self.assertFalse(result.valid)
         self.assertIn("dependency_order", {issue.code for issue in result.issues})
+
+    def test_partially_staged_file_plan_is_view_only_until_hunk_level(self) -> None:
+        snapshot = self.make_snapshot()
+        partial = replace(
+            snapshot,
+            changes=(
+                snapshot.changes[0],
+                replace(
+                    snapshot.changes[1],
+                    path=snapshot.changes[0].path,
+                    old_path=snapshot.changes[0].path,
+                    new_path=snapshot.changes[0].path,
+                ),
+            ),
+        )
+        result = CommitPlanValidator().validate(
+            CommitPlan.from_mapping(self.valid_mapping()), partial
+        )
+        self.assertTrue(result.valid)
+        self.assertFalse(result.executable)
+        self.assertIn(
+            "partially_staged_path", {issue.code for issue in result.issues}
+        )
 
     def test_static_provider_records_request_and_honours_cancellation(self) -> None:
         request = PlannerRequest(self.make_snapshot(), "plan", "file")

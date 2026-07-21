@@ -248,6 +248,16 @@ Fluent.DialogBoxCore {
                                         }
                                     }
 
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: groupCard.group.warnings.length > 0
+                                        text: "模型提示：" + groupCard.group.warnings.join("；")
+                                        color: Fluent.Enums.statusLevel.warningColor
+                                        font.family: Fluent.Enums.fontFamily
+                                        font.pixelSize: Fluent.Enums.typography.caption
+                                        wrapMode: Text.WordWrap
+                                    }
+
                                     Fluent.LineEdit {
                                         id: titleInput
                                         Layout.fillWidth: true
@@ -345,7 +355,8 @@ Fluent.DialogBoxCore {
                 RowLayout {
                     Layout.fillWidth: true
                     Text {
-                        text: change.status + "  +" + change.additions + " / -" + change.deletions
+                        text: (change.staged ? "已暂存" : "未暂存") + " · "
+                            + change.status + "  +" + change.additions + " / -" + change.deletions
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.caption
