@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import csv
+import json
 import tempfile
 import unittest
 from pathlib import Path
 
 from app.common.ai_commit_evaluation import (
+    EvaluationError,
     EvaluationRunner,
     HistoryReplayBuilder,
     read_case_manifest,
@@ -134,6 +136,7 @@ class AiCommitEvaluationTest(unittest.TestCase):
         self.assertEqual(record.coverage_percent, 100)
         self.assertEqual(record.duplicate_count, 0)
         self.assertTrue(record.patch_valid)
+        self.assertGreaterEqual(record.total_latency_ms, record.provider_latency_ms)
 
     def test_provider_failure_records_type_without_fabricating_scores(self) -> None:
         record = EvaluationRunner(
@@ -155,6 +158,16 @@ class AiCommitEvaluationTest(unittest.TestCase):
         self.assertEqual(record.failure_type, "coverage")
         self.assertTrue(record.protocol_valid)
         self.assertEqual(record.coverage_percent, 0)
+
+    def test_manifest_rejects_revision_option_injection(self) -> None:
+        root = Path(self.temp_dir.name)
+        manifest = root / "unsafe.jsonl"
+        payload = self.cases[0].to_mapping()
+        payload["base_commit"] = "--help"
+        manifest.write_text(json.dumps(payload) + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(EvaluationError, "提交哈希"):
+            read_case_manifest(manifest)
 
 
 if __name__ == "__main__":

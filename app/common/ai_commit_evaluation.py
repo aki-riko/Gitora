@@ -6,6 +6,7 @@ import csv
 import hashlib
 import json
 import os
+import re
 import subprocess
 import tempfile
 import time
@@ -46,6 +47,24 @@ class ReplayCase:
     combined_diff_chars: int
     combined_diff_sha256: str
 
+    def __post_init__(self) -> None:
+        commit_pattern = re.compile(r"[0-9a-f]{40,64}")
+        commits = (self.base_commit, self.tip_commit, *self.target_commits)
+        if not self.target_commits or any(
+            not commit_pattern.fullmatch(commit) for commit in commits
+        ):
+            raise EvaluationError("回放清单包含无效提交哈希")
+        if self.tip_commit != self.target_commits[-1]:
+            raise EvaluationError("回放 tip 与目标提交不一致")
+        if len(self.expected_titles) != len(self.target_commits):
+            raise EvaluationError("回放标题数量与目标提交不一致")
+        if not re.fullmatch(r"case-[0-9]{3}-[0-9a-f]{10}", self.case_id):
+            raise EvaluationError("回放样本标识格式无效")
+        if not re.fullmatch(r"[0-9a-f]{64}", self.combined_diff_sha256):
+            raise EvaluationError("回放差异摘要格式无效")
+        if any("\0" in path or Path(path).is_absolute() for path in self.changed_paths):
+            raise EvaluationError("回放清单包含不安全路径")
+
     def to_mapping(self) -> dict:
         payload = asdict(self)
         for key in (
@@ -79,7 +98,8 @@ class EvaluationRecord:
     provider_id: str
     model: str
     started_at: str
-    latency_ms: int
+    total_latency_ms: int
+    provider_latency_ms: int
     status: str
     failure_type: str
     protocol_valid: bool
@@ -233,17 +253,19 @@ class EvaluationRunner:
     ) -> EvaluationRecord:
         started_at = datetime.now(timezone.utc).isoformat()
         started = time.monotonic()
+        provider_latency_ms = 0
         try:
-            hard_metrics = self._evaluate(case, provider)
+            hard_metrics, provider_latency_ms = self._evaluate(case, provider)
             failure_type = self._hard_failure_type(hard_metrics)
             status = "failed" if failure_type else "passed"
         except Exception as exc:  # noqa: BLE001
             hard_metrics = (False, 0, 0, False)
             status, failure_type = "failed", type(exc).__name__
-        latency_ms = round((time.monotonic() - started) * 1000)
+        total_latency_ms = round((time.monotonic() - started) * 1000)
         return EvaluationRecord(
             case.case_id, provider_kind, provider.provider_id, model,
-            started_at, latency_ms, status, failure_type, *hard_metrics,
+            started_at, total_latency_ms, provider_latency_ms,
+            status, failure_type, *hard_metrics,
         )
 
     @staticmethod
@@ -261,13 +283,18 @@ class EvaluationRunner:
 
     def _evaluate(
         self, case: ReplayCase, provider: ModelProvider
-    ) -> tuple[bool, int, int, bool]:
+    ) -> tuple[tuple[bool, int, int, bool], int]:
         with replay_workspace(
             self._repo, case, self._limits, self._timeout
         ) as replay:
             repo_path, service, snapshot = replay
             request = PlannerRequest(snapshot, "plan", "hunk", True)
-            plan = CommitPlan.from_mapping(provider.generate_plan(request))
+            provider_started = time.monotonic()
+            raw_plan = provider.generate_plan(request)
+            provider_latency_ms = round(
+                (time.monotonic() - provider_started) * 1000
+            )
+            plan = CommitPlan.from_mapping(raw_plan)
             validation = CommitPlanValidator().validate(plan, snapshot, "hunk")
             expected = set(snapshot.expected_ids("hunk"))
             if not expected:
@@ -282,7 +309,8 @@ class EvaluationRunner:
                     self._limits, self._timeout,
                 )
                 patch_valid = True
-            return validation.valid, coverage, duplicates, patch_valid
+            metrics = validation.valid, coverage, duplicates, patch_valid
+            return metrics, provider_latency_ms
 
 
 def write_case_manifest(path: Path, cases: Sequence[ReplayCase]) -> None:
@@ -306,8 +334,9 @@ def write_manual_template(path: Path, cases: Sequence[ReplayCase]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fields = [
         "case_id", "provider_kind", "model", "status", "failure_type",
-        "latency_ms", "protocol_valid", "coverage_percent", "duplicate_count",
-        "patch_valid", "title_score_1_5", "grouping_score_1_5",
+        "total_latency_ms", "provider_latency_ms", "protocol_valid",
+        "coverage_percent", "duplicate_count", "patch_valid",
+        "title_score_1_5", "grouping_score_1_5",
         "style_score_1_5", "accepted_without_regroup", "notes",
     ]
     with path.open("w", encoding="utf-8-sig", newline="") as handle:
