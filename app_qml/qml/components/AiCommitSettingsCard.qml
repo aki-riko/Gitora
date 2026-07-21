@@ -89,7 +89,7 @@ Fluent.SettingsCardGroup {
                 Fluent.ComboBox {
                     id: scopeCombo
                     Layout.fillWidth: true
-                    model: ["文件级规划：仅已暂存差异", "文件级规划：全部工作区改动"]
+                    model: ["提交规划：仅已暂存差异", "提交规划：全部工作区改动"]
                     currentIndex: 0
                 }
 
