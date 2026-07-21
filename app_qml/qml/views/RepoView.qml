@@ -22,6 +22,7 @@ Item {
     property bool _quickCommitPushPending: false
     property string _quickCommitPushMessage: ""
     property string _quickCommitPushRepoPath: ""
+    property string _aiPreparedRequestId: ""
 
     FontMetrics {
         id: repoPathFontMetrics
@@ -168,6 +169,35 @@ Item {
         }
     }
 
+    Connections {
+        target: AiCommitBridge
+        function onContextPrepared(requestId, isRemote, fileCount, characterCount, summary) {
+            root._aiPreparedRequestId = requestId
+            if (isRemote) {
+                remoteAiConfirm.content = summary + "\n将发送 " + fileCount
+                    + " 个变更，约 " + characterCount + " 个字符。\n"
+                    + "确认后才会向远程模型发送源码差异。"
+                remoteAiConfirm.open()
+            } else {
+                AiCommitBridge.generatePrepared(requestId, false)
+            }
+        }
+        function onCommitMessageReady(repoPath, requestId, ok, title, body, message) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || requestId !== root._aiPreparedRequestId) return
+            root._aiPreparedRequestId = ""
+            if (ok) {
+                commitInput.text = title + (body.length > 0 ? "\n\n" + body : "")
+                Fluent.NotificationManager.toast.success(root, "提交信息已生成", message || "可继续编辑后提交")
+            } else {
+                Fluent.NotificationManager.toast.error(root, "生成失败", message || "")
+            }
+        }
+        function onErrorOccurred(message) {
+            Fluent.NotificationManager.toast.error(root, "AI 提交规划", message)
+        }
+    }
+
     Component.onCompleted: root.reload()
 
     // 外部变化的刷新由后端 GitBridge 统一轮询驱动:检测到指纹变化 → 发 statusChanged,
@@ -310,10 +340,19 @@ Item {
         RowLayout {
             Layout.fillWidth: true
             spacing: Fluent.Enums.spacing.m
-            Fluent.LineEdit {
+            Fluent.TextEdit {
                 id: commitInput
                 Layout.fillWidth: true
+                Layout.preferredHeight: 68
                 placeholderText: "提交信息"
+                showScrollIndicator: true
+            }
+            Fluent.Button {
+                text: AiCommitBridge && AiCommitBridge.busy ? "生成中…" : "AI 生成"
+                enabled: AiCommitBridge && !AiCommitBridge.busy
+                    && GitBridge && GitBridge.repoPath.length > 0
+                    && !root._quickCommitPushPending
+                onClicked: AiCommitBridge.prepareCommitMessage()
             }
             Fluent.Button {
                 text: "提交"
@@ -740,6 +779,18 @@ Item {
                 visible: syncDialog._mode !== "fetch"
                 placeholderText: "分支名"
             }
+        }
+    }
+
+    Fluent.MessageBox {
+        id: remoteAiConfirm
+        title: "确认发送差异到远程模型"
+        confirmText: "确认发送"
+        cancelText: "取消"
+        onAccepted: AiCommitBridge.generatePrepared(root._aiPreparedRequestId, true)
+        onRejected: {
+            AiCommitBridge.cancelPrepared(root._aiPreparedRequestId)
+            root._aiPreparedRequestId = ""
         }
     }
 

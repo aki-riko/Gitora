@@ -163,6 +163,10 @@ Item {
                 }
             }
 
+            AiCommitSettingsCard {
+                width: contentCol.groupWidth
+            }
+
             // ==================== 个性化 ====================
             Fluent.SettingsCardGroup {
                 title: "个性化"

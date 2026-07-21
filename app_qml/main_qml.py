@@ -81,6 +81,7 @@ from prismqml.python.config import getConfigManager  # noqa: E402
 from prismqml.python.providers import get_clipboard_helper  # noqa: E402
 
 from app_qml.backend.git_bridge import GitBridge  # noqa: E402
+from app_qml.backend.ai_commit_bridge import AiCommitBridge  # noqa: E402
 from app_qml.backend.window_icon_bridge import WindowIconBridge  # noqa: E402
 
 
@@ -113,17 +114,22 @@ def main() -> int:
 
     # 注册后端到 QML
     git_bridge = GitBridge()
+    ai_commit_bridge = AiCommitBridge(git_bridge.service)
     config_manager = getConfigManager()
     from app_qml.backend.repo_scanner import RepoScanner
     repo_scanner = RepoScanner()
     window_icon_bridge = WindowIconBridge()
     ctx = engine.rootContext()
     ctx.setContextProperty("GitBridge", git_bridge)
+    ctx.setContextProperty("AiCommitBridge", ai_commit_bridge)
     ctx.setContextProperty("ConfigManager", config_manager)
     ctx.setContextProperty("ClipboardHelper", get_clipboard_helper())
     ctx.setContextProperty("RepoScanner", repo_scanner)
     ctx.setContextProperty("WindowIconBridge", window_icon_bridge)
     app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive
+    app._ai_commit_bridge = ai_commit_bridge
+    git_bridge.repoPathChanged.connect(ai_commit_bridge.invalidateRepo)
+    git_bridge.statusChanged.connect(ai_commit_bridge.invalidateWorkspace)
     # 启动后台扫描(延迟启动,不阻塞窗口显示)
     from PySide6.QtCore import QTimer as _QTimer
     _QTimer.singleShot(1500, repo_scanner.start)

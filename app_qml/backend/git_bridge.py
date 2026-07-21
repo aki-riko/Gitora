@@ -218,6 +218,11 @@ class GitBridge(QObject):
     def repoPath(self) -> str:
         return self._svc.repo_path or ""
 
+    @property
+    def service(self) -> GitService:
+        """供同进程后端组件复用同一个仓库会话，不暴露给 QML。"""
+        return self._svc
+
     @Property(QObject, constant=True)
     def fileChangeModel(self) -> FileChangeListModel:
         return self._file_change_model
