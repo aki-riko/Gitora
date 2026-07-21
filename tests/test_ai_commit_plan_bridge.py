@@ -209,6 +209,63 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertFalse(bridge.planModel.hasPlan)
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
 
+    def test_remaining_file_edit_after_apply_invalidates_followup_plan(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        applied: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+        bridge.groupApplied.connect(lambda *args: applied.append(args))
+        bridge.errorOccurred.connect(errors.append)
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        remaining_path = bridge.planModel.groups[1]["changes"][0]["path"]
+
+        bridge.applyNextGroup()
+        self.assertTrue(self.wait_until(lambda: len(applied) == 1))
+        write_file(self.repo, remaining_path, "changed while first group awaited commit\n")
+        ok, _message = self.service.commit(applied[0][1])
+        self.assertTrue(ok)
+        bridge.notifyCommitSucceeded()
+
+        self.assertTrue(self.wait_until(lambda: bool(errors)))
+        self.assertIn("发生变化", errors[-1])
+        self.assertTrue(bridge.planModel.stale)
+        self.assertFalse(bridge.planModel.executable)
+
+    def test_final_group_does_not_hide_new_unstaged_edit(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        applied: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+        bridge.groupApplied.connect(lambda *args: applied.append(args))
+        bridge.errorOccurred.connect(errors.append)
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        bridge.applyNextGroup()
+        self.assertTrue(self.wait_until(lambda: len(applied) == 1))
+
+        write_file(self.repo, "one.py", "edited after staging\n")
+        ok, _message = self.service.commit(applied[0][1])
+        self.assertTrue(ok)
+        bridge.notifyCommitSucceeded()
+
+        self.assertTrue(self.wait_until(lambda: bool(errors)))
+        self.assertIn("仍有新改动", errors[-1])
+        self.assertTrue(bridge.planModel.stale)
+
     def wait_until(self, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:

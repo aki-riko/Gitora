@@ -26,6 +26,7 @@ class AppliedFileGroup:
     head_before: str
     index_tree_before: str
     expected_commit_tree: str
+    limits: SnapshotLimits
 
 
 class FilePlanExecutor:
@@ -114,6 +115,7 @@ class FilePlanExecutor:
                 snapshot.head,
                 index_tree_before,
                 expected_tree,
+                limits,
             )
 
     def verify_committed_group(

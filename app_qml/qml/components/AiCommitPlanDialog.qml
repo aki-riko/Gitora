@@ -42,6 +42,7 @@ Fluent.DialogBoxCore {
             }
             Fluent.ButtonCore {
                 text: AiCommitPlanBridge && AiCommitPlanBridge.busy ? "取消生成" : "重新生成"
+                enabled: AiCommitPlanBridge && !AiCommitPlanBridge.awaitingCommit
                 width: Fluent.Enums.dialog.buttonWidth
                 height: Fluent.Enums.dialog.buttonHeight
                 onClicked: {
@@ -195,6 +196,8 @@ Fluent.DialogBoxCore {
                         Layout.fillWidth: true
                         text: "新增提交组"
                         enabled: AiCommitPlanBridge && AiCommitPlanBridge.planModel.hasPlan
+                            && !AiCommitPlanBridge.busy
+                            && !AiCommitPlanBridge.awaitingCommit
                         onClicked: AiCommitPlanBridge.planModel.addGroup()
                     }
                 }

@@ -61,6 +61,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("确认发送工作区差异到远程模型", source)
         self.assertIn("模型提示：", source)
         self.assertIn('change.staged ? "已暂存" : "未暂存"', source)
+        self.assertIn("!AiCommitPlanBridge.awaitingCommit", source)
         self.assertNotIn("GitBridge.commit", source)
         self.assertNotIn("GitBridge.push", source)
         self.assertNotIn("GitBridge.stage", source)

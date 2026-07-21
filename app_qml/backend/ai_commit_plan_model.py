@@ -272,6 +272,8 @@ class AiCommitPlanModel(QObject):
             return False, False, "已提交组与计划顺序不一致"
         remaining_groups = self._groups[1:]
         if not remaining_groups:
+            if fresh_snapshot.changes:
+                return False, False, "最后一组提交后仍有新改动，请重新规划"
             self.clear()
             return True, True, "全部计划组已完成"
 
@@ -296,6 +298,11 @@ class AiCommitPlanModel(QObject):
             old_id: fresh_by_path[path].change_id
             for path, old_id in old_path_to_id.items()
         }
+        for path, old_id in old_path_to_id.items():
+            if not self._same_change_content(
+                old_changes[old_id], fresh_by_path[path]
+            ):
+                return False, False, f"{path} 在提交期间发生变化，请重新规划"
         completed = completed_group_id
         plan = CommitPlan(
             schema_version="1",
@@ -319,6 +326,34 @@ class AiCommitPlanModel(QObject):
         )
         self.load(plan, fresh_snapshot)
         return True, False, "已推进到下一提交组"
+
+    @staticmethod
+    def _same_change_content(
+        before: FileChangeSnapshot, after: FileChangeSnapshot
+    ) -> bool:
+        return (
+            before.path,
+            before.old_path,
+            before.new_path,
+            before.status,
+            before.binary,
+            before.truncated,
+            before.unsupported_reason,
+            before.additions,
+            before.deletions,
+            before.patch,
+        ) == (
+            after.path,
+            after.old_path,
+            after.new_path,
+            after.status,
+            after.binary,
+            after.truncated,
+            after.unsupported_reason,
+            after.additions,
+            after.deletions,
+            after.patch,
+        )
 
     def _changed(self) -> None:
         self._revalidate()

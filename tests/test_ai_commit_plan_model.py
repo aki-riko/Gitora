@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import unittest
+from dataclasses import replace
 
 from app.common.ai_commit_models import (
     ChangeSnapshot,
@@ -108,6 +109,36 @@ class AiCommitPlanModelTest(unittest.TestCase):
         self.assertTrue(self.model.stale)
         self.assertFalse(self.model.executable)
         self.assertIn("stale_plan", {item["code"] for item in self.model.issues})
+
+    def test_advance_rejects_same_path_with_changed_patch(self) -> None:
+        fresh_change = replace(
+            self.snapshot.changes[1],
+            change_id="fresh_test",
+            patch="diff --git changed during commit",
+        )
+        fresh = replace(
+            self.snapshot,
+            snapshot_id="fresh",
+            workspace_fingerprint="fresh-workspace",
+            changes=(fresh_change,),
+        )
+        ok, completed, message = self.model.advance_after_commit("code", fresh)
+        self.assertFalse(ok)
+        self.assertFalse(completed)
+        self.assertIn("发生变化", message)
+
+    def test_final_group_requires_clean_remaining_workspace(self) -> None:
+        self.assertTrue(self.model.moveChange("file_code", "tests"))
+        self.assertTrue(self.model.removeEmptyGroup("code"))
+        fresh = replace(
+            self.snapshot,
+            snapshot_id="fresh",
+            changes=(replace(self.snapshot.changes[0], change_id="unexpected"),),
+        )
+        ok, completed, message = self.model.advance_after_commit("tests", fresh)
+        self.assertFalse(ok)
+        self.assertFalse(completed)
+        self.assertIn("仍有新改动", message)
 
 
 if __name__ == "__main__":

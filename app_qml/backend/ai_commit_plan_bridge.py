@@ -330,7 +330,6 @@ class AiCommitPlanBridge(QObject):
             return
         serial, cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
-        settings = self._runtime.planning_settings()
 
         def work() -> None:
             try:
@@ -338,7 +337,7 @@ class AiCommitPlanBridge(QObject):
                 fresh_snapshot = None
                 if ok:
                     fresh_snapshot = ChangeContextCollector(
-                        self._git, settings.limits
+                        self._git, applied.limits
                     ).collect(applied.repo_path, include_unstaged=True)
                 if self._is_current(serial, applied.repo_path, cancel_event):
                     self._commitChecked.emit(serial, ok, message, fresh_snapshot)
