@@ -88,7 +88,7 @@ class FilePlanExecutor:
                 self._reset_paths(repo_path, snapshot.head, planned_paths)
                 self._run_required(
                     repo_path,
-                    ["add", "-A", "--", *target_paths],
+                    ["--literal-pathspecs", "add", "-A", "--", *target_paths],
                     "暂存下一提交组失败",
                 )
                 if repo_path != (self._git.repo_path or ""):
@@ -157,13 +157,16 @@ class FilePlanExecutor:
         if head:
             self._run_required(
                 repo_path,
-                ["reset", "-q", head, "--", *paths],
+                ["--literal-pathspecs", "reset", "-q", head, "--", *paths],
                 "重置计划路径失败",
             )
         else:
             self._run_required(
                 repo_path,
-                ["rm", "--cached", "-r", "--ignore-unmatch", "--", *paths],
+                [
+                    "--literal-pathspecs", "rm", "--cached", "-r",
+                    "--ignore-unmatch", "--", *paths,
+                ],
                 "准备首次提交索引失败",
             )
 

@@ -79,7 +79,7 @@ class FilePlanExecutorTest(unittest.TestCase):
         original_run = self.service._run_git_sync_at
 
         def fail_target_add(repo_path, args, timeout=30):
-            if args[:2] == ["add", "-A"]:
+            if args[:3] == ["--literal-pathspecs", "add", "-A"]:
                 return False, "", "injected add failure"
             return original_run(repo_path, args, timeout)
 

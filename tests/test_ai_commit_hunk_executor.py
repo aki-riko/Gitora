@@ -267,6 +267,104 @@ class HunkPlanExecutorTest(unittest.TestCase):
         self.assertTrue(remapped.completed)
         self.assertEqual(fresh.changes, ())
 
+    def test_unborn_repository_applies_untracked_groups_in_order(self) -> None:
+        repo = init_repo(Path(self.temp_dir.name) / "unborn")
+        write_file(repo, "first.txt", "first\n")
+        write_file(repo, "second.txt", "second\n")
+        service = GitService()
+        self.assertTrue(service.set_repo_path(str(repo), emit_status=False))
+        collector = ChangeContextCollector(service, self.settings.limits)
+        snapshot = collector.collect(str(repo), include_unstaged=True)
+        plan = self.plan_for(
+            snapshot, [[change_id] for change_id in snapshot.expected_ids("hunk")]
+        )
+        executor = HunkPlanExecutor(service)
+        validation = CommitPlanValidator().validate(plan, snapshot, "hunk")
+
+        applied = executor.apply_next(
+            str(repo), snapshot, plan, validation, False,
+            self.settings.limits, self.settings.timeout_seconds,
+        )
+        ok, message = service.commit(applied.group.title)
+        self.assertTrue(ok, message)
+        verified, _head = executor.verify_committed_group(applied)
+        self.assertTrue(verified)
+        fresh = collector.collect(str(repo), include_unstaged=True)
+        remapped = HunkPlanRemapper.advance(
+            snapshot, fresh, plan, applied.group.group_id
+        )
+
+        self.assertTrue(remapped.advanced)
+        self.assertFalse(remapped.completed)
+        self.assertEqual(len(fresh.changes), 1)
+
+    def test_empty_file_deletion_isolated_from_later_hunk(self) -> None:
+        write_file(self.repo, "空 文件.txt", "")
+        commit_all(self.repo, "chore: add empty file")
+        (self.repo / "空 文件.txt").unlink()
+        changed = list(self.base_lines)
+        changed[34] = "later content\n"
+        write_file(self.repo, "code.txt", "".join(changed))
+        snapshot = self.collect()
+        deleted = next(change for change in snapshot.changes if change.status == "D")
+        modified = next(change for change in snapshot.changes if change.path == "code.txt")
+        self.assertEqual(deleted.hunks, ())
+        plan = self.plan_for(snapshot, [
+            [deleted.change_id], [modified.hunks[0].change_id],
+        ])
+        validation = CommitPlanValidator().validate(plan, snapshot, "hunk")
+
+        self.executor.apply_next(
+            str(self.repo), snapshot, plan, validation, False,
+            self.settings.limits, self.settings.timeout_seconds,
+        )
+
+        cached_names = run_git(self.repo, "diff", "--cached", "--name-only").stdout
+        self.assertIn("空 文件.txt", cached_names)
+        self.assertNotIn("code.txt", cached_names)
+        self.assertIn("later content", run_git(self.repo, "diff").stdout)
+
+    def test_staged_empty_add_does_not_absorb_later_file_content(self) -> None:
+        write_file(self.repo, "empty then edit.txt", "")
+        run_git(self.repo, "add", "empty then edit.txt")
+        write_file(self.repo, "empty then edit.txt", "later content\n")
+        snapshot = self.collect()
+        staged = next(change for change in snapshot.changes if change.staged)
+        unstaged = next(change for change in snapshot.changes if not change.staged)
+        self.assertEqual(staged.hunks, ())
+        plan = self.plan_for(snapshot, [
+            [staged.change_id], [unstaged.hunks[0].change_id],
+        ])
+        validation = CommitPlanValidator().validate(plan, snapshot, "hunk")
+
+        self.executor.apply_next(
+            str(self.repo), snapshot, plan, validation, False,
+            self.settings.limits, self.settings.timeout_seconds,
+        )
+
+        cached = run_git(self.repo, "diff", "--cached").stdout
+        self.assertIn("new file mode", cached)
+        self.assertNotIn("later content", cached)
+        self.assertIn("later content", run_git(self.repo, "diff").stdout)
+
+    def test_staged_mode_only_change_survives_combined_target_validation(self) -> None:
+        run_git(self.repo, "update-index", "--chmod=+x", "code.txt")
+        snapshot = self.collect()
+        change = snapshot.changes[0]
+        self.assertTrue(change.staged)
+        self.assertEqual(change.hunks, ())
+        plan = self.plan_for(snapshot, [[change.change_id]])
+        validation = CommitPlanValidator().validate(plan, snapshot, "hunk")
+
+        self.executor.apply_next(
+            str(self.repo), snapshot, plan, validation, False,
+            self.settings.limits, self.settings.timeout_seconds,
+        )
+
+        cached = run_git(self.repo, "diff", "--cached").stdout
+        self.assertIn("old mode 100644", cached)
+        self.assertIn("new mode 100755", cached)
+
 
 if __name__ == "__main__":
     unittest.main()

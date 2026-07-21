@@ -13,6 +13,7 @@ from .ai_commit_models import (
     ChangeSnapshot,
     CommitGroup,
     CommitPlan,
+    FileChangeSnapshot,
     PlanValidationResult,
 )
 from .git_service import GitService
@@ -50,37 +51,40 @@ class HunkPatchBuilder:
         sections: list[str] = []
         whole_file_ids: list[str] = []
         for change in snapshot.changes:
-            change_ids = set(change.expected_ids("hunk"))
-            assigned = selected & change_ids
+            assigned = selected & set(change.expected_ids("hunk"))
             if not assigned:
                 continue
-            if not change.hunks:
-                if assigned != {change.change_id}:
-                    raise PatchValidationError("整文件改动的标识不一致")
-                if change.patch.startswith("diff --git "):
-                    sections.append(
-                        change.patch
-                        if change.patch.endswith("\n") else change.patch + "\n"
-                    )
-                else:
-                    whole_file_ids.append(change.change_id)
-                continue
-            header = cls._file_header(change.patch)
-            hunk_by_id = {hunk.change_id: hunk for hunk in change.hunks}
-            ordered = [
-                hunk_by_id[hunk.change_id].content
-                for hunk in change.hunks
-                if hunk.change_id in assigned
-            ]
-            if len(ordered) != len(assigned):
-                raise PatchValidationError("代码块不属于对应文件")
-            section = header + "".join(ordered)
-            sections.append(section if section.endswith("\n") else section + "\n")
+            section, whole_file_id = cls._build_change(change, assigned)
+            if section:
+                sections.append(section)
+            if whole_file_id:
+                whole_file_ids.append(whole_file_id)
         return BuiltGroupPatch(
             group.group_id,
             "".join(sections),
             tuple(whole_file_ids),
         )
+
+    @classmethod
+    def _build_change(
+        cls, change: FileChangeSnapshot, assigned: set[str]
+    ) -> tuple[str, str]:
+        if not change.hunks:
+            if assigned != {change.change_id}:
+                raise PatchValidationError("整文件改动的标识不一致")
+            if change.patch.startswith("diff --git "):
+                return cls._metadata_patch(change), ""
+            return "", change.change_id
+        hunk_by_id = {hunk.change_id: hunk for hunk in change.hunks}
+        ordered = [
+            hunk_by_id[hunk.change_id].content
+            for hunk in change.hunks
+            if hunk.change_id in assigned
+        ]
+        if len(ordered) != len(assigned):
+            raise PatchValidationError("代码块不属于对应文件")
+        section = cls._file_header(change.patch) + "".join(ordered)
+        return (section if section.endswith("\n") else section + "\n"), ""
 
     @staticmethod
     def _file_header(raw_patch: str) -> str:
@@ -93,6 +97,17 @@ class HunkPatchBuilder:
             raise PatchValidationError("文件差异缺少可用的统一补丁头")
         header = "".join(lines[:first_hunk])
         return header if header.endswith("\n") else header + "\n"
+
+    @staticmethod
+    def _metadata_patch(change: FileChangeSnapshot) -> str:
+        patch = change.patch if change.patch.endswith("\n") else change.patch + "\n"
+        if "\n--- " in patch or "\nrename from " in patch:
+            return patch
+        old_path = change.old_path or change.path
+        new_path = change.new_path or change.path
+        old_marker = "/dev/null" if change.status == "A" else f"a/{old_path}"
+        new_marker = "/dev/null" if change.status == "D" else f"b/{new_path}"
+        return patch + f"--- {old_marker}\n+++ {new_marker}\n"
 
 
 class TemporaryIndexValidator:
@@ -110,6 +125,30 @@ class TemporaryIndexValidator:
         limits: SnapshotLimits,
         timeout_seconds: int,
     ) -> TemporaryPlanResult:
+        collector, before_fingerprint, before_tree = self._validate_context(
+            repo_path, snapshot, plan, validation, limits
+        )
+        built_groups = [
+            HunkPatchBuilder.build_group(snapshot, group) for group in plan.groups
+        ]
+        with tempfile.TemporaryDirectory(prefix="gitora-ai-index-") as temp_dir:
+            group_trees, expected_tree = self._validate_in_temporary_indexes(
+                repo_path, snapshot, built_groups, before_tree,
+                Path(temp_dir), timeout_seconds,
+            )
+        self._ensure_real_state_unchanged(
+            repo_path, collector, before_fingerprint, before_tree
+        )
+        return TemporaryPlanResult(tuple(group_trees), expected_tree)
+
+    def _validate_context(
+        self,
+        repo_path: str,
+        snapshot: ChangeSnapshot,
+        plan: CommitPlan,
+        validation: PlanValidationResult,
+        limits: SnapshotLimits,
+    ) -> tuple[ChangeContextCollector, str, str]:
         if plan.level != "hunk":
             raise PatchValidationError("临时索引试应用只接受代码块级计划")
         if not validation.valid or not validation.executable:
@@ -120,58 +159,89 @@ class TemporaryIndexValidator:
         before_fingerprint = collector.workspace_fingerprint(repo_path)
         if before_fingerprint != snapshot.workspace_fingerprint:
             raise PatchValidationError("工作区已变化，请重新规划")
-        before_tree = self._real_index_tree(repo_path)
-        built_groups = [
-            HunkPatchBuilder.build_group(snapshot, group) for group in plan.groups
-        ]
-        all_paths = self._git_paths(snapshot)
+        return collector, before_fingerprint, self._real_index_tree(repo_path)
+
+    def _validate_in_temporary_indexes(
+        self,
+        repo_path: str,
+        snapshot: ChangeSnapshot,
+        built_groups: list[BuiltGroupPatch],
+        before_tree: str,
+        base: Path,
+        timeout_seconds: int,
+    ) -> tuple[list[tuple[str, str]], str]:
+        plan_env = self._index_environment(base / "plan.index")
+        self._initialize_index(repo_path, snapshot.head, plan_env, timeout_seconds)
+        group_trees = self._apply_groups(
+            repo_path, snapshot, built_groups, plan_env, timeout_seconds
+        )
+        expected_tree = self._expected_tree(
+            repo_path, snapshot, before_tree, base, timeout_seconds
+        )
+        if not group_trees or group_trees[-1][1] != expected_tree:
+            raise PatchValidationError("所有提交组联合后未完整覆盖工作区目标树")
+        return group_trees, expected_tree
+
+    def _apply_groups(
+        self,
+        repo_path: str,
+        snapshot: ChangeSnapshot,
+        built_groups: list[BuiltGroupPatch],
+        plan_env: dict[str, str],
+        timeout_seconds: int,
+    ) -> list[tuple[str, str]]:
         by_id = snapshot.change_by_id("hunk")
-
-        with tempfile.TemporaryDirectory(prefix="gitora-ai-index-") as temp_dir:
-            base = Path(temp_dir)
-            plan_env = self._index_environment(base / "plan.index")
-            expected_env = self._index_environment(base / "expected.index")
-            self._initialize_index(
-                repo_path, snapshot.head, plan_env, timeout_seconds
+        group_trees: list[tuple[str, str]] = []
+        for built in built_groups:
+            IndexPatchApplier.apply_group(
+                repo_path, built, by_id, plan_env, timeout_seconds
             )
-            group_trees: list[tuple[str, str]] = []
-            for built in built_groups:
-                IndexPatchApplier.apply_group(
-                    repo_path,
-                    built,
-                    by_id,
-                    plan_env,
-                    timeout_seconds,
-                )
-                group_trees.append((
-                    built.group_id,
-                    self._write_tree(repo_path, plan_env, timeout_seconds),
-                ))
+            group_trees.append((
+                built.group_id,
+                self._write_tree(repo_path, plan_env, timeout_seconds),
+            ))
+        return group_trees
 
-            if snapshot.include_unstaged:
-                self._initialize_index(
-                    repo_path, snapshot.head, expected_env, timeout_seconds
-                )
-                self._run_required(
-                    repo_path,
-                    ["add", "-A", "--", *all_paths],
-                    expected_env,
-                    timeout_seconds,
-                    "无法构造工作区目标树",
-                )
-                expected_tree = self._write_tree(
-                    repo_path, expected_env, timeout_seconds
-                )
-            else:
-                expected_tree = before_tree
-            if not group_trees or group_trees[-1][1] != expected_tree:
-                raise PatchValidationError("所有提交组联合后未完整覆盖工作区目标树")
+    def _expected_tree(
+        self,
+        repo_path: str,
+        snapshot: ChangeSnapshot,
+        before_tree: str,
+        base: Path,
+        timeout_seconds: int,
+    ) -> str:
+        if not snapshot.include_unstaged:
+            return before_tree
+        worktree_paths = self._deduplicate([
+            path
+            for change in snapshot.changes
+            if not change.staged
+            for path in self._paths_for_change(change)
+        ])
+        if not worktree_paths:
+            return before_tree
+        expected_env = self._index_environment(base / "expected.index")
+        self._initialize_index(repo_path, before_tree, expected_env, timeout_seconds)
+        self._run_required(
+            repo_path,
+            ["add", "-A", "--", *worktree_paths],
+            expected_env,
+            timeout_seconds,
+            "无法构造工作区目标树",
+        )
+        return self._write_tree(repo_path, expected_env, timeout_seconds)
 
+    def _ensure_real_state_unchanged(
+        self,
+        repo_path: str,
+        collector: ChangeContextCollector,
+        before_fingerprint: str,
+        before_tree: str,
+    ) -> None:
         after_tree = self._real_index_tree(repo_path)
         after_fingerprint = collector.workspace_fingerprint(repo_path)
         if after_tree != before_tree or after_fingerprint != before_fingerprint:
             raise PatchValidationError("临时索引验证意外改变了真实仓库状态")
-        return TemporaryPlanResult(tuple(group_trees), expected_tree)
 
     def _real_index_tree(self, repo_path: str) -> str:
         ok, tree, error = self._git._run_git_sync_at(  # noqa: SLF001
@@ -225,23 +295,9 @@ class TemporaryIndexValidator:
         fallback: str,
         input_text: str | None = None,
     ) -> str:
-        command = [
-            "git", "--literal-pathspecs", "-c", "core.quotepath=false", *args,
-        ]
         try:
-            result = subprocess.run(
-                command,
-                cwd=repo_path,
-                input=input_text,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_seconds,
-                env=environment,
-                creationflags=(
-                    subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
-                ),
+            result = TemporaryIndexValidator._run_process(
+                repo_path, args, environment, timeout_seconds, input_text
             )
         except (OSError, subprocess.SubprocessError) as exc:
             raise PatchValidationError(
@@ -252,17 +308,32 @@ class TemporaryIndexValidator:
             raise PatchValidationError(detail[-1000:] if detail else fallback)
         return result.stdout
 
-    @classmethod
-    def _git_paths(cls, snapshot: ChangeSnapshot) -> list[str]:
-        paths = [
-            path
-            for change in snapshot.changes
-            for path in cls._paths_for_change(change)
+    @staticmethod
+    def _run_process(
+        repo_path: str,
+        args: list[str],
+        environment: dict[str, str],
+        timeout_seconds: int,
+        input_text: str | None,
+    ) -> subprocess.CompletedProcess[str]:
+        command = [
+            "git", "--literal-pathspecs", "-c", "core.quotepath=false", *args,
         ]
-        return cls._deduplicate(paths)
+        return subprocess.run(
+            command,
+            cwd=repo_path,
+            input=input_text,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout_seconds,
+            env=environment,
+            creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
+        )
 
     @staticmethod
-    def _paths_for_change(change) -> list[str]:
+    def _paths_for_change(change: FileChangeSnapshot) -> list[str]:
         return [
             path for path in (change.path, change.old_path, change.new_path) if path
         ]
