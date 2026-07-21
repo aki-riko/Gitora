@@ -1,0 +1,161 @@
+# coding: utf-8
+from __future__ import annotations
+
+import csv
+import tempfile
+import unittest
+from pathlib import Path
+
+from app.common.ai_commit_evaluation import (
+    EvaluationRunner,
+    HistoryReplayBuilder,
+    read_case_manifest,
+    replay_workspace,
+    write_case_manifest,
+    write_manual_template,
+)
+from app.common.ai_commit_provider import ModelProvider
+from app.common.ai_commit_settings import AiCommitSettingsStore
+from tests.git_test_utils import commit_all, init_repo, write_file
+
+
+ROOT = Path(__file__).resolve().parents[1]
+DEFAULTS = ROOT / "app" / "resource" / "config" / "ai_commit_defaults.json"
+
+
+class _CoveringProvider(ModelProvider):
+    @property
+    def provider_id(self) -> str:
+        return "evaluation-test"
+
+    def generate_plan(self, request, cancel_event=None):
+        return {
+            "schema_version": "1",
+            "snapshot_id": request.snapshot.snapshot_id,
+            "level": request.level,
+            "summary": "历史回放计划",
+            "groups": [{
+                "group_id": "all",
+                "title": "test: 历史回放",
+                "body": "",
+                "change_ids": list(request.snapshot.expected_ids(request.level)),
+                "depends_on": [],
+                "rationale": "覆盖全部改动",
+                "warnings": [],
+            }],
+            "unassigned_change_ids": [],
+            "warnings": [],
+        }
+
+
+class _FailingProvider(ModelProvider):
+    @property
+    def provider_id(self) -> str:
+        return "failing-test"
+
+    def generate_plan(self, request, cancel_event=None):
+        raise RuntimeError("injected provider failure")
+
+
+class _IncompleteProvider(_CoveringProvider):
+    def generate_plan(self, request, cancel_event=None):
+        result = super().generate_plan(request, cancel_event)
+        result["groups"] = []
+        result["unassigned_change_ids"] = list(
+            request.snapshot.expected_ids(request.level)
+        )
+        return result
+
+
+class AiCommitEvaluationTest(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp_dir.cleanup)
+        root = Path(self.temp_dir.name)
+        self.repo = init_repo(root / "repo")
+        paths = [
+            "src/sample.py", "app/View.qml", "tests/test_sample.py",
+            "docs/readme.md", "src/sample.py", "app/View.qml", "docs/readme.md",
+        ]
+        contents: dict[str, str] = {}
+        for index, path in enumerate(paths, start=1):
+            contents[path] = contents.get(path, "") + f"change {index}\n"
+            write_file(self.repo, path, contents[path])
+            commit_all(self.repo, f"test: history {index}")
+        self.settings = AiCommitSettingsStore(
+            DEFAULTS, root / "settings.json"
+        ).load()
+        self.cases = HistoryReplayBuilder(
+            str(self.repo), self.settings.timeout_seconds
+        ).build(3, 2)
+
+    def test_builder_creates_non_overlapping_real_history_cases(self) -> None:
+        self.assertEqual(len(self.cases), 3)
+        targets = [commit for case in self.cases for commit in case.target_commits]
+        self.assertEqual(len(targets), len(set(targets)))
+        self.assertTrue(all(len(case.combined_diff_sha256) == 64 for case in self.cases))
+        self.assertTrue(any("python" in case.categories for case in self.cases))
+        self.assertTrue(any("qml" in case.categories for case in self.cases))
+        self.assertTrue(all(not Path(path).is_absolute() for case in self.cases for path in case.changed_paths))
+
+    def test_manifest_and_manual_template_keep_source_out_of_records(self) -> None:
+        root = Path(self.temp_dir.name)
+        manifest = root / "cases.jsonl"
+        manual = root / "manual.csv"
+        write_case_manifest(manifest, self.cases)
+        write_manual_template(manual, self.cases)
+
+        loaded = read_case_manifest(manifest)
+        with manual.open(encoding="utf-8-sig", newline="") as handle:
+            rows = list(csv.DictReader(handle))
+
+        self.assertEqual(loaded, self.cases)
+        self.assertEqual(len(rows), 6)
+        self.assertEqual({row["status"] for row in rows}, {"not_run"})
+        self.assertNotIn(str(self.repo), manifest.read_text(encoding="utf-8"))
+
+    def test_replay_snapshot_and_hard_metrics_use_real_temporary_repo(self) -> None:
+        case = self.cases[0]
+        with replay_workspace(
+            str(self.repo), case, self.settings.limits,
+            self.settings.timeout_seconds,
+        ) as replay:
+            repo_path, _service, snapshot = replay
+            self.assertNotEqual(Path(repo_path), self.repo)
+            self.assertEqual(snapshot.head, case.base_commit)
+            self.assertTrue(snapshot.changes)
+
+        record = EvaluationRunner(
+            str(self.repo), self.settings.limits, self.settings.timeout_seconds
+        ).run_case(case, _CoveringProvider(), "local", "test-model")
+
+        self.assertEqual(record.status, "passed")
+        self.assertTrue(record.protocol_valid)
+        self.assertEqual(record.coverage_percent, 100)
+        self.assertEqual(record.duplicate_count, 0)
+        self.assertTrue(record.patch_valid)
+
+    def test_provider_failure_records_type_without_fabricating_scores(self) -> None:
+        record = EvaluationRunner(
+            str(self.repo), self.settings.limits, self.settings.timeout_seconds
+        ).run_case(self.cases[0], _FailingProvider(), "remote", "test-model")
+
+        self.assertEqual(record.status, "failed")
+        self.assertEqual(record.failure_type, "RuntimeError")
+        self.assertFalse(record.protocol_valid)
+        self.assertEqual(record.coverage_percent, 0)
+        self.assertFalse(record.patch_valid)
+
+    def test_incomplete_plan_records_hard_gate_failure(self) -> None:
+        record = EvaluationRunner(
+            str(self.repo), self.settings.limits, self.settings.timeout_seconds
+        ).run_case(self.cases[0], _IncompleteProvider(), "local", "test-model")
+
+        self.assertEqual(record.status, "failed")
+        self.assertEqual(record.failure_type, "coverage")
+        self.assertTrue(record.protocol_valid)
+        self.assertEqual(record.coverage_percent, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
