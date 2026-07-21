@@ -27,6 +27,7 @@ class _OllamaStubHandler(BaseHTTPRequestHandler):
         if self.path != "/v1/models":
             self.send_error(404)
             return
+        self.server.model_requests += 1  # type: ignore[attr-defined]
         body = json.dumps({"data": [{"id": MODEL_NAME}]}).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
@@ -64,6 +65,55 @@ def _write_settings(root: Path, endpoint: str) -> Path:
     return target
 
 
+def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
+    _write_settings(root, endpoint)
+    environment = os.environ.copy()
+    environment.update(
+        {
+            "LOCALAPPDATA": str(root),
+            "HOME": str(root),
+            "GITESS_QML_SELFTEST": "1",
+            "GITESS_AI_CONNECTION_SELFTEST": "1",
+            "QT_QPA_PLATFORM": "offscreen",
+        }
+    )
+    return environment
+
+
+def _run_executable(
+    executable: Path,
+    environment: dict[str, str],
+    timeout_seconds: int,
+    runner: Callable[..., subprocess.CompletedProcess[str]],
+) -> subprocess.CompletedProcess[str]:
+    try:
+        return runner(
+            [str(executable)], cwd=str(executable.parent), env=environment,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=timeout_seconds, check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise PackagedSelftestError("打包程序连接自检超时") from exc
+
+
+def _validated_output(
+    completed: subprocess.CompletedProcess[str], model_requests: int
+) -> str:
+    output = (completed.stdout or "") + (completed.stderr or "")
+    if completed.returncode != 0:
+        raise PackagedSelftestError(
+            f"打包程序连接自检退出码为 {completed.returncode}\n{output}"
+        )
+    if model_requests < 1:
+        raise PackagedSelftestError("打包程序未访问回环模型列表端点")
+    missing = [marker for marker in (QML_MARKER, CONNECTION_MARKER) if marker not in output]
+    if missing:
+        raise PackagedSelftestError(
+            f"打包程序连接自检缺少标志: {', '.join(missing)}\n{output}"
+        )
+    return output
+
+
 def run_connection_selftest(
     executable: Path,
     timeout_seconds: int = 30,
@@ -75,53 +125,23 @@ def run_connection_selftest(
         raise ValueError("自检超时必须为正整数")
 
     server = ThreadingHTTPServer(("127.0.0.1", 0), _OllamaStubHandler)
+    server.model_requests = 0  # type: ignore[attr-defined]
     thread = threading.Thread(target=server.serve_forever, daemon=True)
     thread.start()
     try:
         with tempfile.TemporaryDirectory(prefix="gitora-packaged-ai-") as temp_dir:
             isolated_root = Path(temp_dir)
             endpoint = f"http://127.0.0.1:{server.server_port}"
-            _write_settings(isolated_root, endpoint)
-            environment = os.environ.copy()
-            environment.update(
-                {
-                    "LOCALAPPDATA": str(isolated_root),
-                    "HOME": str(isolated_root),
-                    "GITESS_QML_SELFTEST": "1",
-                    "GITESS_AI_CONNECTION_SELFTEST": "1",
-                    "QT_QPA_PLATFORM": "offscreen",
-                }
+            environment = _build_environment(isolated_root, endpoint)
+            completed = _run_executable(
+                executable, environment, timeout_seconds, runner
             )
-            try:
-                completed = runner(
-                    [str(executable)],
-                    cwd=str(executable.parent),
-                    env=environment,
-                    capture_output=True,
-                    text=True,
-                    encoding="utf-8",
-                    errors="replace",
-                    timeout=timeout_seconds,
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise PackagedSelftestError("打包程序连接自检超时") from exc
+            model_requests = server.model_requests  # type: ignore[attr-defined]
     finally:
         server.shutdown()
         server.server_close()
         thread.join(timeout=5)
-
-    output = (completed.stdout or "") + (completed.stderr or "")
-    if completed.returncode != 0:
-        raise PackagedSelftestError(
-            f"打包程序连接自检退出码为 {completed.returncode}\n{output}"
-        )
-    missing = [marker for marker in (QML_MARKER, CONNECTION_MARKER) if marker not in output]
-    if missing:
-        raise PackagedSelftestError(
-            f"打包程序连接自检缺少标志: {', '.join(missing)}\n{output}"
-        )
-    return output
+    return _validated_output(completed, model_requests)
 
 
 def build_parser() -> argparse.ArgumentParser:
