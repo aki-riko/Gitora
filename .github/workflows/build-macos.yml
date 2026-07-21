@@ -60,15 +60,14 @@ jobs:
           hdiutil create -volname "Gitora" -srcfolder dmg_stage -ov -format UDZO "build_dist/Gitora-macOS.dmg"
           echo "=== dmg 产物 ==="; ls -lh build_dist/*.dmg
 
-      - name: Headless SELFTEST on built .app
-        env:
-          GITESS_QML_SELFTEST: "1"
-          QT_QPA_PLATFORM: offscreen
+      - name: Packaged AI connection and headless SELFTEST
         run: |
+          set -o pipefail
           APP_BIN="build_dist/main_qml.app/Contents/MacOS/Gitora"
           if [ ! -f "$APP_BIN" ]; then echo "::error::未找到 .app 主程序: $APP_BIN"; exit 1; fi
-          "$APP_BIN" 2>&1 | tee selftest.log || true
-          if grep -qE "rootObjects = [1-9]" selftest.log; then
+          python tools/packaged_ai_connection_selftest.py --executable "$APP_BIN" 2>&1 | tee selftest.log
+          if grep -qE "rootObjects = [1-9]" selftest.log \
+              && grep -q "AI 连接检测成功" selftest.log; then
             echo "SELFTEST passed"
           else
             echo "::error::打包产物 SELFTEST 失败"; exit 1

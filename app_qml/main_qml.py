@@ -61,6 +61,30 @@ def _resolve_prismqml_dir():
             return os.path.dirname(_f.__file__)
     return None
 
+
+def _schedule_selftest(app, engine, ai_commit_bridge) -> None:
+    """验证 QML 启动；可选地走打包态 AI 本地连接检测后再退出。"""
+    from PySide6.QtCore import QTimer
+
+    print("[SELFTEST] QML 加载成功,rootObjects =", len(engine.rootObjects()))
+    if not os.environ.get("GITESS_AI_CONNECTION_SELFTEST"):
+        QTimer.singleShot(1500, app.quit)
+        return
+
+    state = {"finished": False}
+
+    def finish(ok: bool, message: str) -> None:
+        if state["finished"]:
+            return
+        state["finished"] = True
+        result = "成功" if ok else "失败"
+        print(f"[SELFTEST] AI 连接检测{result}: {message}")
+        QTimer.singleShot(0, lambda: app.exit(0 if ok else 2))
+
+    ai_commit_bridge.connectionTestFinished.connect(finish)
+    QTimer.singleShot(0, ai_commit_bridge.testConnection)
+    QTimer.singleShot(15000, lambda: finish(False, "连接检测超时"))
+
 # PRISMQML_PKG_DIR = .../prismqml 包目录(其下含 PrismQML/qmldir 与 python/)
 PRISMQML_PKG_DIR = _resolve_prismqml_dir()
 if not PRISMQML_PKG_DIR:
@@ -208,11 +232,9 @@ def main() -> int:
     # 确保接收 Updater 信号的 Connections 已就绪(放 Python 端 QTimer 会早于 QML 接收方,
     # 导致 updateAvailable 信号无人接收而静默检查失效)。SELFTEST 1.5s 即退出,早于其 3s 定时器。
 
-    # headless 自检:设了 GITESS_QML_SELFTEST 则加载成功后定时退出
+    # headless 自检:默认验证 QML；构建验收可额外验证打包态 AI 本地连接。
     if os.environ.get("GITESS_QML_SELFTEST"):
-        from PySide6.QtCore import QTimer
-        print("[SELFTEST] QML 加载成功,rootObjects =", len(engine.rootObjects()))
-        QTimer.singleShot(1500, lambda: app.quit() if hasattr(app, "quit") else None)
+        _schedule_selftest(app, engine, ai_commit_bridge)
 
     return app.exec()
 

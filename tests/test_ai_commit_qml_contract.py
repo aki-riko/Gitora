@@ -18,6 +18,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("AiCommitPlanBridge(", source)
         self.assertIn('setContextProperty("AiCommitPlanBridge", ai_commit_plan_bridge)', source)
         self.assertIn("statusChanged.connect(ai_commit_plan_bridge.invalidateWorkspace)", source)
+        self.assertIn("GITESS_AI_CONNECTION_SELFTEST", source)
+        self.assertIn("ai_commit_bridge.testConnection", source)
 
     def test_repo_view_uses_two_step_consent_and_does_not_auto_commit(self) -> None:
         source = (
@@ -70,6 +72,13 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn("GitBridge.commit", source)
         self.assertNotIn("GitBridge.push", source)
         self.assertNotIn("GitBridge.stage", source)
+
+    def test_macos_build_runs_packaged_ai_connection_selftest(self) -> None:
+        source = (
+            ROOT / ".github" / "workflows" / "build-macos.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("tools/packaged_ai_connection_selftest.py", source)
+        self.assertIn("AI 连接检测成功", source)
 
 
 if __name__ == "__main__":
