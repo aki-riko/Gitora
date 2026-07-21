@@ -55,6 +55,10 @@ class AiCommitSettingsTest(unittest.TestCase):
             settings.with_user_values({"remote_scope": "everything"})
         with self.assertRaisesRegex(AiCommitSettingsError, "环境变量"):
             settings.with_user_values({"api_key_env": "BAD-NAME"})
+        with self.assertRaisesRegex(AiCommitSettingsError, "环境变量"):
+            settings.with_user_values({"api_key_env": "1BAD"})
+        with self.assertRaisesRegex(AiCommitSettingsError, "环境变量"):
+            settings.with_user_values({"api_key_env": "密钥"})
 
     def test_unknown_user_setting_is_rejected(self) -> None:
         settings = AiCommitSettingsStore(DEFAULTS, Path("missing.json")).load()

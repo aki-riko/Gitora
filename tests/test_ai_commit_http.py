@@ -6,9 +6,10 @@ import threading
 import unittest
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import patch
+from unittest.mock import Mock
 
 from app.common.ai_commit_http import (
+    HttpJsonClient,
     HttpProviderConfig,
     HttpProviderError,
     OllamaProvider,
@@ -131,11 +132,14 @@ class AiCommitHttpTest(unittest.TestCase):
         config = HttpProviderConfig(
             "https://example.invalid/v1/responses", "remote-model", "top-secret", 5, 100_000
         )
-        with patch("urllib.request.urlopen", return_value=_FakeResponse(output)) as mocked:
-            result = OpenAIResponsesProvider(config).generate_plan(make_request())
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse(output)
+        provider = OpenAIResponsesProvider(config)
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+        result = provider.generate_plan(make_request())
 
         self.assertEqual(result["groups"][0]["title"], "fix: 修改入口")
-        request = mocked.call_args.args[0]
+        request = fake_opener.open.call_args.args[0]
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(request.full_url, config.endpoint)
         self.assertEqual(request.headers["Authorization"], "Bearer top-secret")
@@ -162,13 +166,46 @@ class AiCommitHttpTest(unittest.TestCase):
         config = HttpProviderConfig(
             "https://example.invalid/v1/responses", "model", "top-secret", 5, 100_000
         )
-        with patch("urllib.request.urlopen", side_effect=error):
-            with self.assertRaises(HttpProviderError) as caught:
-                OpenAIResponsesProvider(config).generate_plan(make_request())
+        fake_opener = Mock()
+        fake_opener.open.side_effect = error
+        provider = OpenAIResponsesProvider(config)
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+        with self.assertRaises(HttpProviderError) as caught:
+            provider.generate_plan(make_request())
         message = str(caught.exception)
         self.assertNotIn("top-secret", message)
         self.assertNotIn("src/main.py", message)
         self.assertIn("HTTP 401", message)
+
+    def test_client_does_not_follow_redirects(self) -> None:
+        redirect = urllib.error.HTTPError(
+            "https://example.invalid/v1/responses", 302, "Found", {}, None
+        )
+        fake_opener = Mock()
+        fake_opener.open.side_effect = redirect
+        client = HttpJsonClient(5, 1000, opener=fake_opener)
+        with self.assertRaisesRegex(HttpProviderError, "HTTP 302"):
+            client.request("GET", "https://example.invalid/v1/responses")
+        self.assertEqual(fake_opener.open.call_count, 1)
+
+    def test_message_schema_limits_groups_and_can_disable_body(self) -> None:
+        request = make_request()
+        request = PlannerRequest(
+            request.snapshot, request.mode, request.level, generate_body=False
+        )
+        output = {
+            "output_text": json.dumps(plan_payload()),
+        }
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse(output)
+        provider = OpenAIResponsesProvider(HttpProviderConfig(
+            "https://example.invalid/v1/responses", "model", "key", 5, 100_000
+        ))
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+        provider.generate_plan(request)
+        body = json.loads(fake_opener.open.call_args.args[0].data.decode("utf-8"))
+        self.assertEqual(body["text"]["format"]["schema"]["properties"]["groups"]["maxItems"], 1)
+        self.assertIn("body 必须返回空字符串", body["input"])
 
 
 if __name__ == "__main__":

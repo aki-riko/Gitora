@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -69,7 +70,9 @@ class AiCommitSettings:
             raise AiCommitSettingsError("不支持的模型提供方")
         if settings.remote_scope not in REMOTE_SCOPES:
             raise AiCommitSettingsError("不支持的远程发送范围")
-        if settings.api_key_env and not settings.api_key_env.replace("_", "A").isalnum():
+        if settings.api_key_env and not re.fullmatch(
+            r"[A-Za-z_][A-Za-z0-9_]*", settings.api_key_env
+        ):
             raise AiCommitSettingsError("密钥环境变量名不合法")
         return settings
 

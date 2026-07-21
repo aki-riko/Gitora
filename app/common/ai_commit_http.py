@@ -28,12 +28,25 @@ class HttpProviderConfig:
     max_response_chars: int
 
 
+class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    """拒绝自动重定向，避免 HTTPS 端点被降级或转向其他主机。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
 class HttpJsonClient:
-    def __init__(self, timeout_seconds: int, max_response_chars: int):
+    def __init__(
+        self,
+        timeout_seconds: int,
+        max_response_chars: int,
+        opener: Any | None = None,
+    ):
         if timeout_seconds <= 0 or max_response_chars <= 0:
             raise ValueError("网络限制必须为正整数")
         self.timeout_seconds = timeout_seconds
         self.max_response_chars = max_response_chars
+        self._opener = opener or urllib.request.build_opener(_NoRedirectHandler())
 
     def request(
         self,
@@ -51,9 +64,11 @@ class HttpJsonClient:
             url, data=body, headers=request_headers, method=method
         )
         try:
-            with urllib.request.urlopen(request, timeout=self.timeout_seconds) as response:
+            with self._opener.open(request, timeout=self.timeout_seconds) as response:
                 raw = response.read(self.max_response_chars + 1)
         except urllib.error.HTTPError as exc:
+            if exc.fp is not None:
+                exc.close()
             raise HttpProviderError(f"模型服务返回 HTTP {exc.code}") from exc
         except urllib.error.URLError as exc:
             raise HttpProviderError(
@@ -172,6 +187,8 @@ class OpenAIResponsesProvider(ModelProvider):
             raise HttpProviderError("未配置远程模型名")
         if not self.config.api_key:
             raise HttpProviderError("未提供远程模型密钥")
+        if any(ord(char) < 32 or ord(char) == 127 for char in self.config.api_key):
+            raise HttpProviderError("远程模型密钥包含非法控制字符")
         response = self._client.request(
             "POST",
             self._endpoint,

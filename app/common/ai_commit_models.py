@@ -161,6 +161,7 @@ class PlannerRequest:
     snapshot: ChangeSnapshot
     mode: str
     level: str
+    generate_body: bool = True
 
     def to_prompt_payload(self) -> dict[str, Any]:
         if self.level not in PLAN_LEVELS:
@@ -169,6 +170,7 @@ class PlannerRequest:
             "schema_version": SCHEMA_VERSION,
             "mode": self.mode,
             "level": self.level,
+            "generate_body": self.generate_body,
             "snapshot": self.snapshot.to_prompt_payload(self.level),
         }
 
