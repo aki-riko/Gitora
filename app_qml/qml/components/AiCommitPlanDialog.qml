@@ -6,6 +6,8 @@ import PrismQML as Fluent
 Fluent.DialogBoxCore {
     id: dlg
 
+    signal groupApplied(string title, string body)
+
     property string _preparedRequestId: ""
     property string _previewTitle: ""
     property string _previewText: ""
@@ -26,6 +28,18 @@ Fluent.DialogBoxCore {
     footer: Component {
         RowLayout {
             spacing: Fluent.Enums.spacing.s
+            Fluent.ButtonCore {
+                text: AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit
+                    ? "等待提交" : "应用下一组"
+                style: Fluent.Enums.button.style_primary
+                enabled: AiCommitPlanBridge
+                    && AiCommitPlanBridge.planModel.executable
+                    && !AiCommitPlanBridge.busy
+                    && !AiCommitPlanBridge.awaitingCommit
+                width: Fluent.Enums.dialog.buttonWidth
+                height: Fluent.Enums.dialog.buttonHeight
+                onClicked: AiCommitPlanBridge.applyNextGroup()
+            }
             Fluent.ButtonCore {
                 text: AiCommitPlanBridge && AiCommitPlanBridge.busy ? "取消生成" : "重新生成"
                 width: Fluent.Enums.dialog.buttonWidth
@@ -78,6 +92,18 @@ Fluent.DialogBoxCore {
             dlg._preparedRequestId = ""
             Fluent.NotificationManager.toast.error(dlg, "提交规划失败", message)
         }
+        function onGroupApplied(groupId, title, body, message) {
+            dlg._preparedRequestId = ""
+            dlg.groupApplied(title, body)
+            Fluent.NotificationManager.toast.success(dlg, "计划组已应用", message)
+            dlg.reject()
+        }
+        function onPlanAdvanced(completed, message) {
+            if (completed)
+                Fluent.NotificationManager.toast.success(dlg, "提交计划完成", message)
+            else
+                Fluent.NotificationManager.toast.info(dlg, "提交计划已推进", message)
+        }
     }
 
     ColumnLayout {
@@ -98,6 +124,7 @@ Fluent.DialogBoxCore {
                 text: {
                     if (!AiCommitPlanBridge || !AiCommitPlanBridge.planModel.hasPlan)
                         return AiCommitPlanBridge && AiCommitPlanBridge.busy ? "正在生成…" : "尚未生成"
+                    if (AiCommitPlanBridge.awaitingCommit) return "等待提交当前组"
                     if (AiCommitPlanBridge.planModel.stale) return "计划已过期"
                     if (AiCommitPlanBridge.planModel.executable) return "覆盖校验通过"
                     return AiCommitPlanBridge.planModel.valid ? "仅可查看" : "需要调整"
@@ -193,6 +220,8 @@ Fluent.DialogBoxCore {
                                 required property var modelData
                                 required property int index
                                 property var group: modelData
+                                enabled: !AiCommitPlanBridge.busy
+                                    && !AiCommitPlanBridge.awaitingCommit
                                 width: parent ? parent.width : 0
                                 height: groupLayout.implicitHeight + Fluent.Enums.spacing.m * 2
                                 radius: Fluent.Enums.radius.medium

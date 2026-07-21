@@ -29,6 +29,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("AiCommitBridge.generatePrepared(root._aiPreparedRequestId, true)", source)
         self.assertIn("AiCommitBridge.cancelCurrent()", source)
         self.assertIn("aiCommitPlanDialog.openPlanner()", source)
+        self.assertIn("AiCommitPlanBridge.notifyCommitSucceeded()", source)
+        self.assertIn("!AiCommitPlanBridge.awaitingCommit", source)
         self.assertIn("Fluent.TextEdit {\n                id: commitInput", source)
         ai_handler = source.split("function onCommitMessageReady", 1)[1].split("function onErrorOccurred", 1)[0]
         self.assertNotIn("GitBridge.commit", ai_handler)
@@ -55,6 +57,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("planModel.moveGroup", source)
         self.assertIn("planModel.updateGroupMessage", source)
         self.assertIn("planModel.getGroupPatch", source)
+        self.assertIn("AiCommitPlanBridge.applyNextGroup()", source)
         self.assertIn("确认发送工作区差异到远程模型", source)
         self.assertIn("模型提示：", source)
         self.assertIn('change.staged ? "已暂存" : "未暂存"', source)

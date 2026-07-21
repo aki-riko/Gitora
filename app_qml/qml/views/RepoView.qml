@@ -382,6 +382,8 @@ Item {
                     var res = GitBridge.commit(commitInput.text)
                     if (res[0]) {
                         commitInput.text = ""
+                        if (AiCommitPlanBridge)
+                            AiCommitPlanBridge.notifyCommitSucceeded()
                         Fluent.NotificationManager.toast.success(root, "提交成功", res[1] || "")
                         root.reload()
                     } else {
@@ -390,6 +392,12 @@ Item {
                 }
                 onMenuItemClicked: function(index, text) {
                     if (index !== 0) return
+                    if (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit) {
+                        Fluent.NotificationManager.toast.warning(
+                            root, "无法修补", "请先用普通提交完成当前计划组"
+                        )
+                        return
+                    }
                     // amend 需要一条新消息(输入框内容);为空则提示
                     if (commitInput.text.length === 0) {
                         Fluent.NotificationManager.toast.warning(root, "无法修补", "请先在输入框填写修补后的提交消息")
@@ -405,6 +413,7 @@ Item {
             Fluent.Button {
                 text: "一键提交推送"
                 enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
+                    && (!AiCommitPlanBridge || !AiCommitPlanBridge.awaitingCommit)
                 onClicked: {
                     root._quickCommitPushPending = true
                     root._quickCommitPushMessage = commitInput.text
@@ -811,6 +820,10 @@ Item {
 
     AiCommitPlanDialog {
         id: aiCommitPlanDialog
+        onGroupApplied: function(title, body) {
+            commitInput.text = title + (body.length > 0 ? "\n\n" + body : "")
+            root.reload()
+        }
     }
 
     // 危险操作:丢弃工作区改动二次确认(不可恢复)

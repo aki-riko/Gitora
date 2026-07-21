@@ -12,6 +12,7 @@ from app.common.ai_commit_models import (
     CommitGroup,
     CommitPlan,
     CommitPlanValidator,
+    FileChangeSnapshot,
     PlanValidationResult,
 )
 
@@ -258,6 +259,66 @@ class AiCommitPlanModel(QObject):
 
     def validation_result(self) -> PlanValidationResult:
         return self._result
+
+    def advance_after_commit(
+        self,
+        completed_group_id: str,
+        fresh_snapshot: ChangeSnapshot,
+    ) -> tuple[bool, bool, str]:
+        """把已提交首组从会话移除，并按路径映射剩余 change_id。"""
+        if not self._snapshot or not self._groups:
+            return False, False, "没有可推进的计划"
+        if self._groups[0].group_id != completed_group_id:
+            return False, False, "已提交组与计划顺序不一致"
+        remaining_groups = self._groups[1:]
+        if not remaining_groups:
+            self.clear()
+            return True, True, "全部计划组已完成"
+
+        old_changes = self._snapshot.change_by_id("file")
+        old_path_to_id: dict[str, str] = {}
+        for group in remaining_groups:
+            for change_id in group.change_ids:
+                change = old_changes.get(change_id)
+                if change is None or change.path in old_path_to_id:
+                    return False, False, "剩余计划路径无法唯一映射"
+                old_path_to_id[change.path] = change_id
+
+        fresh_by_path: dict[str, FileChangeSnapshot] = {}
+        for change in fresh_snapshot.changes:
+            if change.path in fresh_by_path:
+                return False, False, "提交后出现部分暂存文件，请重新规划"
+            fresh_by_path[change.path] = change
+        if set(fresh_by_path) != set(old_path_to_id):
+            return False, False, "提交后工作区改动与剩余计划不一致"
+
+        new_id_by_old = {
+            old_id: fresh_by_path[path].change_id
+            for path, old_id in old_path_to_id.items()
+        }
+        completed = completed_group_id
+        plan = CommitPlan(
+            schema_version="1",
+            snapshot_id=fresh_snapshot.snapshot_id,
+            level="file",
+            summary=self._summary,
+            groups=tuple(
+                CommitGroup(
+                    group.group_id,
+                    group.title,
+                    group.body,
+                    tuple(new_id_by_old[item] for item in group.change_ids),
+                    tuple(item for item in group.depends_on if item != completed),
+                    group.rationale,
+                    tuple(group.warnings),
+                )
+                for group in remaining_groups
+            ),
+            unassigned_change_ids=(),
+            warnings=tuple(self._plan_warnings),
+        )
+        self.load(plan, fresh_snapshot)
+        return True, False, "已推进到下一提交组"
 
     def _changed(self) -> None:
         self._revalidate()

@@ -9,11 +9,9 @@ from typing import Optional, Protocol
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
 from app.common.ai_commit_context import ChangeContextCollector, SnapshotCollectionError
+from app.common.ai_commit_executor import AppliedFileGroup, FilePlanExecutor, PlanExecutionError
 from app.common.ai_commit_models import (
-    ChangeSnapshot,
-    CommitPlan,
-    CommitPlanValidator,
-    PlanProtocolError,
+    ChangeSnapshot, CommitPlan, CommitPlanValidator, PlanProtocolError,
     PlannerRequest,
 )
 from app.common.ai_commit_provider import ModelProvider, ProviderCancelledError
@@ -47,10 +45,16 @@ class AiCommitPlanBridge(QObject):
     """协调快照与模型；没有暂存、提交或推送接口。"""
 
     busyChanged = Signal()
+    awaitingCommitChanged = Signal()
     contextPrepared = Signal(str, bool, int, int, str)
     planReady = Signal(bool, str)
+    groupApplied = Signal(str, str, str, str)
+    planAdvanced = Signal(bool, str)
     errorOccurred = Signal(str)
     _resolved = Signal(int, str, object, object)
+    _applyFinished = Signal(int, object)
+    _commitChecked = Signal(int, bool, str, object)
+    _workspaceChecked = Signal(str, str, str)
 
     def __init__(
         self,
@@ -64,16 +68,27 @@ class AiCommitPlanBridge(QObject):
         self._runtime = runtime
         self._model = plan_model or AiCommitPlanModel(self)
         self._validator = CommitPlanValidator()
+        self._executor = FilePlanExecutor(git_service)
         self._busy = False
+        self._awaiting_commit = False
+        self._execution_guard = False
+        self._applied: AppliedFileGroup | None = None
         self._serial = 0
         self._prepared: _PreparedPlanRequest | None = None
         self._cancel_event = threading.Event()
         self._state_lock = threading.Lock()
         self._resolved.connect(self._apply_resolved)
+        self._applyFinished.connect(self._apply_finished)
+        self._commitChecked.connect(self._commit_checked)
+        self._workspaceChecked.connect(self._workspace_checked)
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
         return self._busy
+
+    @Property(bool, notify=awaitingCommitChanged)
+    def awaitingCommit(self) -> bool:
+        return self._awaiting_commit
 
     @Property(QObject, constant=True)
     def planModel(self) -> QObject:
@@ -81,6 +96,9 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def preparePlan(self) -> None:
+        if self._awaiting_commit:
+            self.errorOccurred.emit("请先提交已应用的计划组")
+            return
         settings = self._runtime.planning_settings()
         if not settings.enabled:
             self.errorOccurred.emit("请先在设置中启用 AI 提交规划")
@@ -207,21 +225,139 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def cancelCurrent(self) -> None:
+        if self._execution_guard:
+            self.errorOccurred.emit("暂存执行不能中途取消，请等待完成")
+            return
         self._cancel_request()
 
     @Slot()
     def invalidateWorkspace(self) -> None:
-        self._cancel_request()
-        self._model.markStale()
+        if self._execution_guard or self._awaiting_commit:
+            return
+        if self._busy:
+            self._cancel_request()
+            self._model.markStale()
+            return
+        snapshot = self._model.snapshot()
+        if snapshot is None:
+            with self._state_lock:
+                has_prepared = self._prepared is not None
+            if has_prepared:
+                self._cancel_request()
+            return
+        settings = self._runtime.planning_settings()
+        repo = self._git.repo_path or ""
+        expected = snapshot.workspace_fingerprint
+
+        def work() -> None:
+            try:
+                current = ChangeContextCollector(
+                    self._git, settings.limits
+                ).workspace_fingerprint(repo)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"复验规划工作区失败: {type(exc).__name__}")
+                current = ""
+            self._workspaceChecked.emit(repo, expected, current)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(str)
     def invalidateRepo(self, _path: str) -> None:
-        self._cancel_request()
+        if not self._execution_guard:
+            self._cancel_request()
         self._model.clear()
+        self._set_awaiting_commit(False)
+        self._applied = None
 
     @Slot()
     def clearPlan(self) -> None:
+        if self._awaiting_commit:
+            self.errorOccurred.emit("已应用的计划组尚未提交，不能清空计划")
+            return
         self._model.clear()
+
+    @Slot()
+    def applyNextGroup(self) -> None:
+        if self._busy:
+            self.errorOccurred.emit("已有 AI 规划操作正在进行")
+            return
+        if self._awaiting_commit:
+            self.errorOccurred.emit("请先提交已应用的计划组")
+            return
+        snapshot = self._model.snapshot()
+        plan = self._model.current_plan()
+        if snapshot is None or plan is None:
+            self.errorOccurred.emit("请先生成文件级提交计划")
+            return
+        settings = self._runtime.planning_settings()
+        validation = self._model.validation_result()
+        stale = self._model.stale
+        serial, cancel_event = self._start_request(clear_prepared=False)
+        self._execution_guard = True
+        repo = self._git.repo_path or ""
+
+        def work() -> None:
+            try:
+                applied = self._executor.apply_next(
+                    repo,
+                    snapshot,
+                    plan,
+                    validation,
+                    stale,
+                    settings.limits,
+                )
+                if self._is_current(serial, repo, cancel_event):
+                    self._applyFinished.emit(serial, applied)
+            except PlanExecutionError as exc:
+                logger.warning(f"应用文件级计划失败: {type(exc).__name__}")
+                self._execution_guard = False
+                self._emit_error_if_current(serial, str(exc))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(f"应用文件级计划异常: {type(exc).__name__}")
+                self._execution_guard = False
+                self._emit_error_if_current(serial, "应用下一提交组失败")
+            finally:
+                self._set_busy_if_current(serial, False)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def notifyCommitSucceeded(self) -> None:
+        applied = self._applied
+        if applied is None or not self._awaiting_commit:
+            return
+        if self._busy:
+            return
+        serial, cancel_event = self._start_request(clear_prepared=False)
+        self._execution_guard = True
+        settings = self._runtime.planning_settings()
+
+        def work() -> None:
+            try:
+                ok, message = self._executor.verify_committed_group(applied)
+                fresh_snapshot = None
+                if ok:
+                    fresh_snapshot = ChangeContextCollector(
+                        self._git, settings.limits
+                    ).collect(applied.repo_path, include_unstaged=True)
+                if self._is_current(serial, applied.repo_path, cancel_event):
+                    self._commitChecked.emit(serial, ok, message, fresh_snapshot)
+                else:
+                    self._execution_guard = False
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(f"推进提交计划失败: {type(exc).__name__}")
+                self._execution_guard = False
+                if self._is_current(serial, applied.repo_path, cancel_event):
+                    self._commitChecked.emit(
+                        serial,
+                        False,
+                        "提交成功，但无法建立剩余改动快照，请重新规划",
+                        None,
+                    )
+            finally:
+                self._set_busy_if_current(serial, False)
+
+        threading.Thread(target=work, daemon=True).start()
 
     @Slot(int, str, object, object)
     def _apply_resolved(
@@ -237,6 +373,66 @@ class AiCommitPlanBridge(QObject):
             return
         self._model.load(plan, snapshot)
         self.planReady.emit(True, plan.summary or "文件级提交计划已生成")
+
+    @Slot(int, object)
+    def _apply_finished(self, serial: int, applied: AppliedFileGroup) -> None:
+        with self._state_lock:
+            current = serial == self._serial and not self._cancel_event.is_set()
+        if not current:
+            return
+        self._execution_guard = False
+        self._applied = applied
+        self._set_awaiting_commit(True)
+        group = applied.group
+        self.groupApplied.emit(
+            group.group_id,
+            group.title,
+            group.body,
+            "下一提交组已暂存，请复核后提交",
+        )
+
+    @Slot(int, bool, str, object)
+    def _commit_checked(
+        self,
+        serial: int,
+        ok: bool,
+        message: str,
+        fresh_snapshot: ChangeSnapshot | None,
+    ) -> None:
+        with self._state_lock:
+            current = serial == self._serial and not self._cancel_event.is_set()
+        if not current:
+            return
+        self._execution_guard = False
+        applied = self._applied
+        self._applied = None
+        self._set_awaiting_commit(False)
+        if not ok or applied is None or fresh_snapshot is None:
+            self._model.markStale()
+            self.errorOccurred.emit(message or "后续计划已失效，请重新规划")
+            return
+        advanced, completed, advance_message = self._model.advance_after_commit(
+            applied.group.group_id, fresh_snapshot
+        )
+        if not advanced:
+            self._model.markStale()
+            self.errorOccurred.emit(advance_message)
+            return
+        self.planAdvanced.emit(completed, advance_message)
+
+    @Slot(str, str, str)
+    def _workspace_checked(
+        self, repo: str, expected_fingerprint: str, current_fingerprint: str
+    ) -> None:
+        snapshot = self._model.snapshot()
+        if (
+            snapshot is None
+            or repo != (self._git.repo_path or "")
+            or snapshot.workspace_fingerprint != expected_fingerprint
+        ):
+            return
+        if not current_fingerprint or current_fingerprint != expected_fingerprint:
+            self._model.markStale()
 
     @staticmethod
     def _ensure_fingerprint(
@@ -270,6 +466,12 @@ class AiCommitPlanBridge(QObject):
             self._busy = False
         if was_busy:
             self.busyChanged.emit()
+
+    def _set_awaiting_commit(self, value: bool) -> None:
+        if self._awaiting_commit == value:
+            return
+        self._awaiting_commit = value
+        self.awaitingCommitChanged.emit()
 
     def _set_busy_if_current(self, serial: int, value: bool) -> None:
         with self._state_lock:

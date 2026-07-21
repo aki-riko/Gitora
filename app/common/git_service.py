@@ -400,20 +400,26 @@ class GitService(QObject):
 
     def get_status(self) -> list[FileChange]:
         """获取工作区状态"""
-        success, stdout, stderr = self._run_git_sync(['status', '--porcelain=v1', '-uall'])
+        success, stdout, stderr = self._run_git_sync(
+            ['status', '--porcelain=v1', '-z', '-uall']
+        )
         if not success:
             return []
         return self._parse_status_output(stdout)
 
     def get_status_at(self, repo_path: str) -> list[FileChange]:
         """获取指定仓库路径的工作区状态,不读取当前 self._repo_path。"""
-        success, stdout, stderr = self._run_git_sync_at(repo_path, ['status', '--porcelain=v1', '-uall'])
+        success, stdout, stderr = self._run_git_sync_at(
+            repo_path, ['status', '--porcelain=v1', '-z', '-uall']
+        )
         if not success:
             return []
         return self._parse_status_output(stdout)
 
     def _parse_status_output(self, stdout: str) -> list[FileChange]:
         """解析 git status --porcelain=v1 输出。"""
+        if '\0' in stdout:
+            return self._parse_nul_status_output(stdout)
         changes = []
         # 注意:不能用 stdout.strip(),会删掉首行前导空格导致 porcelain 列偏移
         # (" M file.txt" 的行首空格表示 index 状态为空,有意义)
@@ -425,13 +431,12 @@ class GitService(QObject):
             index_status = line[0]   # 暂存区状态
             work_status = line[1]    # 工作区状态
             path = line[3:].rstrip('\r\n')
-            # git 对含空格/特殊字符的路径会加双引号包裹,去掉
-            if len(path) >= 2 and path[0] == '"' and path[-1] == '"':
-                path = path[1:-1]
-
             # 处理重命名情况
             if ' -> ' in path:
                 path = path.split(' -> ')[1]
+            # 兼容未使用 -z 的旧调用输出。
+            if len(path) >= 2 and path[0] == '"' and path[-1] == '"':
+                path = path[1:-1]
 
             # 确定文件状态
             if index_status == '?' and work_status == '?':
@@ -448,6 +453,36 @@ class GitService(QObject):
                     status = self._parse_status_char(work_status)
                     changes.append(FileChange(path, status, False))
 
+        return changes
+
+    def _parse_nul_status_output(self, stdout: str) -> list[FileChange]:
+        """解析 -z 输出；路径原样返回，重命名记录额外消费旧路径字段。"""
+        changes = []
+        records = stdout.split('\0')
+        index = 0
+        while index < len(records):
+            record = records[index]
+            index += 1
+            if len(record) < 3:
+                continue
+            index_status = record[0]
+            work_status = record[1]
+            path = record[3:]
+            if index_status in {'R', 'C'} or work_status in {'R', 'C'}:
+                # porcelain v1 -z 使用 "XY new-path\0old-path\0"，界面统一展示新路径。
+                if index < len(records):
+                    index += 1
+            if index_status == '?' and work_status == '?':
+                changes.append(FileChange(path, FileStatus.UNTRACKED, False))
+                continue
+            if index_status not in {' ', '?'}:
+                changes.append(FileChange(
+                    path, self._parse_status_char(index_status), True
+                ))
+            if work_status not in {' ', '?'}:
+                changes.append(FileChange(
+                    path, self._parse_status_char(work_status), False
+                ))
         return changes
 
     def _parse_status_char(self, char: str) -> FileStatus:

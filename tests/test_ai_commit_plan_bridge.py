@@ -155,10 +155,59 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         bridge.generatePrepared(prepared[0][0], False)
         self.assertTrue(self.wait_until(lambda: len(ready) == 1))
 
+        write_file(self.repo, "one.py", "print('changed again')\n")
         bridge.invalidateWorkspace()
         self.assertTrue(bridge.planModel.hasPlan)
-        self.assertTrue(bridge.planModel.stale)
+        self.assertTrue(self.wait_until(lambda: bridge.planModel.stale))
         self.assertFalse(bridge.planModel.executable)
+
+    def test_apply_commit_and_continue_all_groups_without_auto_commit(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        applied: list[tuple] = []
+        advanced: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+        bridge.groupApplied.connect(lambda *args: applied.append(args))
+        bridge.planAdvanced.connect(lambda *args: advanced.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        first_path = bridge.planModel.groups[0]["changes"][0]["path"]
+
+        bridge.applyNextGroup()
+        self.assertTrue(self.wait_until(lambda: len(applied) == 1))
+        self.assertTrue(bridge.awaitingCommit)
+        self.assertEqual(
+            run_git(self.repo, "diff", "--cached", "--name-only").stdout.strip(),
+            first_path,
+        )
+        head_before = run_git(self.repo, "rev-parse", "HEAD").stdout.strip()
+        self.assertEqual(run_git(self.repo, "rev-parse", "HEAD").stdout.strip(), head_before)
+
+        ok, _message = self.service.commit(applied[0][1])
+        self.assertTrue(ok)
+        bridge.notifyCommitSucceeded()
+        self.assertTrue(self.wait_until(lambda: len(advanced) == 1))
+        self.assertFalse(advanced[0][0])
+        self.assertFalse(bridge.awaitingCommit)
+        self.assertEqual(len(bridge.planModel.groups), 1)
+        self.assertFalse(bridge.planModel.stale)
+
+        bridge.applyNextGroup()
+        self.assertTrue(self.wait_until(lambda: len(applied) == 2))
+        ok, _message = self.service.commit(applied[1][1])
+        self.assertTrue(ok)
+        bridge.notifyCommitSucceeded()
+        self.assertTrue(self.wait_until(lambda: len(advanced) == 2))
+        self.assertTrue(advanced[1][0])
+        self.assertFalse(bridge.planModel.hasPlan)
+        self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
 
     def wait_until(self, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout
