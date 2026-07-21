@@ -1,5 +1,5 @@
 # coding: utf-8
-"""文件级 AI 提交规划的异步桥；本阶段只生成和编辑，不执行 Git 写入。"""
+"""文件级与代码块级 AI 提交规划异步桥。"""
 from __future__ import annotations
 
 import threading
@@ -96,6 +96,13 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def preparePlan(self) -> None:
+        self._prepare_plan("file")
+
+    @Slot()
+    def prepareHunkPlan(self) -> None:
+        self._prepare_plan("hunk")
+
+    def _prepare_plan(self, level: str) -> None:
         if self._awaiting_commit:
             self.errorOccurred.emit("请先提交已应用的计划组")
             return
@@ -124,8 +131,8 @@ class AiCommitPlanBridge(QObject):
                 if not snapshot.changes:
                     scope = "工作区" if include_unstaged else "暂存区"
                     raise SnapshotCollectionError(f"{scope}没有可规划的改动")
-                request = PlannerRequest(snapshot, "plan", "file", settings.generate_body)
-                request_id = f"plan-{serial}-{snapshot.snapshot_id[:16]}"
+                request = PlannerRequest(snapshot, "plan", level, settings.generate_body)
+                request_id = f"plan-{level}-{serial}-{snapshot.snapshot_id[:16]}"
                 prepared = _PreparedPlanRequest(
                     request_id,
                     repo,
@@ -145,16 +152,16 @@ class AiCommitPlanBridge(QObject):
                 self.contextPrepared.emit(
                     request_id,
                     prepared.is_remote,
-                    len(snapshot.changes),
+                    len(snapshot.expected_ids(level)),
                     len(build_user_input(request)),
                     scope_summary,
                 )
             except (SnapshotCollectionError, AiCommitSettingsError) as exc:
-                logger.warning(f"准备文件级规划失败: {type(exc).__name__}")
+                logger.warning(f"准备 {level} 规划失败: {type(exc).__name__}")
                 self._emit_error_if_current(serial, str(exc))
             except Exception as exc:  # noqa: BLE001
-                logger.exception(f"准备文件级规划异常: {type(exc).__name__}")
-                self._emit_error_if_current(serial, "准备文件级规划上下文失败")
+                logger.exception(f"准备 {level} 规划异常: {type(exc).__name__}")
+                self._emit_error_if_current(serial, "准备提交规划上下文失败")
             finally:
                 self._set_busy_if_current(serial, False)
 
@@ -287,7 +294,10 @@ class AiCommitPlanBridge(QObject):
         snapshot = self._model.snapshot()
         plan = self._model.current_plan()
         if snapshot is None or plan is None:
-            self.errorOccurred.emit("请先生成文件级提交计划")
+            self.errorOccurred.emit("请先生成提交计划")
+            return
+        if plan.level != "file":
+            self.errorOccurred.emit("代码块级计划尚未进入执行阶段")
             return
         settings = self._runtime.planning_settings()
         validation = self._model.validation_result()
@@ -371,7 +381,8 @@ class AiCommitPlanBridge(QObject):
         if not current or repo != (self._git.repo_path or ""):
             return
         self._model.load(plan, snapshot)
-        self.planReady.emit(True, plan.summary or "文件级提交计划已生成")
+        level_name = "代码块级" if plan.level == "hunk" else "文件级"
+        self.planReady.emit(True, plan.summary or f"{level_name}提交计划已生成")
 
     @Slot(int, object)
     def _apply_finished(self, serial: int, applied: AppliedFileGroup) -> None:

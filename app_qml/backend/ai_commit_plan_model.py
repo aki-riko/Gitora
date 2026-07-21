@@ -13,6 +13,7 @@ from app.common.ai_commit_models import (
     CommitPlan,
     CommitPlanValidator,
     FileChangeSnapshot,
+    HunkChange,
     PlanValidationResult,
 )
 
@@ -37,6 +38,7 @@ class AiCommitPlanModel(QObject):
         super().__init__(parent)
         self._validator = CommitPlanValidator()
         self._snapshot: ChangeSnapshot | None = None
+        self._level = "file"
         self._summary = ""
         self._plan_warnings: list[str] = []
         self._groups: list[_EditableGroup] = []
@@ -52,6 +54,10 @@ class AiCommitPlanModel(QObject):
     @Property(str, notify=planChanged)
     def snapshotId(self) -> str:
         return self._snapshot.snapshot_id if self._snapshot else ""
+
+    @Property(str, notify=planChanged)
+    def level(self) -> str:
+        return self._level
 
     @Property(str, notify=planChanged)
     def summary(self) -> str:
@@ -73,7 +79,7 @@ class AiCommitPlanModel(QObject):
     def groups(self) -> list[dict]:
         if not self._snapshot:
             return []
-        changes = self._snapshot.change_by_id("file")
+        changes = self._snapshot.change_by_id(self._level)
         return [
             {
                 "groupId": group.group_id,
@@ -95,12 +101,34 @@ class AiCommitPlanModel(QObject):
     def unassignedChanges(self) -> list[dict]:
         if not self._snapshot:
             return []
-        changes = self._snapshot.change_by_id("file")
+        changes = self._snapshot.change_by_id(self._level)
         return [
             self._change_payload(change_id, "", changes)
             for change_id in self._unassigned
             if change_id in changes
         ]
+
+    @Property("QVariantMap", notify=planChanged)
+    def coverage(self) -> dict:
+        if not self._snapshot:
+            return {
+                "total": 0, "assigned": 0, "unassigned": 0,
+                "duplicates": 0, "percent": 0,
+            }
+        expected = set(self._snapshot.expected_ids(self._level))
+        assigned_ids = [
+            change_id for group in self._groups for change_id in group.change_ids
+        ]
+        assigned = len(set(assigned_ids) & expected)
+        duplicates = len(assigned_ids) - len(set(assigned_ids))
+        total = len(expected)
+        return {
+            "total": total,
+            "assigned": assigned,
+            "unassigned": len(self._unassigned),
+            "duplicates": duplicates,
+            "percent": round(assigned * 100 / total) if total else 0,
+        }
 
     @Property("QVariantList", notify=planChanged)
     def issues(self) -> list[dict]:
@@ -126,6 +154,7 @@ class AiCommitPlanModel(QObject):
 
     def load(self, plan: CommitPlan, snapshot: ChangeSnapshot) -> None:
         self._snapshot = snapshot
+        self._level = plan.level
         self._summary = plan.summary
         self._plan_warnings = list(plan.warnings)
         self._groups = [
@@ -151,6 +180,7 @@ class AiCommitPlanModel(QObject):
         if self._snapshot is None:
             return
         self._snapshot = None
+        self._level = "file"
         self._summary = ""
         self._plan_warnings = []
         self._groups = []
@@ -178,7 +208,10 @@ class AiCommitPlanModel(QObject):
 
     @Slot(str, str, result=bool)
     def moveChange(self, change_id: str, target_group_id: str) -> bool:
-        if not self._snapshot or change_id not in self._snapshot.change_by_id("file"):
+        if (
+            not self._snapshot
+            or change_id not in self._snapshot.change_by_id(self._level)
+        ):
             return False
         target = self._find_group(target_group_id) if target_group_id else None
         if target_group_id and target is None:
@@ -241,12 +274,14 @@ class AiCommitPlanModel(QObject):
         group = self._find_group(group_id)
         if group is None:
             return ""
-        changes = self._snapshot.change_by_id("file")
+        changes = self._snapshot.change_by_id(self._level)
         sections = []
         for change_id in group.change_ids:
             change = changes.get(change_id)
             if change is not None:
-                sections.append(f"# {change.path}\n{change.patch}".rstrip())
+                hunk = self._find_hunk(change, change_id)
+                content = hunk.content if hunk is not None else change.patch
+                sections.append(f"# {change.path}\n{content}".rstrip())
         return "\n\n".join(sections)
 
     def current_plan(self) -> CommitPlan | None:
@@ -266,6 +301,8 @@ class AiCommitPlanModel(QObject):
         fresh_snapshot: ChangeSnapshot,
     ) -> tuple[bool, bool, str]:
         """把已提交首组从会话移除，并按路径映射剩余 change_id。"""
+        if self._level != "file":
+            return False, False, "代码块级计划需按代码块重新映射"
         if not self._snapshot or not self._groups:
             return False, False, "没有可推进的计划"
         if self._groups[0].group_id != completed_group_id:
@@ -364,7 +401,7 @@ class AiCommitPlanModel(QObject):
             self._result = PlanValidationResult(False, False, (), ())
             return
         self._result = self._validator.validate(
-            self._build_plan(), self._snapshot, expected_level="file"
+            self._build_plan(), self._snapshot, expected_level=self._level
         )
 
     def _build_plan(self) -> CommitPlan:
@@ -372,7 +409,7 @@ class AiCommitPlanModel(QObject):
         return CommitPlan(
             schema_version="1",
             snapshot_id=self._snapshot.snapshot_id,
-            level="file",
+            level=self._level,
             summary=self._summary,
             groups=tuple(
                 CommitGroup(
@@ -395,22 +432,35 @@ class AiCommitPlanModel(QObject):
             (group for group in self._groups if group.group_id == group_id), None
         )
 
-    @staticmethod
     def _change_payload(
+        self,
         change_id: str,
         group_id: str,
         changes: dict,
     ) -> dict:
         change = changes[change_id]
+        hunk = self._find_hunk(change, change_id)
         return {
             "changeId": change_id,
             "groupId": group_id,
+            "kind": "hunk" if hunk is not None else "file",
             "path": change.path,
             "status": change.status,
             "staged": change.staged,
-            "additions": change.additions,
-            "deletions": change.deletions,
+            "additions": hunk.additions if hunk is not None else change.additions,
+            "deletions": hunk.deletions if hunk is not None else change.deletions,
+            "header": hunk.header if hunk is not None else "",
+            "content": hunk.content if hunk is not None else "",
             "binary": change.binary,
             "truncated": change.truncated,
             "unsupportedReason": change.unsupported_reason,
         }
+
+    @staticmethod
+    def _find_hunk(
+        change: FileChangeSnapshot, change_id: str
+    ) -> HunkChange | None:
+        return next(
+            (hunk for hunk in change.hunks if hunk.change_id == change_id),
+            None,
+        )

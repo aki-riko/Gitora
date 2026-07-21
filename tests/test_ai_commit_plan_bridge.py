@@ -30,7 +30,7 @@ class _PlanProvider(ModelProvider):
 
     def generate_plan(self, request: PlannerRequest, cancel_event=None):
         self.requests.append(request)
-        ids = list(request.snapshot.expected_ids("file"))
+        ids = list(request.snapshot.expected_ids(request.level))
         groups = []
         for index, change_id in enumerate(ids):
             groups.append({
@@ -39,14 +39,14 @@ class _PlanProvider(ModelProvider):
                 "body": "",
                 "change_ids": [change_id],
                 "depends_on": [],
-                "rationale": "按文件拆分",
+                "rationale": f"按 {request.level} 拆分",
                 "warnings": [],
             })
         return {
             "schema_version": "1",
             "snapshot_id": request.snapshot.snapshot_id,
-            "level": "file",
-            "summary": "真实工作区文件级计划",
+            "level": request.level,
+            "summary": f"真实工作区 {request.level} 计划",
             "groups": groups,
             "unassigned_change_ids": [],
             "warnings": [],
@@ -160,6 +160,47 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertTrue(bridge.planModel.hasPlan)
         self.assertTrue(self.wait_until(lambda: bridge.planModel.stale))
         self.assertFalse(bridge.planModel.executable)
+
+    def test_hunk_plan_uses_real_context_and_stays_read_only_in_ui_stage(self) -> None:
+        lines = [f"line {index}\n" for index in range(1, 41)]
+        write_file(self.repo, "code.py", "".join(lines))
+        commit_all(self.repo, "chore: add hunk fixture")
+        lines[1] = "changed top\n"
+        lines[34] = "changed bottom\n"
+        write_file(self.repo, "code.py", "".join(lines))
+        before_status = run_git(self.repo, "status", "--porcelain=v1").stdout
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+        bridge.errorOccurred.connect(errors.append)
+
+        bridge.prepareHunkPlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        self.assertEqual(prepared[0][2], 2)
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+
+        self.assertEqual(self.provider.requests[-1].level, "hunk")
+        self.assertEqual(bridge.planModel.level, "hunk")
+        self.assertEqual(bridge.planModel.coverage["percent"], 100)
+        self.assertEqual(len(bridge.planModel.groups), 2)
+        self.assertEqual(
+            {group["changes"][0]["path"] for group in bridge.planModel.groups},
+            {"code.py"},
+        )
+        self.assertTrue(all(
+            group["changes"][0]["kind"] == "hunk"
+            for group in bridge.planModel.groups
+        ))
+        bridge.applyNextGroup()
+        self.assertIn("尚未进入执行阶段", errors[-1])
+        self.assertEqual(
+            run_git(self.repo, "status", "--porcelain=v1").stdout,
+            before_status,
+        )
 
     def test_apply_commit_and_continue_all_groups_without_auto_commit(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")

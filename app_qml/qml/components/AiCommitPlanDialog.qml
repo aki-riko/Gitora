@@ -11,6 +11,8 @@ Fluent.DialogBoxCore {
     property string _preparedRequestId: ""
     property string _previewTitle: ""
     property string _previewText: ""
+    property bool _hunkMode: AiCommitPlanBridge
+        && AiCommitPlanBridge.planModel.level === "hunk"
     property var _groups: AiCommitPlanBridge ? AiCommitPlanBridge.planModel.groups : []
     property var _targetIds: {
         var values = [""]
@@ -29,11 +31,13 @@ Fluent.DialogBoxCore {
         RowLayout {
             spacing: Fluent.Enums.spacing.s
             Fluent.ButtonCore {
-                text: AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit
-                    ? "等待提交" : "应用下一组"
+                text: dlg._hunkMode ? "代码块执行待启用"
+                    : (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit
+                        ? "等待提交" : "应用下一组")
                 style: Fluent.Enums.button.style_primary
                 enabled: AiCommitPlanBridge
                     && AiCommitPlanBridge.planModel.executable
+                    && !dlg._hunkMode
                     && !AiCommitPlanBridge.busy
                     && !AiCommitPlanBridge.awaitingCommit
                 width: Fluent.Enums.dialog.buttonWidth
@@ -50,7 +54,10 @@ Fluent.DialogBoxCore {
                         AiCommitPlanBridge.cancelCurrent()
                         dlg._preparedRequestId = ""
                     } else {
-                        AiCommitPlanBridge.preparePlan()
+                        if (dlg._hunkMode)
+                            AiCommitPlanBridge.prepareHunkPlan()
+                        else
+                            AiCommitPlanBridge.preparePlan()
                     }
                 }
             }
@@ -114,13 +121,25 @@ Fluent.DialogBoxCore {
         RowLayout {
             Layout.fillWidth: true
             Text {
-                text: "AI 文件级提交计划"
+                text: dlg._hunkMode ? "AI 代码块级提交计划" : "AI 文件级提交计划"
                 color: Fluent.Enums.textColor.primary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.subtitle
                 font.bold: true
             }
             Item { Layout.fillWidth: true }
+            Fluent.Button {
+                text: "文件级规划"
+                enabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy
+                    && !AiCommitPlanBridge.awaitingCommit
+                onClicked: AiCommitPlanBridge.preparePlan()
+            }
+            Fluent.Button {
+                text: "代码块级规划"
+                enabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy
+                    && !AiCommitPlanBridge.awaitingCommit
+                onClicked: AiCommitPlanBridge.prepareHunkPlan()
+            }
             Text {
                 text: {
                     if (!AiCommitPlanBridge || !AiCommitPlanBridge.planModel.hasPlan)
@@ -145,6 +164,20 @@ Fluent.DialogBoxCore {
             font.family: Fluent.Enums.fontFamily
             font.pixelSize: Fluent.Enums.typography.body
             wrapMode: Text.WordWrap
+        }
+
+        Text {
+            Layout.fillWidth: true
+            visible: AiCommitPlanBridge && AiCommitPlanBridge.planModel.hasPlan
+            property var stats: AiCommitPlanBridge
+                ? AiCommitPlanBridge.planModel.coverage : ({})
+            text: (dlg._hunkMode ? "代码块覆盖：" : "文件覆盖：")
+                + stats.assigned + "/" + stats.total + "（" + stats.percent
+                + "%） · 未分配 " + stats.unassigned + " · 重复 " + stats.duplicates
+            color: stats.assigned === stats.total && stats.duplicates === 0
+                ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.statusLevel.warningColor
+            font.family: Fluent.Enums.fontFamily
+            font.pixelSize: Fluent.Enums.typography.caption
         }
 
         Rectangle {
@@ -378,11 +411,31 @@ Fluent.DialogBoxCore {
                 spacing: Fluent.Enums.spacing.xs
                 Text {
                     Layout.fillWidth: true
-                    text: change.path
+                    text: change.path + (change.kind === "hunk" ? " · 代码块" : "")
                     color: Fluent.Enums.textColor.primary
                     font.family: Fluent.Enums.fontFamily
                     font.pixelSize: Fluent.Enums.typography.caption
                     elide: Text.ElideMiddle
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: change.kind === "hunk"
+                    text: change.header
+                    color: Fluent.Enums.textColor.secondary
+                    font.family: "Consolas, Cascadia Code, monospace"
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    elide: Text.ElideRight
+                }
+                Text {
+                    Layout.fillWidth: true
+                    visible: change.kind === "hunk"
+                    text: change.content
+                    color: Fluent.Enums.textColor.tertiary
+                    font.family: "Consolas, Cascadia Code, monospace"
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    wrapMode: Text.WrapAnywhere
+                    maximumLineCount: 4
+                    elide: Text.ElideRight
                 }
                 RowLayout {
                     Layout.fillWidth: true

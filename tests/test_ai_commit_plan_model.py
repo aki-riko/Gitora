@@ -8,6 +8,7 @@ from app.common.ai_commit_models import (
     ChangeSnapshot,
     CommitPlan,
     FileChangeSnapshot,
+    HunkChange,
 )
 from app_qml.backend.ai_commit_plan_model import AiCommitPlanModel
 
@@ -139,6 +140,68 @@ class AiCommitPlanModelTest(unittest.TestCase):
         self.assertFalse(ok)
         self.assertFalse(completed)
         self.assertIn("仍有新改动", message)
+
+    def test_hunk_plan_exposes_context_coverage_and_manual_movement(self) -> None:
+        hunks = (
+            HunkChange(
+                "hunk_top", "@@ -1 +1 @@", 1, 1, 1, 1, 1, 1,
+                "@@ -1 +1 @@\n-old top\n+new top\n",
+            ),
+            HunkChange(
+                "hunk_bottom", "@@ -20 +20 @@", 20, 1, 20, 1, 1, 1,
+                "@@ -20 +20 @@\n-old bottom\n+new bottom\n",
+            ),
+        )
+        snapshot = replace(
+            self.snapshot,
+            changes=(replace(self.snapshot.changes[0], hunks=hunks),),
+        )
+        plan = CommitPlan.from_mapping({
+            "schema_version": "1",
+            "snapshot_id": snapshot.snapshot_id,
+            "level": "hunk",
+            "summary": "按代码块拆分",
+            "groups": [
+                {
+                    "group_id": "top",
+                    "title": "feat: 修改顶部",
+                    "body": "",
+                    "change_ids": ["hunk_top"],
+                    "depends_on": [],
+                    "rationale": "顶部逻辑",
+                    "warnings": [],
+                },
+                {
+                    "group_id": "bottom",
+                    "title": "test: 修改底部",
+                    "body": "",
+                    "change_ids": ["hunk_bottom"],
+                    "depends_on": [],
+                    "rationale": "底部逻辑",
+                    "warnings": [],
+                },
+            ],
+            "unassigned_change_ids": [],
+            "warnings": [],
+        })
+
+        self.model.load(plan, snapshot)
+
+        self.assertEqual(self.model.level, "hunk")
+        self.assertEqual(self.model.coverage, {
+            "total": 2, "assigned": 2, "unassigned": 0,
+            "duplicates": 0, "percent": 100,
+        })
+        first_change = self.model.groups[0]["changes"][0]
+        self.assertEqual(first_change["kind"], "hunk")
+        self.assertIn("new top", first_change["content"])
+        self.assertIn("@@ -1", first_change["header"])
+        self.assertIn("new top", self.model.getGroupPatch("top"))
+        self.assertNotIn("new bottom", self.model.getGroupPatch("top"))
+        self.assertTrue(self.model.moveChange("hunk_bottom", ""))
+        self.assertEqual(self.model.coverage["assigned"], 1)
+        self.assertEqual(self.model.coverage["unassigned"], 1)
+        self.assertFalse(self.model.executable)
 
 
 if __name__ == "__main__":
