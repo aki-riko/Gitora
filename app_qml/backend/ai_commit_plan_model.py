@@ -16,6 +16,7 @@ from app.common.ai_commit_models import (
     HunkChange,
     PlanValidationResult,
 )
+from app.common.ai_commit_patch import HunkPatchBuilder
 
 
 @dataclass
@@ -275,6 +276,18 @@ class AiCommitPlanModel(QObject):
         if group is None:
             return ""
         changes = self._snapshot.change_by_id(self._level)
+        if self._level == "hunk":
+            trusted_group = next(
+                item for item in self._build_plan().groups
+                if item.group_id == group_id
+            )
+            built = HunkPatchBuilder.build_group(self._snapshot, trusted_group)
+            sections = [built.patch.rstrip()] if built.patch else []
+            sections.extend(
+                f"# {changes[change_id].path}\n{changes[change_id].patch}".rstrip()
+                for change_id in built.whole_file_change_ids
+            )
+            return "\n\n".join(sections)
         sections = []
         for change_id in group.change_ids:
             change = changes.get(change_id)
@@ -450,7 +463,10 @@ class AiCommitPlanModel(QObject):
             "additions": hunk.additions if hunk is not None else change.additions,
             "deletions": hunk.deletions if hunk is not None else change.deletions,
             "header": hunk.header if hunk is not None else "",
-            "content": hunk.content if hunk is not None else "",
+            "content": (
+                hunk.content.split("\n", 1)[1]
+                if hunk is not None and "\n" in hunk.content else ""
+            ),
             "binary": change.binary,
             "truncated": change.truncated,
             "unsupportedReason": change.unsupported_reason,

@@ -154,7 +154,16 @@ class AiCommitPlanModelTest(unittest.TestCase):
         )
         snapshot = replace(
             self.snapshot,
-            changes=(replace(self.snapshot.changes[0], hunks=hunks),),
+            changes=(replace(
+                self.snapshot.changes[0],
+                patch=(
+                    "diff --git a/src/a.py b/src/a.py\n"
+                    "--- a/src/a.py\n"
+                    "+++ b/src/a.py\n"
+                    + "".join(hunk.content for hunk in hunks)
+                ),
+                hunks=hunks,
+            ),),
         )
         plan = CommitPlan.from_mapping({
             "schema_version": "1",
@@ -195,9 +204,12 @@ class AiCommitPlanModelTest(unittest.TestCase):
         first_change = self.model.groups[0]["changes"][0]
         self.assertEqual(first_change["kind"], "hunk")
         self.assertIn("new top", first_change["content"])
+        self.assertFalse(first_change["content"].startswith("@@"))
         self.assertIn("@@ -1", first_change["header"])
-        self.assertIn("new top", self.model.getGroupPatch("top"))
-        self.assertNotIn("new bottom", self.model.getGroupPatch("top"))
+        preview = self.model.getGroupPatch("top")
+        self.assertIn("diff --git a/src/a.py b/src/a.py", preview)
+        self.assertIn("new top", preview)
+        self.assertNotIn("new bottom", preview)
         self.assertTrue(self.model.moveChange("hunk_bottom", ""))
         self.assertEqual(self.model.coverage["assigned"], 1)
         self.assertEqual(self.model.coverage["unassigned"], 1)
