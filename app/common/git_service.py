@@ -474,6 +474,26 @@ class GitService(QObject):
         success, stdout, _ = self._run_git_sync_at(repo_path, ['rev-parse', '--abbrev-ref', 'HEAD'])
         return stdout.strip() if success else ""
 
+    def get_head_at(self, repo_path: str) -> str:
+        """读取指定仓库的 HEAD；空仓库或无效仓库返回空串。"""
+        success, stdout, _ = self._run_git_sync_at(
+            repo_path, ['rev-parse', '--verify', 'HEAD']
+        )
+        return stdout.strip() if success else ""
+
+    def get_raw_diff_at(
+        self, repo_path: str, staged: bool = False
+    ) -> tuple[bool, str, str]:
+        """读取未截断的原始差异，供需要完整快照的后端能力使用。
+
+        UI 展示仍使用 ``get_diff`` 的大小保护；此接口不做截断，调用方必须
+        自行应用可配置的输入限制，并且不得在主线程调用。
+        """
+        args = ['diff', '--no-ext-diff', '--full-index', '--find-renames']
+        if staged:
+            args.append('--cached')
+        return self._run_git_sync_at(repo_path, args)
+
     def get_branches(self) -> list[BranchInfo]:
         """获取所有分支"""
         branches = []
