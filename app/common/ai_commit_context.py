@@ -21,6 +21,7 @@ class SnapshotLimits:
     max_total_chars: int
     max_file_chars: int
     max_untracked_chars: int
+    max_instruction_chars: int
     max_files: int
     history_count: int
     instruction_files: tuple[str, ...]
@@ -28,7 +29,8 @@ class SnapshotLimits:
     def __post_init__(self) -> None:
         numeric = (
             self.max_total_chars, self.max_file_chars,
-            self.max_untracked_chars, self.max_files, self.history_count,
+            self.max_untracked_chars, self.max_instruction_chars,
+            self.max_files, self.history_count,
         )
         if any(value <= 0 for value in numeric):
             raise ValueError("快照限制必须为正整数")
@@ -82,7 +84,17 @@ class ChangeContextCollector:
             os.path.normcase(repo).encode("utf-8", "replace")
         ).hexdigest()
 
-        remaining = self._limits.max_total_chars
+        instruction_budget = min(
+            self._limits.max_instruction_chars, self._limits.max_total_chars
+        )
+        instructions, instruction_warnings, instruction_chars = self._read_instructions(
+            repo, instruction_budget
+        )
+        warnings.extend(instruction_warnings)
+        if instruction_warnings:
+            complete = False
+
+        remaining = self._limits.max_total_chars - instruction_chars
         changes: list[FileChangeSnapshot] = []
         for status_change in relevant_status:
             change, consumed = self._build_change(
@@ -94,15 +106,10 @@ class ChangeContextCollector:
                 complete = False
                 warnings.append(f"{change.path} 的内容超过配置上限，已截断")
 
-        titles = tuple(
-            commit.message for commit in self._git.get_log_at(
-                repo, count=self._limits.history_count, fast_mode=True
-            )
+        titles, title_warnings = self._read_recent_titles(
+            repo, max(0, remaining)
         )
-        instructions, instruction_warnings = self._read_instructions(repo)
-        warnings.extend(instruction_warnings)
-        if instruction_warnings:
-            complete = False
+        warnings.extend(title_warnings)
 
         snapshot_payload = {
             "workspace_fingerprint": workspace_fingerprint,
@@ -167,7 +174,15 @@ class ChangeContextCollector:
         else:
             raw = file_diff.raw if file_diff else ""
             binary = "Binary files " in raw or "GIT binary patch" in raw
-            unsupported = "二进制改动" if binary else ""
+            is_submodule = "Subproject commit " in raw or " 160000" in raw
+            if status_change.status == FileStatus.UNMERGED:
+                unsupported = "存在未解决冲突"
+            elif binary:
+                unsupported = "二进制改动"
+            elif is_submodule:
+                unsupported = "子模块改动"
+            else:
+                unsupported = ""
             old_path = file_diff.old_path if file_diff else status_change.path
             new_path = file_diff.new_path if file_diff else status_change.path
             additions = file_diff.additions if file_diff else 0
@@ -263,9 +278,12 @@ class ChangeContextCollector:
             return text[:self._limits.max_untracked_chars], False, "内容不完整"
         return text, False, ""
 
-    def _read_instructions(self, repo: str) -> tuple[list[tuple[str, str]], list[str]]:
+    def _read_instructions(
+        self, repo: str, budget: int
+    ) -> tuple[list[tuple[str, str]], list[str], int]:
         result: list[tuple[str, str]] = []
         warnings: list[str] = []
+        consumed = 0
         for name in self._limits.instruction_files:
             target = os.path.realpath(os.path.join(repo, name))
             if not self._is_within_repo(repo, target):
@@ -278,11 +296,32 @@ class ChangeContextCollector:
             except OSError as exc:
                 warnings.append(f"无法读取规范文件 {name}（{type(exc).__name__}）")
                 continue
-            if len(content) > self._limits.max_file_chars:
-                content = content[:self._limits.max_file_chars]
+            allowance = max(0, min(self._limits.max_file_chars, budget - consumed))
+            if len(content) > allowance:
+                content = content[:allowance]
                 warnings.append(f"规范文件 {name} 超过配置上限，已截断")
             result.append((name, content))
-        return result, warnings
+            consumed += len(content)
+        return result, warnings, consumed
+
+    def _read_recent_titles(
+        self, repo: str, budget: int
+    ) -> tuple[tuple[str, ...], list[str]]:
+        titles: list[str] = []
+        warnings: list[str] = []
+        remaining = budget
+        for commit in self._git.get_log_at(
+            repo, count=self._limits.history_count, fast_mode=True
+        ):
+            if remaining <= 0:
+                warnings.append("最近提交标题超过上下文总上限，已省略")
+                break
+            title = commit.message[:min(self._limits.max_file_chars, remaining)]
+            if len(title) < len(commit.message):
+                warnings.append("最近提交标题超过配置上限，已截断")
+            titles.append(title)
+            remaining -= len(title)
+        return tuple(titles), warnings
 
     def _workspace_state_payload(
         self,

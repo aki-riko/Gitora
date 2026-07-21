@@ -142,6 +142,7 @@ class AiCommitProtocolTest(unittest.TestCase):
         file_payload = PlannerRequest(snapshot, "plan", "file").to_prompt_payload()
         hunk_payload = PlannerRequest(snapshot, "plan", "hunk").to_prompt_payload()
 
+        self.assertNotIn("repository_token", file_payload["snapshot"])
         self.assertEqual(file_payload["snapshot"]["changes"][0]["patch"], "diff for a")
         self.assertEqual(file_payload["snapshot"]["changes"][0]["hunks"][0]["content"], "")
         self.assertEqual(hunk_payload["snapshot"]["changes"][0]["patch"], "")

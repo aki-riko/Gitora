@@ -8,7 +8,9 @@ from pathlib import Path
 
 from app.common.ai_commit_context import ChangeContextCollector, SnapshotLimits
 from app.common.git_service import GitService
-from tests.git_test_utils import commit_all, init_repo, run_git, write_file
+from tests.git_test_utils import (
+    commit_all, configure_user, init_repo, run_git, write_file,
+)
 
 
 class AiCommitContextTest(unittest.TestCase):
@@ -27,6 +29,7 @@ class AiCommitContextTest(unittest.TestCase):
             "max_total_chars": 200_000,
             "max_file_chars": 100_000,
             "max_untracked_chars": 50_000,
+            "max_instruction_chars": 20_000,
             "max_files": 100,
             "history_count": 20,
         }
@@ -113,9 +116,65 @@ class AiCommitContextTest(unittest.TestCase):
         self.assertGreater(len(raw), 100 * 1024)
         self.assertNotIn("Diff过大，已截断", raw)
 
+    def test_conflicted_changes_are_never_marked_executable(self) -> None:
+        run_git(self.repo, "checkout", "-b", "topic")
+        write_file(self.repo, "tracked.txt", "topic\n")
+        commit_all(self.repo, "feat: topic")
+        run_git(self.repo, "checkout", "master")
+        write_file(self.repo, "tracked.txt", "master\n")
+        commit_all(self.repo, "fix: master")
+        merge = run_git(self.repo, "merge", "topic", check=False)
+        self.assertNotEqual(merge.returncode, 0)
+
+        snapshot = ChangeContextCollector(self.service, self.limits()).collect(
+            str(self.repo), include_unstaged=True
+        )
+        conflicts = [change for change in snapshot.changes if change.path == "tracked.txt"]
+        self.assertTrue(conflicts)
+        self.assertTrue(all(
+            change.unsupported_reason == "存在未解决冲突" for change in conflicts
+        ))
+        self.assertTrue(all(not change.executable for change in conflicts))
+
+    def test_submodule_change_is_never_marked_executable(self) -> None:
+        sub = init_repo(Path(self.temp_dir.name) / "sub")
+        write_file(sub, "value.txt", "one\n")
+        commit_all(sub, "chore: sub one")
+        run_git(
+            self.repo, "-c", "protocol.file.allow=always",
+            "submodule", "add", str(sub), "deps/sub",
+        )
+        commit_all(self.repo, "chore: add submodule")
+        configure_user(self.repo / "deps" / "sub")
+        write_file(self.repo / "deps" / "sub", "value.txt", "two\n")
+        commit_all(self.repo / "deps" / "sub", "chore: sub two")
+
+        snapshot = ChangeContextCollector(self.service, self.limits()).collect(
+            str(self.repo), include_unstaged=True
+        )
+        change = next(item for item in snapshot.changes if item.path == "deps/sub")
+        self.assertEqual(change.unsupported_reason, "子模块改动")
+        self.assertFalse(change.executable)
+
+    def test_instruction_and_history_share_configured_total_budget(self) -> None:
+        limits = self.limits(
+            max_total_chars=12,
+            max_file_chars=12,
+            max_instruction_chars=5,
+        )
+        snapshot = ChangeContextCollector(self.service, limits).collect(
+            str(self.repo), include_unstaged=True
+        )
+        self.assertEqual(snapshot.instructions, (("AGENTS.md", "提交标题使"),))
+        self.assertFalse(snapshot.complete)
+        payload_chars = sum(len(content) for _, content in snapshot.instructions)
+        payload_chars += sum(len(title) for title in snapshot.recent_titles)
+        self.assertLessEqual(payload_chars, 12)
+        self.assertTrue(any("配置上限" in warning for warning in snapshot.warnings))
+
     def test_snapshot_limits_reject_unsafe_instruction_paths(self) -> None:
         with self.assertRaisesRegex(ValueError, "不安全"):
-            SnapshotLimits(1, 1, 1, 1, 1, ("../secret.txt",))
+            SnapshotLimits(1, 1, 1, 1, 1, 1, ("../secret.txt",))
 
 
 if __name__ == "__main__":

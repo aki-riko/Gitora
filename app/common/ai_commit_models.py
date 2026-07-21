@@ -142,7 +142,6 @@ class ChangeSnapshot:
     def to_prompt_payload(self, level: str = "file") -> dict[str, Any]:
         return {
             "snapshot_id": self.snapshot_id,
-            "repository_token": self.repository_token,
             "head": self.head,
             "branch": self.branch,
             "include_unstaged": self.include_unstaged,
