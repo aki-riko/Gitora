@@ -9,7 +9,6 @@ Fluent.SettingsCardGroup {
 
     property bool _loading: false
     property var _providerValues: ["ollama", "openai_responses"]
-    property var _scopeValues: ["staged", "all"]
 
     Component.onCompleted: root.loadSettings()
 
@@ -60,7 +59,7 @@ Fluent.SettingsCardGroup {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "本地模式代码不离开设备；远程模式每次发送前都会确认范围。"
+                        text: "Ollama 模式仅发送到你配置的服务地址；远程模式每次发送前都会确认范围。"
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.caption
@@ -86,11 +85,13 @@ Fluent.SettingsCardGroup {
                     currentIndex: 0
                 }
 
-                Fluent.ComboBox {
-                    id: scopeCombo
+                Text {
                     Layout.fillWidth: true
-                    model: ["仅已暂存差异", "全部工作区差异"]
-                    currentIndex: 0
+                    text: "当前生成范围：仅已暂存差异"
+                    color: Fluent.Enums.textColor.tertiary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    verticalAlignment: Text.AlignVCenter
                 }
 
                 Fluent.LineEdit {
@@ -196,8 +197,6 @@ Fluent.SettingsCardGroup {
         remoteModelInput.text = settings.remoteModel || ""
         apiKeyEnvInput.text = settings.apiKeyEnv || ""
         bodyCheck.checked = settings.generateBody
-        var scopeIndex = root._scopeValues.indexOf(settings.remoteScope)
-        scopeCombo.currentIndex = scopeIndex >= 0 ? scopeIndex : 0
         root._loading = false
     }
 
@@ -212,7 +211,7 @@ Fluent.SettingsCardGroup {
             remoteModelInput.text.trim(),
             apiKeyEnvInput.text.trim(),
             bodyCheck.checked,
-            root._scopeValues[scopeCombo.currentIndex]
+            AiCommitBridge.getSettings().remoteScope
         )
         if (!result[0]) {
             Fluent.NotificationManager.toast.error(root, "保存失败", result[1] || "")

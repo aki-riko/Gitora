@@ -24,6 +24,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("AiCommitBridge.generatePrepared(requestId, false)", source)
         self.assertIn("确认发送差异到远程模型", source)
         self.assertIn("AiCommitBridge.generatePrepared(root._aiPreparedRequestId, true)", source)
+        self.assertIn("AiCommitBridge.cancelCurrent()", source)
         self.assertIn("Fluent.TextEdit {\n                id: commitInput", source)
         ai_handler = source.split("function onCommitMessageReady", 1)[1].split("function onErrorOccurred", 1)[0]
         self.assertNotIn("GitBridge.commit", ai_handler)
@@ -36,6 +37,9 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("input.type_password", source)
         self.assertIn("AiCommitBridge.setSessionApiKey", source)
         self.assertIn("仅保留到退出", source)
+        self.assertIn("当前生成范围：仅已暂存差异", source)
+        self.assertIn("仅发送到你配置的服务地址", source)
+        self.assertNotIn("全部工作区差异", source)
         self.assertNotIn("api_key\"", source)
 
 

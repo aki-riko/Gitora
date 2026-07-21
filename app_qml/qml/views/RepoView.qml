@@ -348,11 +348,19 @@ Item {
                 showScrollIndicator: true
             }
             Fluent.Button {
-                text: AiCommitBridge && AiCommitBridge.busy ? "生成中…" : "AI 生成"
-                enabled: AiCommitBridge && !AiCommitBridge.busy
-                    && GitBridge && GitBridge.repoPath.length > 0
+                text: AiCommitBridge && AiCommitBridge.busy ? "取消生成" : "AI 生成"
+                enabled: AiCommitBridge && GitBridge && GitBridge.repoPath.length > 0
                     && !root._quickCommitPushPending
-                onClicked: AiCommitBridge.prepareCommitMessage()
+                    && (AiCommitBridge.busy || root._aiPreparedRequestId.length === 0)
+                onClicked: {
+                    if (AiCommitBridge.busy) {
+                        AiCommitBridge.cancelCurrent()
+                        root._aiPreparedRequestId = ""
+                        Fluent.NotificationManager.toast.info(root, "已取消 AI 生成", "现有提交信息保持不变")
+                    } else {
+                        AiCommitBridge.prepareCommitMessage()
+                    }
+                }
             }
             Fluent.Button {
                 text: "提交"

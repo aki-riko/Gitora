@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import tempfile
+import threading
 import time
 import unittest
 from pathlib import Path
@@ -10,7 +11,7 @@ from pathlib import Path
 from PySide6.QtCore import QCoreApplication
 
 from app.common.ai_commit_models import PlannerRequest
-from app.common.ai_commit_provider import ModelProvider
+from app.common.ai_commit_provider import ModelProvider, ProviderCancelledError
 from app.common.ai_commit_settings import AiCommitSettingsStore
 from app.common.git_service import GitService
 from app_qml.backend.ai_commit_bridge import AiCommitBridge
@@ -49,6 +50,21 @@ class _EchoProvider(ModelProvider):
             "unassigned_change_ids": [],
             "warnings": [],
         }
+
+
+class _BlockingProvider(_EchoProvider):
+    def __init__(self):
+        super().__init__()
+        self.started = threading.Event()
+
+    def generate_plan(self, request: PlannerRequest, cancel_event=None):
+        self.requests.append(request)
+        self.started.set()
+        if cancel_event is None:
+            raise AssertionError("取消测试必须传入 cancel_event")
+        if not cancel_event.wait(timeout=5):
+            raise AssertionError("取消信号未在超时前触发")
+        raise ProviderCancelledError("请求已取消")
 
 
 class AiCommitBridgeTest(unittest.TestCase):
@@ -159,6 +175,27 @@ class AiCommitBridgeTest(unittest.TestCase):
         )
         bridge.clearSessionApiKey()
         self.assertFalse(bridge.hasSessionApiKey)
+
+    def test_cancelled_generation_discards_late_result_and_keeps_git_state(self) -> None:
+        self.stage_change()
+        before_status = run_git(self.repo, "status", "--porcelain=v1").stdout
+        self.provider = _BlockingProvider()
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.commitMessageReady.connect(lambda *args: ready.append(args))
+
+        bridge.prepareCommitMessage()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.provider.started.wait(timeout=5))
+        bridge.cancelCurrent()
+
+        self.assertTrue(self.wait_until(lambda: not bridge.busy))
+        self.app.processEvents()
+        self.assertEqual(ready, [])
+        self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
 
     def test_empty_staging_area_returns_actionable_error(self) -> None:
         bridge = self.make_bridge()
