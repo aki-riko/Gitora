@@ -172,6 +172,46 @@ class AiCommitContextTest(unittest.TestCase):
         self.assertLessEqual(payload_chars, 12)
         self.assertTrue(any("配置上限" in warning for warning in snapshot.warnings))
 
+    def test_hunk_id_ignores_staging_layer_and_header_line_offsets(self) -> None:
+        write_file(
+            self.repo,
+            "stable.txt",
+            "top\n" + "middle\n" * 12 + "bottom\n",
+        )
+        commit_all(self.repo, "chore: add stable hunk fixture")
+        write_file(
+            self.repo,
+            "stable.txt",
+            "top\n" + "middle\n" * 12 + "changed bottom\n",
+        )
+        unstaged = ChangeContextCollector(
+            self.service, self.limits()
+        ).collect(str(self.repo), include_unstaged=True)
+        original_id = unstaged.changes[0].hunks[0].change_id
+
+        run_git(self.repo, "add", "stable.txt")
+        staged = ChangeContextCollector(
+            self.service, self.limits()
+        ).collect(str(self.repo), include_unstaged=True)
+        self.assertEqual(staged.changes[0].hunks[0].change_id, original_id)
+
+        run_git(self.repo, "reset", "HEAD", "--", "stable.txt")
+        write_file(
+            self.repo,
+            "stable.txt",
+            "inserted one\ninserted two\ntop\n"
+            + "middle\n" * 12
+            + "changed bottom\n",
+        )
+        shifted = ChangeContextCollector(
+            self.service, self.limits()
+        ).collect(str(self.repo), include_unstaged=True)
+        bottom_hunk = next(
+            hunk for hunk in shifted.changes[0].hunks
+            if "changed bottom" in hunk.content
+        )
+        self.assertEqual(bottom_hunk.change_id, original_id)
+
     def test_snapshot_limits_reject_unsafe_instruction_paths(self) -> None:
         with self.assertRaisesRegex(ValueError, "不安全"):
             SnapshotLimits(1, 1, 1, 1, 1, 1, ("../secret.txt",))

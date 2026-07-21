@@ -226,17 +226,31 @@ class ChangeContextCollector:
     ) -> tuple[HunkChange, ...]:
         if not file_diff:
             return ()
-        result: list[HunkChange] = []
+        prepared: list[tuple[DiffHunk, str, str]] = []
+        base_counts: dict[str, int] = {}
         for hunk in file_diff.hunks:
             content = self._hunk_content(hunk)
-            identity = {
+            body = content.split("\n", 1)[1] if "\n" in content else content
+            base = self._digest_json({
                 "path": status_change.path,
-                "staged": status_change.staged,
-                "header": hunk.header,
-                "content": content,
-            }
+                "content": body,
+            })
+            base_counts[base] = base_counts.get(base, 0) + 1
+            prepared.append((hunk, content, base))
+        result: list[HunkChange] = []
+        for hunk, content, base in prepared:
+            if base_counts[base] == 1:
+                change_id = "hunk_" + base[:24]
+            else:
+                # 内容完全相同的 hunk 只能用位置消歧；普通 hunk 不依赖行号或暂存层。
+                disambiguated = self._digest_json({
+                    "base": base,
+                    "old_start": hunk.old_start,
+                    "new_start": hunk.new_start,
+                })
+                change_id = "hunk_" + disambiguated[:24]
             result.append(HunkChange(
-                change_id="hunk_" + self._digest_json(identity)[:24],
+                change_id=change_id,
                 header=hunk.header,
                 old_start=hunk.old_start,
                 old_count=hunk.old_count,
