@@ -127,6 +127,49 @@ class HunkPatchTest(unittest.TestCase):
         self.assertEqual(len(result.group_trees), 2)
         self.assertEqual(run_git(self.repo, "write-tree").stdout.strip(), before_tree)
 
+    def test_identical_staged_and_unstaged_hunks_apply_as_separate_groups(self) -> None:
+        block = (
+            "".join(f"ctx {index}\n" for index in range(1, 5))
+            + "target\n"
+            + "".join(f"ctx {index}\n" for index in range(5, 9))
+        )
+        write_file(self.repo, "same.txt", block + "separator\n" * 10 + block)
+        commit_all(self.repo, "chore: duplicate hunk base")
+        base = (self.repo / "same.txt").read_text(encoding="utf-8")
+        staged = base.replace("target\n", "changed\n", 1)
+        write_file(self.repo, "same.txt", staged)
+        run_git(self.repo, "add", "same.txt")
+        second_position = staged.rfind("target\n")
+        write_file(
+            self.repo,
+            "same.txt",
+            staged[:second_position]
+            + "changed\n"
+            + staged[second_position + len("target\n"):],
+        )
+        snapshot = self.collect()
+        staged_change = next(change for change in snapshot.changes if change.staged)
+        unstaged_change = next(change for change in snapshot.changes if not change.staged)
+        ids = [
+            staged_change.hunks[0].change_id,
+            unstaged_change.hunks[0].change_id,
+        ]
+        self.assertEqual(len(set(ids)), 2)
+        plan = self.plan_for(snapshot, [[ids[0]], [ids[1]]])
+        validation = CommitPlanValidator().validate(plan, snapshot, "hunk")
+
+        result = TemporaryIndexValidator(self.service).validate(
+            str(self.repo),
+            snapshot,
+            plan,
+            validation,
+            self.settings.limits,
+            self.settings.timeout_seconds,
+        )
+
+        self.assertEqual(len(result.group_trees), 2)
+        self.assertEqual(result.group_trees[-1][1], result.expected_tree)
+
 
 if __name__ == "__main__":
     unittest.main()

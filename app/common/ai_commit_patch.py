@@ -238,7 +238,9 @@ class TemporaryIndexValidator:
         fallback: str,
         input_text: str | None = None,
     ) -> str:
-        command = ["git", "-c", "core.quotepath=false", *args]
+        command = [
+            "git", "--literal-pathspecs", "-c", "core.quotepath=false", *args,
+        ]
         try:
             result = subprocess.run(
                 command,

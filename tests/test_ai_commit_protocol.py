@@ -139,6 +139,28 @@ class AiCommitProtocolTest(unittest.TestCase):
         self.assertFalse(result.valid)
         self.assertIn("duplicate_change", {issue.code for issue in result.issues})
 
+    def test_validator_rejects_duplicate_ids_inside_trusted_snapshot(self) -> None:
+        snapshot = self.make_snapshot()
+        duplicate = replace(
+            snapshot.changes[0],
+            change_id=snapshot.changes[1].change_id,
+            hunks=(),
+        )
+        unsafe_snapshot = replace(
+            snapshot,
+            changes=(duplicate, snapshot.changes[1]),
+        )
+
+        result = CommitPlanValidator().validate(
+            CommitPlan.from_mapping(self.valid_mapping()), unsafe_snapshot
+        )
+
+        self.assertFalse(result.valid)
+        self.assertFalse(result.executable)
+        self.assertIn(
+            "duplicate_snapshot_change", {issue.code for issue in result.issues}
+        )
+
     def test_prompt_payload_does_not_duplicate_file_and_hunk_content(self) -> None:
         snapshot = self.make_snapshot()
         file_payload = PlannerRequest(snapshot, "plan", "file").to_prompt_payload()

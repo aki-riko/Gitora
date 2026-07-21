@@ -353,7 +353,13 @@ class CommitPlanValidator:
             issues.append(ValidationIssue("level", "不支持的规划级别"))
             expected: set[str] = set()
         else:
-            expected = set(snapshot.expected_ids(plan.level))
+            snapshot_ids = snapshot.expected_ids(plan.level)
+            if self._duplicates(snapshot_ids):
+                issues.append(ValidationIssue(
+                    "duplicate_snapshot_change",
+                    "可信快照包含重复的改动标识",
+                ))
+            expected = set(snapshot_ids)
         if expected_level is not None and plan.level != expected_level:
             issues.append(ValidationIssue("level_mismatch", "计划级别与请求不一致"))
 

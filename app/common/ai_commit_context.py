@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .ai_commit_models import ChangeSnapshot, FileChangeSnapshot, HunkChange
@@ -105,6 +105,7 @@ class ChangeContextCollector:
             if change.truncated:
                 complete = False
                 warnings.append(f"{change.path} 的内容超过配置上限，已截断")
+        changes = self._disambiguate_hunk_ids(changes)
 
         titles, title_warnings = self._read_recent_titles(
             repo, max(0, remaining)
@@ -226,8 +227,7 @@ class ChangeContextCollector:
     ) -> tuple[HunkChange, ...]:
         if not file_diff:
             return ()
-        prepared: list[tuple[DiffHunk, str, str]] = []
-        base_counts: dict[str, int] = {}
+        result: list[HunkChange] = []
         for hunk in file_diff.hunks:
             content = self._hunk_content(hunk)
             body = content.split("\n", 1)[1] if "\n" in content else content
@@ -235,22 +235,8 @@ class ChangeContextCollector:
                 "path": status_change.path,
                 "content": body,
             })
-            base_counts[base] = base_counts.get(base, 0) + 1
-            prepared.append((hunk, content, base))
-        result: list[HunkChange] = []
-        for hunk, content, base in prepared:
-            if base_counts[base] == 1:
-                change_id = "hunk_" + base[:24]
-            else:
-                # 内容完全相同的 hunk 只能用位置消歧；普通 hunk 不依赖行号或暂存层。
-                disambiguated = self._digest_json({
-                    "base": base,
-                    "old_start": hunk.old_start,
-                    "new_start": hunk.new_start,
-                })
-                change_id = "hunk_" + disambiguated[:24]
             result.append(HunkChange(
-                change_id=change_id,
+                change_id="hunk_" + base[:24],
                 header=hunk.header,
                 old_start=hunk.old_start,
                 old_count=hunk.old_count,
@@ -261,6 +247,40 @@ class ChangeContextCollector:
                 content=content,
             ))
         return tuple(result)
+
+    def _disambiguate_hunk_ids(
+        self, changes: list[FileChangeSnapshot]
+    ) -> list[FileChangeSnapshot]:
+        """仅对快照内内容相同的代码块加入位置消歧，确保标识全局唯一。"""
+        counts: dict[str, int] = {}
+        for change in changes:
+            for hunk in change.hunks:
+                counts[hunk.change_id] = counts.get(hunk.change_id, 0) + 1
+
+        seen_positions: dict[tuple[str, int, int], int] = {}
+        result: list[FileChangeSnapshot] = []
+        for change in changes:
+            hunks: list[HunkChange] = []
+            for hunk in change.hunks:
+                if counts[hunk.change_id] == 1:
+                    hunks.append(hunk)
+                    continue
+                position = (hunk.change_id, hunk.old_start, hunk.new_start)
+                occurrence = seen_positions.get(position, 0)
+                seen_positions[position] = occurrence + 1
+                identity = {
+                    "base": hunk.change_id,
+                    "old_start": hunk.old_start,
+                    "new_start": hunk.new_start,
+                }
+                if occurrence:
+                    identity["occurrence"] = occurrence
+                hunks.append(replace(
+                    hunk,
+                    change_id="hunk_" + self._digest_json(identity)[:24],
+                ))
+            result.append(replace(change, hunks=tuple(hunks)))
+        return result
 
     @staticmethod
     def _hunk_content(hunk: DiffHunk) -> str:

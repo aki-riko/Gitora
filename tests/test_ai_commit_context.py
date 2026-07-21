@@ -212,6 +212,34 @@ class AiCommitContextTest(unittest.TestCase):
         )
         self.assertEqual(bottom_hunk.change_id, original_id)
 
+    def test_identical_hunks_across_staging_layers_have_unique_ids(self) -> None:
+        block = (
+            "".join(f"ctx {index}\n" for index in range(1, 5))
+            + "target\n"
+            + "".join(f"ctx {index}\n" for index in range(5, 9))
+        )
+        write_file(self.repo, "same.txt", block + "separator\n" * 10 + block)
+        commit_all(self.repo, "chore: add duplicate hunk fixture")
+        base = (self.repo / "same.txt").read_text(encoding="utf-8")
+        staged = base.replace("target\n", "changed\n", 1)
+        write_file(self.repo, "same.txt", staged)
+        run_git(self.repo, "add", "same.txt")
+        second_position = staged.rfind("target\n")
+        final = (
+            staged[:second_position]
+            + "changed\n"
+            + staged[second_position + len("target\n"):]
+        )
+        write_file(self.repo, "same.txt", final)
+
+        snapshot = ChangeContextCollector(
+            self.service, self.limits()
+        ).collect(str(self.repo), include_unstaged=True)
+        hunk_ids = snapshot.expected_ids("hunk")
+
+        self.assertEqual(len(hunk_ids), 2)
+        self.assertEqual(len(set(hunk_ids)), 2)
+
     def test_snapshot_limits_reject_unsafe_instruction_paths(self) -> None:
         with self.assertRaisesRegex(ValueError, "不安全"):
             SnapshotLimits(1, 1, 1, 1, 1, 1, ("../secret.txt",))
