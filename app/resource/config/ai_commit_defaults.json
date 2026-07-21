@@ -1,0 +1,27 @@
+{
+  "enabled": false,
+  "provider": "ollama",
+  "local_endpoint": "",
+  "local_model": "",
+  "remote_endpoint": "",
+  "remote_model": "",
+  "api_key_env": "OPENAI_API_KEY",
+  "generate_body": true,
+  "remote_scope": "staged",
+  "limits": {
+    "max_total_chars": 120000,
+    "max_file_chars": 50000,
+    "max_untracked_chars": 20000,
+    "max_instruction_chars": 12000,
+    "max_files": 100,
+    "history_count": 20,
+    "instruction_files": [
+      "AGENTS.md",
+      "CONTRIBUTING.md"
+    ]
+  },
+  "network": {
+    "timeout_seconds": 60,
+    "max_response_chars": 200000
+  }
+}
