@@ -31,13 +31,11 @@ Fluent.DialogBoxCore {
         RowLayout {
             spacing: Fluent.Enums.spacing.s
             Fluent.ButtonCore {
-                text: dlg._hunkMode ? "代码块执行待启用"
-                    : (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit
-                        ? "等待提交" : "应用下一组")
+                text: AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit
+                    ? "等待提交" : "应用下一组"
                 style: Fluent.Enums.button.style_primary
                 enabled: AiCommitPlanBridge
                     && AiCommitPlanBridge.planModel.executable
-                    && !dlg._hunkMode
                     && !AiCommitPlanBridge.busy
                     && !AiCommitPlanBridge.awaitingCommit
                 width: Fluent.Enums.dialog.buttonWidth

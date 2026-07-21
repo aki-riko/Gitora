@@ -17,6 +17,7 @@ from app.common.ai_commit_models import (
     PlanValidationResult,
 )
 from app.common.ai_commit_patch import HunkPatchBuilder
+from app.common.ai_commit_remap import HunkPlanRemapper
 
 
 @dataclass
@@ -314,12 +315,22 @@ class AiCommitPlanModel(QObject):
         fresh_snapshot: ChangeSnapshot,
     ) -> tuple[bool, bool, str]:
         """把已提交首组从会话移除，并按路径映射剩余 change_id。"""
-        if self._level != "file":
-            return False, False, "代码块级计划需按代码块重新映射"
         if not self._snapshot or not self._groups:
             return False, False, "没有可推进的计划"
         if self._groups[0].group_id != completed_group_id:
             return False, False, "已提交组与计划顺序不一致"
+        if self._level == "hunk":
+            result = HunkPlanRemapper.advance(
+                self._snapshot,
+                fresh_snapshot,
+                self._build_plan(),
+                completed_group_id,
+            )
+            if result.completed:
+                self.clear()
+            elif result.advanced and result.plan is not None:
+                self.load(result.plan, fresh_snapshot)
+            return result.advanced, result.completed, result.message
         remaining_groups = self._groups[1:]
         if not remaining_groups:
             if fresh_snapshot.changes:

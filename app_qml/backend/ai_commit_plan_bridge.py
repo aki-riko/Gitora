@@ -9,7 +9,12 @@ from typing import Optional, Protocol
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
 from app.common.ai_commit_context import ChangeContextCollector, SnapshotCollectionError
-from app.common.ai_commit_executor import AppliedFileGroup, FilePlanExecutor, PlanExecutionError
+from app.common.ai_commit_executor import (
+    AppliedFileGroup,
+    FilePlanExecutor,
+    HunkPlanExecutor,
+    PlanExecutionError,
+)
 from app.common.ai_commit_models import (
     ChangeSnapshot, CommitPlan, CommitPlanValidator, PlanProtocolError,
     PlannerRequest,
@@ -69,6 +74,7 @@ class AiCommitPlanBridge(QObject):
         self._model = plan_model or AiCommitPlanModel(self)
         self._validator = CommitPlanValidator()
         self._executor = FilePlanExecutor(git_service)
+        self._hunk_executor = HunkPlanExecutor(git_service)
         self._busy = False
         self._awaiting_commit = False
         self._execution_guard = False
@@ -296,9 +302,6 @@ class AiCommitPlanBridge(QObject):
         if snapshot is None or plan is None:
             self.errorOccurred.emit("请先生成提交计划")
             return
-        if plan.level != "file":
-            self.errorOccurred.emit("代码块级计划尚未进入执行阶段")
-            return
         settings = self._runtime.planning_settings()
         validation = self._model.validation_result()
         stale = self._model.stale
@@ -308,14 +311,25 @@ class AiCommitPlanBridge(QObject):
 
         def work() -> None:
             try:
-                applied = self._executor.apply_next(
-                    repo,
-                    snapshot,
-                    plan,
-                    validation,
-                    stale,
-                    settings.limits,
-                )
+                if plan.level == "hunk":
+                    applied = self._hunk_executor.apply_next(
+                        repo,
+                        snapshot,
+                        plan,
+                        validation,
+                        stale,
+                        settings.limits,
+                        settings.timeout_seconds,
+                    )
+                else:
+                    applied = self._executor.apply_next(
+                        repo,
+                        snapshot,
+                        plan,
+                        validation,
+                        stale,
+                        settings.limits,
+                    )
                 if self._is_current(serial, repo, cancel_event):
                     self._applyFinished.emit(serial, applied)
             except PlanExecutionError as exc:

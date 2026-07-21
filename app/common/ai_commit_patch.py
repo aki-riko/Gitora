@@ -57,7 +57,13 @@ class HunkPatchBuilder:
             if not change.hunks:
                 if assigned != {change.change_id}:
                     raise PatchValidationError("整文件改动的标识不一致")
-                whole_file_ids.append(change.change_id)
+                if change.patch.startswith("diff --git "):
+                    sections.append(
+                        change.patch
+                        if change.patch.endswith("\n") else change.patch + "\n"
+                    )
+                else:
+                    whole_file_ids.append(change.change_id)
                 continue
             header = cls._file_header(change.patch)
             hunk_by_id = {hunk.change_id: hunk for hunk in change.hunks}
@@ -130,53 +136,34 @@ class TemporaryIndexValidator:
             )
             group_trees: list[tuple[str, str]] = []
             for built in built_groups:
-                whole_paths = []
-                for change_id in built.whole_file_change_ids:
-                    change = by_id[change_id]
-                    whole_paths.extend(self._paths_for_change(change))
-                if whole_paths:
-                    self._run_required(
-                        repo_path,
-                        ["add", "-A", "--", *self._deduplicate(whole_paths)],
-                        plan_env,
-                        timeout_seconds,
-                        f"提交组 {built.group_id} 的整文件暂存试应用失败",
-                    )
-                if built.patch:
-                    self._run_required(
-                        repo_path,
-                        ["apply", "--cached", "--check", "--whitespace=nowarn", "-"],
-                        plan_env,
-                        timeout_seconds,
-                        f"提交组 {built.group_id} 的补丁检查失败",
-                        built.patch,
-                    )
-                    self._run_required(
-                        repo_path,
-                        ["apply", "--cached", "--whitespace=nowarn", "-"],
-                        plan_env,
-                        timeout_seconds,
-                        f"提交组 {built.group_id} 的补丁试应用失败",
-                        built.patch,
-                    )
+                IndexPatchApplier.apply_group(
+                    repo_path,
+                    built,
+                    by_id,
+                    plan_env,
+                    timeout_seconds,
+                )
                 group_trees.append((
                     built.group_id,
                     self._write_tree(repo_path, plan_env, timeout_seconds),
                 ))
 
-            self._initialize_index(
-                repo_path, snapshot.head, expected_env, timeout_seconds
-            )
-            self._run_required(
-                repo_path,
-                ["add", "-A", "--", *all_paths],
-                expected_env,
-                timeout_seconds,
-                "无法构造工作区目标树",
-            )
-            expected_tree = self._write_tree(
-                repo_path, expected_env, timeout_seconds
-            )
+            if snapshot.include_unstaged:
+                self._initialize_index(
+                    repo_path, snapshot.head, expected_env, timeout_seconds
+                )
+                self._run_required(
+                    repo_path,
+                    ["add", "-A", "--", *all_paths],
+                    expected_env,
+                    timeout_seconds,
+                    "无法构造工作区目标树",
+                )
+                expected_tree = self._write_tree(
+                    repo_path, expected_env, timeout_seconds
+                )
+            else:
+                expected_tree = before_tree
             if not group_trees or group_trees[-1][1] != expected_tree:
                 raise PatchValidationError("所有提交组联合后未完整覆盖工作区目标树")
 
@@ -283,3 +270,72 @@ class TemporaryIndexValidator:
     @staticmethod
     def _deduplicate(values: list[str]) -> list[str]:
         return list(dict.fromkeys(values))
+
+
+class IndexPatchApplier:
+    """把可信构造结果写入指定索引；调用方决定是真实还是隔离索引。"""
+
+    @classmethod
+    def apply_group(
+        cls,
+        repo_path: str,
+        built: BuiltGroupPatch,
+        by_id: dict,
+        environment: dict[str, str],
+        timeout_seconds: int,
+    ) -> None:
+        cls._apply_whole_files(
+            repo_path, built, by_id, environment, timeout_seconds
+        )
+        cls._apply_patch(
+            repo_path, built, environment, timeout_seconds
+        )
+
+    @staticmethod
+    def _apply_whole_files(
+        repo_path: str,
+        built: BuiltGroupPatch,
+        by_id: dict,
+        environment: dict[str, str],
+        timeout_seconds: int,
+    ) -> None:
+        whole_paths = []
+        for change_id in built.whole_file_change_ids:
+            change = by_id[change_id]
+            whole_paths.extend(TemporaryIndexValidator._paths_for_change(change))
+        if whole_paths:
+            TemporaryIndexValidator._run_required(
+                repo_path,
+                [
+                    "add", "-A", "--",
+                    *TemporaryIndexValidator._deduplicate(whole_paths),
+                ],
+                environment,
+                timeout_seconds,
+                f"提交组 {built.group_id} 的整文件暂存试应用失败",
+            )
+
+    @staticmethod
+    def _apply_patch(
+        repo_path: str,
+        built: BuiltGroupPatch,
+        environment: dict[str, str],
+        timeout_seconds: int,
+    ) -> None:
+        if built.patch:
+            TemporaryIndexValidator._run_required(
+                repo_path,
+                ["apply", "--cached", "--check", "--whitespace=nowarn", "-"],
+                environment,
+                timeout_seconds,
+                f"提交组 {built.group_id} 的补丁检查失败",
+                built.patch,
+            )
+            TemporaryIndexValidator._run_required(
+                repo_path,
+                ["apply", "--cached", "--whitespace=nowarn", "-"],
+                environment,
+                timeout_seconds,
+                f"提交组 {built.group_id} 的补丁试应用失败",
+                built.patch,
+            )

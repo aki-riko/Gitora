@@ -161,21 +161,22 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertTrue(self.wait_until(lambda: bridge.planModel.stale))
         self.assertFalse(bridge.planModel.executable)
 
-    def test_hunk_plan_uses_real_context_and_stays_read_only_in_ui_stage(self) -> None:
+    def test_hunk_plan_applies_and_advances_same_file_groups(self) -> None:
         lines = [f"line {index}\n" for index in range(1, 41)]
         write_file(self.repo, "code.py", "".join(lines))
         commit_all(self.repo, "chore: add hunk fixture")
         lines[1] = "changed top\n"
         lines[34] = "changed bottom\n"
         write_file(self.repo, "code.py", "".join(lines))
-        before_status = run_git(self.repo, "status", "--porcelain=v1").stdout
         bridge = self.make_bridge()
         prepared: list[tuple] = []
         ready: list[tuple] = []
-        errors: list[str] = []
+        applied: list[tuple] = []
+        advanced: list[tuple] = []
         bridge.contextPrepared.connect(lambda *args: prepared.append(args))
         bridge.planReady.connect(lambda *args: ready.append(args))
-        bridge.errorOccurred.connect(errors.append)
+        bridge.groupApplied.connect(lambda *args: applied.append(args))
+        bridge.planAdvanced.connect(lambda *args: advanced.append(args))
 
         bridge.prepareHunkPlan()
         self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
@@ -195,12 +196,27 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
             group["changes"][0]["kind"] == "hunk"
             for group in bridge.planModel.groups
         ))
+
         bridge.applyNextGroup()
-        self.assertIn("尚未进入执行阶段", errors[-1])
-        self.assertEqual(
-            run_git(self.repo, "status", "--porcelain=v1").stdout,
-            before_status,
-        )
+        self.assertTrue(self.wait_until(lambda: len(applied) == 1))
+        cached = run_git(self.repo, "diff", "--cached").stdout
+        self.assertIn("changed top", cached)
+        self.assertNotIn("changed bottom", cached)
+        ok, message = self.service.commit(applied[0][1])
+        self.assertTrue(ok, message)
+        bridge.notifyCommitSucceeded()
+        self.assertTrue(self.wait_until(lambda: len(advanced) == 1))
+        self.assertFalse(advanced[0][0])
+        self.assertEqual(len(bridge.planModel.groups), 1)
+
+        bridge.applyNextGroup()
+        self.assertTrue(self.wait_until(lambda: len(applied) == 2))
+        ok, message = self.service.commit(applied[1][1])
+        self.assertTrue(ok, message)
+        bridge.notifyCommitSucceeded()
+        self.assertTrue(self.wait_until(lambda: len(advanced) == 2))
+        self.assertTrue(advanced[1][0])
+        self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
 
     def test_apply_commit_and_continue_all_groups_without_auto_commit(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")

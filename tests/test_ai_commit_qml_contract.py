@@ -59,6 +59,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("planModel.updateGroupMessage", source)
         self.assertIn("planModel.getGroupPatch", source)
         self.assertIn("AiCommitPlanBridge.applyNextGroup()", source)
+        self.assertNotIn("代码块执行待启用", source)
         self.assertIn("确认发送工作区差异到远程模型", source)
         self.assertIn("模型提示：", source)
         self.assertIn("代码块覆盖：", source)
