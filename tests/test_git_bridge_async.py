@@ -18,6 +18,52 @@ from app_qml.backend.git_bridge import GitBridge
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_internal_status_change_invalidates_poll_baseline_without_duplicate(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        bridge._poll_fingerprint = "before"
+        emitted: list[bool] = []
+        bridge.statusChanged.connect(lambda: emitted.append(True))
+
+        try:
+            old_generation = bridge._poll_generation
+            bridge._svc.statusChanged.emit()
+
+            self.assertEqual(emitted, [True])
+            self.assertEqual(bridge._poll_fingerprint, "")
+            self.assertGreater(bridge._poll_generation, old_generation)
+
+            bridge._poll_busy = True
+            bridge._on_fingerprint_ready(
+                "repo", "after", bridge._poll_generation
+            )
+            self.assertEqual(bridge._poll_fingerprint, "after")
+            self.assertEqual(emitted, [True])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_stale_poll_result_cannot_restore_pre_operation_baseline(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        bridge._poll_fingerprint = "before"
+
+        try:
+            stale_generation = bridge._poll_generation
+            bridge._poll_busy = True
+            bridge._svc.statusChanged.emit()
+            bridge._on_fingerprint_ready("repo", "stale", stale_generation)
+
+            self.assertEqual(bridge._poll_fingerprint, "")
+            self.assertFalse(bridge._poll_busy)
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_quick_commit_push_emits_dedicated_completion_signal(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

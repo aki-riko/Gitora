@@ -144,8 +144,17 @@ class GitBridge(QObject):
             self._apply_status_result,
             Qt.ConnectionType.QueuedConnection,
         )
+        # ---- 外部变化轮询 ----
+        # 定期计算仓库状态指纹,变了就 emit statusChanged,让所有视图统一刷新。
+        # 内部 Git 操作本身也会发 statusChanged；每次内部信号都让旧基线失效，
+        # 避免下一轮把同一变化再次误判为“外部变化”。generation 用于丢弃
+        # 变更发生前已经在后台计算的过期结果。
+        self._poll_fingerprint = ""     # 上次指纹(基线)
+        self._poll_busy = False         # 本轮是否在算
+        self._poll_repo = ""            # 本轮针对的仓库(防切仓库串读)
+        self._poll_generation = 0       # 基线代际(内部变更/切仓库时递增)
         # 转发底层信号
-        self._svc.statusChanged.connect(self.statusChanged)
+        self._svc.statusChanged.connect(self._forward_service_status_changed)
         self._svc.operationStarted.connect(self.operationStarted)
         self._svc.operationFinished.connect(self.operationFinished)
         self._svc.progressUpdated.connect(self.progressUpdated)
@@ -153,13 +162,8 @@ class GitBridge(QObject):
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
 
-        # ---- 外部变化轮询 ----
-        # 定期计算仓库状态指纹,变了就 emit statusChanged,让所有视图统一刷新。
         # 指纹计算放后台线程(跑 git 命令,不能阻塞主线程);
         # 用 _poll_busy 防重入,避免上一轮未完又起一轮。
-        self._poll_fingerprint = ""     # 上次指纹(基线)
-        self._poll_busy = False         # 本轮是否在算
-        self._poll_repo = ""            # 本轮针对的仓库(防切仓库串读)
         # QTimer 在主线程排队;emit 信号跨线程安全(排队回主线程)
         from PySide6.QtCore import QTimer
         self._poll_timer = QTimer(self)
@@ -168,10 +172,16 @@ class GitBridge(QObject):
         self._poll_timer.start()
 
     def _reset_poll_baseline(self):
-        """切仓库/打开仓库后重置指纹基线:下一轮以新仓库为准,不误触发刷新。"""
+        """使当前基线失效；下一轮只建新基线，不重复发刷新。"""
+        self._poll_generation += 1
         self._poll_fingerprint = ""
-        self._poll_busy = False
         self._poll_repo = self._svc.repo_path or ""
+
+    @Slot()
+    def _forward_service_status_changed(self):
+        """转发内部变更一次，并阻止轮询把同一变化再转发一次。"""
+        self._reset_poll_baseline()
+        self.statusChanged.emit()
 
     def _poll_tick(self):
         """定时器回调(主线程):把指纹计算丢到后台线程,防重入。"""
@@ -180,6 +190,7 @@ class GitBridge(QObject):
             return
         self._poll_busy = True
         self._poll_repo = repo
+        generation = self._poll_generation
         import threading
 
         def work():
@@ -191,14 +202,17 @@ class GitBridge(QObject):
             # 回主线程处理结果(排队信号语义:直接在 work 里读写 _poll_* 有竞争,
             # 但这些字段只被本轮 work 与主线程 tick 触碰,且 tick 靠 _poll_busy 互斥,
             # 故此处仅比较+emit,状态回写留给下一次 tick 前;emit 本身跨线程安全)
-            self._on_fingerprint_ready(repo, fp)
+            self._on_fingerprint_ready(repo, fp, generation)
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _on_fingerprint_ready(self, repo: str, fp: str):
+    def _on_fingerprint_ready(self, repo: str, fp: str, generation: int):
         """指纹算完(后台线程调用):与基线比较,变化则 emit statusChanged。"""
-        # 仓库已切走 → 丢弃本轮结果,基线由 _reset_poll_baseline 管理
-        if repo != (self._svc.repo_path or ""):
+        # 仓库已切走或内部操作已使基线换代 → 丢弃过期结果。
+        if (
+            generation != self._poll_generation
+            or repo != (self._svc.repo_path or "")
+        ):
             self._poll_busy = False
             return
         if fp == "":

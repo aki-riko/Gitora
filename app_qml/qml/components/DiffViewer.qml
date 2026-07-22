@@ -115,14 +115,27 @@ Item {
     }
 
     function _numCell(value, color) {
-        return '<td style="color:' + color + ';text-align:right;padding:0 8px;white-space:pre">'
+        return '<td width="1" style="color:' + color + ';text-align:right;padding:0 8px;white-space:pre">'
             + (value === "" ? "&nbsp;" : value) + '</td>'
     }
 
-    function _textCell(text, color, bg, colspan) {
-        var span = colspan ? ' colspan="' + colspan + '"' : ""
-        return '<td' + span + ' style="color:' + color + ';background:' + bg
+    function _textCell(text, color, bg) {
+        return '<td style="color:' + color + ';background:' + bg
             + ';white-space:pre;padding:0 8px">' + root._escape(text) + '</td>'
+    }
+
+    // Qt 富文本的自动表格布局会把 colspan 文件头宽度平均分给行号列，
+    // 导致正文被推到视口中后部。元信息也使用与正文相同的显式列结构。
+    function _unifiedMetaRow(text, color, lineColor) {
+        return "<tr>" + root._numCell("", lineColor) + root._numCell("", lineColor)
+            + root._textCell(text, color, "transparent") + "</tr>"
+    }
+
+    function _splitMetaRow(text, color, lineColor, normalColor) {
+        return "<tr>" + root._numCell("", lineColor)
+            + root._textCell(text, color, "transparent")
+            + root._numCell("", lineColor)
+            + root._textCell("", normalColor, "transparent") + "</tr>"
     }
 
     function _unifiedHtml(raw) {
@@ -137,20 +150,20 @@ Item {
             if (match) {
                 oldNo = parseInt(match[1])
                 newNo = parseInt(match[2])
-                html.push("<tr>" + root._textCell(ln, c.hunk, "transparent", 3) + "</tr>")
+                html.push(root._unifiedMetaRow(ln, c.hunk, c.lineNo))
             } else if (root._isFileMeta(ln)) {
-                html.push("<tr>" + root._textCell(ln, c.meta, "transparent", 3) + "</tr>")
+                html.push(root._unifiedMetaRow(ln, c.meta, c.lineNo))
             } else if (ln.charAt(0) === "+") {
                 html.push("<tr>" + root._numCell("", c.lineNo) + root._numCell(newNo++, c.lineNo)
-                    + root._textCell(ln, c.add, c.addBg, 0) + "</tr>")
+                    + root._textCell(ln, c.add, c.addBg) + "</tr>")
             } else if (ln.charAt(0) === "-") {
                 html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._numCell("", c.lineNo)
-                    + root._textCell(ln, c.del, c.delBg, 0) + "</tr>")
+                    + root._textCell(ln, c.del, c.delBg) + "</tr>")
             } else if (ln.charAt(0) === " ") {
                 html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._numCell(newNo++, c.lineNo)
-                    + root._textCell(ln, c.normal, "transparent", 0) + "</tr>")
+                    + root._textCell(ln, c.normal, "transparent") + "</tr>")
             } else if (ln !== "") {
-                html.push("<tr>" + root._textCell(ln, c.meta, "transparent", 3) + "</tr>")
+                html.push(root._unifiedMetaRow(ln, c.meta, c.lineNo))
             }
         }
         html.push("</table>")
@@ -169,9 +182,9 @@ Item {
             if (match) {
                 oldNo = parseInt(match[1])
                 newNo = parseInt(match[2])
-                html.push("<tr>" + root._textCell(ln, c.hunk, "transparent", 4) + "</tr>")
+                html.push(root._splitMetaRow(ln, c.hunk, c.lineNo, c.normal))
             } else if (root._isFileMeta(ln)) {
-                html.push("<tr>" + root._textCell(ln, c.meta, "transparent", 4) + "</tr>")
+                html.push(root._splitMetaRow(ln, c.meta, c.lineNo, c.normal))
             } else if (ln.charAt(0) === "-") {
                 var deleted = []
                 var added = []
@@ -190,18 +203,18 @@ Item {
                     var rightNo = row < added.length ? newNo++ : ""
                     var leftText = row < deleted.length ? deleted[row] : ""
                     var rightText = row < added.length ? added[row] : ""
-                    html.push("<tr>" + root._numCell(leftNo, c.lineNo) + root._textCell(leftText, c.del, c.delBg, 0)
-                        + root._numCell(rightNo, c.lineNo) + root._textCell(rightText, c.add, c.addBg, 0) + "</tr>")
+                    html.push("<tr>" + root._numCell(leftNo, c.lineNo) + root._textCell(leftText, c.del, c.delBg)
+                        + root._numCell(rightNo, c.lineNo) + root._textCell(rightText, c.add, c.addBg) + "</tr>")
                 }
             } else if (ln.charAt(0) === "+") {
-                html.push("<tr>" + root._numCell("", c.lineNo) + root._textCell("", c.normal, "transparent", 0)
-                    + root._numCell(newNo++, c.lineNo) + root._textCell(ln.substring(1), c.add, c.addBg, 0) + "</tr>")
+                html.push("<tr>" + root._numCell("", c.lineNo) + root._textCell("", c.normal, "transparent")
+                    + root._numCell(newNo++, c.lineNo) + root._textCell(ln.substring(1), c.add, c.addBg) + "</tr>")
             } else if (ln.charAt(0) === " ") {
                 var text = ln.substring(1)
-                html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._textCell(text, c.normal, "transparent", 0)
-                    + root._numCell(newNo++, c.lineNo) + root._textCell(text, c.normal, "transparent", 0) + "</tr>")
+                html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._textCell(text, c.normal, "transparent")
+                    + root._numCell(newNo++, c.lineNo) + root._textCell(text, c.normal, "transparent") + "</tr>")
             } else if (ln !== "") {
-                html.push("<tr>" + root._textCell(ln, c.meta, "transparent", 4) + "</tr>")
+                html.push(root._splitMetaRow(ln, c.meta, c.lineNo, c.normal))
             }
         }
         html.push("</table>")
