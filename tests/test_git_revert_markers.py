@@ -31,6 +31,10 @@ class GitRevertMarkerTest(unittest.TestCase):
         run_git(repo, "revert", "--no-edit", original)
         reverting = run_git(repo, "rev-parse", "HEAD").stdout.strip()
 
+        revert_commit = service.get_log(count=1, skip=0)[0]
+        self.assertEqual(revert_commit.hash, reverting)
+        self.assertEqual(revert_commit.reverts, original)
+
         paged_original = service.get_log(count=1, skip=2)[0]
         self.assertEqual(paged_original.hash, original)
         self.assertEqual(paged_original.reverted_by, reverting)
@@ -38,6 +42,7 @@ class GitRevertMarkerTest(unittest.TestCase):
         search_results = service.search_commits("original change", "message", 20)
         searched_by_hash = {commit.hash: commit for commit in search_results}
         self.assertIn(reverting, searched_by_hash)
+        self.assertEqual(searched_by_hash[reverting].reverts, original)
         self.assertEqual(searched_by_hash[original].reverted_by, reverting)
 
     def test_revert_like_subject_without_standard_body_does_not_mark(self) -> None:
@@ -62,9 +67,11 @@ class GitRevertMarkerTest(unittest.TestCase):
             "2026-07-22 19:06",
             "change",
             reverted_by="b" * 40,
+            reverts="c" * 40,
         )
 
         self.assertEqual(_commit_to_dict(commit)["revertedBy"], "b" * 40)
+        self.assertEqual(_commit_to_dict(commit)["reverts"], "c" * 40)
 
 
 class HistoryRevertMarkerContractTest(unittest.TestCase):
@@ -79,10 +86,15 @@ class HistoryRevertMarkerContractTest(unittest.TestCase):
         source = qml_path.read_text(encoding="utf-8")
 
         self.assertIn('var isReverted = !!c.revertedBy', source)
-        self.assertIn('(isReverted ? " · 已撤销" : "")', source)
+        self.assertIn('" · 撤销 " + c.reverts.substring(0, 8)', source)
+        self.assertIn('if (isReverted) relationText += " · 已撤销"', source)
         self.assertIn('"strikeOut": isReverted', source)
-        self.assertIn('status: Fluent.Enums.statusLevel.warning', source)
-        self.assertIn('"已撤销 · " + root.selectedCommit.revertedBy.substring(0, 7)', source)
+        self.assertIn('property string pendingJumpHash: ""', source)
+        self.assertIn('function jumpToCommit(hash)', source)
+        self.assertIn('root._selectPendingJump(results)', source)
+        self.assertEqual(source.count('style: Fluent.Enums.button.style_hyperlink'), 2)
+        self.assertIn('root.jumpToCommit(root.selectedCommit.revertedBy)', source)
+        self.assertIn('root.jumpToCommit(root.selectedCommit.reverts)', source)
 
 
 if __name__ == "__main__":

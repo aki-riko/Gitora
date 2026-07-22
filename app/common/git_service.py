@@ -66,6 +66,7 @@ class CommitInfo:
     message: str
     branch: str = ""
     reverted_by: str = ""
+    reverts: str = ""
 
 
 @dataclass
@@ -203,7 +204,7 @@ class GitService(QObject):
         self._mutex = QMutex()
         self._workers: list[GitWorker] = []
         self._revert_cache_key: tuple[str, str] | None = None
-        self._revert_cache: dict[str, str] = {}
+        self._revert_cache: tuple[dict[str, str], dict[str, str]] = ({}, {})
         self._revert_cache_lock = threading.Lock()
 
     @property
@@ -662,9 +663,10 @@ class GitService(QObject):
     )
 
     @classmethod
-    def _parse_revert_relations(cls, stdout: str) -> dict[str, str]:
-        """解析 `revert 提交 -> 被撤销提交` 的 Git 标准正文。"""
-        relations: dict[str, str] = {}
+    def _parse_revert_relations(cls, stdout: str) -> tuple[dict[str, str], dict[str, str]]:
+        """解析 Git 标准正文，返回被撤销与撤销目标两张映射。"""
+        reverted_by: dict[str, str] = {}
+        reverts: dict[str, str] = {}
         for raw_record in stdout.split("\x00"):
             record = raw_record.strip("\r\n")
             if not record:
@@ -674,14 +676,19 @@ class GitService(QObject):
                 continue
             match = cls._REVERT_TARGET_PATTERN.search(message)
             if match:
-                relations.setdefault(match.group(1).lower(), reverting_hash.lower())
-        return relations
+                target_hash = match.group(1).lower()
+                reverting_hash = reverting_hash.lower()
+                reverted_by.setdefault(target_hash, reverting_hash)
+                reverts[reverting_hash] = target_hash
+        return reverted_by, reverts
 
-    def _get_revert_relations_at(self, repo_path: str) -> dict[str, str]:
+    def _get_revert_relations_at(
+        self, repo_path: str
+    ) -> tuple[dict[str, str], dict[str, str]]:
         """获取当前 HEAD 可达历史的撤销关系，并按仓库与 HEAD 缓存。"""
         success, stdout, _ = self._run_git_sync_at(repo_path, ['rev-parse', '--verify', 'HEAD'])
         if not success:
-            return {}
+            return {}, {}
         cache_key = (os.path.normcase(os.path.realpath(repo_path)), stdout.strip())
         with self._revert_cache_lock:
             if cache_key == self._revert_cache_key:
@@ -693,7 +700,7 @@ class GitService(QObject):
         ])
         if not success:
             logger.warning(f"读取撤销关系失败: {stderr or '未知错误'}")
-            return {}
+            return {}, {}
         relations = self._parse_revert_relations(stdout)
         with self._revert_cache_lock:
             self._revert_cache_key = cache_key
@@ -703,9 +710,11 @@ class GitService(QObject):
     def _mark_reverted_commits_at(
         self, repo_path: str, commits: list[CommitInfo]
     ) -> list[CommitInfo]:
-        relations = self._get_revert_relations_at(repo_path)
+        reverted_by, reverts = self._get_revert_relations_at(repo_path)
         for commit in commits:
-            commit.reverted_by = relations.get(commit.hash.lower(), "")
+            commit_hash = commit.hash.lower()
+            commit.reverted_by = reverted_by.get(commit_hash, "")
+            commit.reverts = reverts.get(commit_hash, "")
         return commits
 
     def get_log(self, count: int = 50, skip: int = 0, fast_mode: bool = False) -> list[CommitInfo]:

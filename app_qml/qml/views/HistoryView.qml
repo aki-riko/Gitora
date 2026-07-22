@@ -15,6 +15,7 @@ Item {
     property bool loading: false
     property bool searchMode: false
     property var selectedCommit: null
+    property string pendingJumpHash: ""
 
     property var allCommits: []        // 已加载的提交(累积)
     property var timelineItems: []      // 按日期分组的 Timeline items
@@ -28,6 +29,7 @@ Item {
         root.searchMode = false
         root.loading = false
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
+        root.pendingJumpHash = ""
         loadMore()
     }
 
@@ -57,6 +59,31 @@ Item {
         GitBridge.requestSearch(query, "all")
     }
 
+    function jumpToCommit(hash) {
+        var targetHash = (hash || "").trim()
+        if (targetHash === "") return
+        root.pendingJumpHash = targetHash.toLowerCase()
+        if (searchInput.text === targetHash)
+            root.doSearch(targetHash)
+        else
+            searchInput.text = targetHash
+    }
+
+    function _selectPendingJump(results) {
+        if (root.pendingJumpHash === "") return
+        var targetHash = root.pendingJumpHash
+        root.pendingJumpHash = ""
+        for (var i = 0; i < results.length; i++) {
+            if ((results[i].hash || "").toLowerCase() === targetHash) {
+                root.selectedCommit = results[i]
+                return
+            }
+        }
+        Fluent.NotificationManager.toast.error(
+            root, "无法跳转", "关联提交不在当前分支历史中"
+        )
+    }
+
     Connections {
         target: GitBridge
         function onLogReady(repoPath, skip, batch) {
@@ -75,6 +102,7 @@ Item {
             if (!root.searchMode) return  // 已退出搜索,丢弃过期搜索结果
             root.allCommits = results
             rebuildTimeline()
+            root._selectPendingJump(results)
         }
     }
 
@@ -99,6 +127,9 @@ Item {
         for (var i = 0; i < root.allCommits.length; i++) {
             var c = root.allCommits[i]
             var isReverted = !!c.revertedBy
+            var relationText = ""
+            if (c.reverts) relationText += " · 撤销 " + c.reverts.substring(0, 8)
+            if (isReverted) relationText += " · 已撤销"
             var label = _dateGroup(c.date)
             if (indexByLabel[label] === undefined) {
                 indexByLabel[label] = groups.length
@@ -106,7 +137,7 @@ Item {
             }
             groups[indexByLabel[label]].cards.push({
                 "text": c.message,
-                "description": c.shortHash + " · " + c.author + (isReverted ? " · 已撤销" : ""),
+                "description": c.shortHash + " · " + c.author + relationText,
                 "status": isReverted ? "warning" : "info",
                 "strikeOut": isReverted,
                 "hash": c.hash,
@@ -277,12 +308,51 @@ Item {
                                 font.family: Fluent.Enums.fontFamily
                                 font.pixelSize: Fluent.Enums.typography.bodySmall
                             }
-                            Fluent.Tag {
+                            RowLayout {
                                 visible: root.selectedCommit && !!root.selectedCommit.revertedBy
-                                status: Fluent.Enums.statusLevel.warning
-                                text: root.selectedCommit
-                                    ? "已撤销 · " + root.selectedCommit.revertedBy.substring(0, 7)
-                                    : ""
+                                spacing: Fluent.Enums.spacing.xs
+                                Fluent.Tag {
+                                    status: Fluent.Enums.statusLevel.warning
+                                    text: "已撤销"
+                                }
+                                Text {
+                                    text: "由"
+                                    color: Fluent.Enums.textColor.secondary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.bodySmall
+                                }
+                                Fluent.Button {
+                                    text: root.selectedCommit
+                                        ? root.selectedCommit.revertedBy.substring(0, 8) : ""
+                                    style: Fluent.Enums.button.style_hyperlink
+                                    onClicked: root.jumpToCommit(root.selectedCommit.revertedBy)
+                                }
+                                Text {
+                                    text: "撤销"
+                                    color: Fluent.Enums.textColor.secondary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.bodySmall
+                                }
+                            }
+                            RowLayout {
+                                visible: root.selectedCommit && !!root.selectedCommit.reverts
+                                spacing: Fluent.Enums.spacing.xs
+                                Fluent.Tag {
+                                    status: Fluent.Enums.statusLevel.info
+                                    text: "Revert"
+                                }
+                                Text {
+                                    text: "撤销了"
+                                    color: Fluent.Enums.textColor.secondary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.bodySmall
+                                }
+                                Fluent.Button {
+                                    text: root.selectedCommit
+                                        ? root.selectedCommit.reverts.substring(0, 8) : ""
+                                    style: Fluent.Enums.button.style_hyperlink
+                                    onClicked: root.jumpToCommit(root.selectedCommit.reverts)
+                                }
                             }
                         }
                     }

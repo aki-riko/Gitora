@@ -42,6 +42,7 @@ def _commit_to_dict(c: CommitInfo) -> dict:
         "message": c.message,
         "branch": getattr(c, "branch", ""),
         "revertedBy": getattr(c, "reverted_by", ""),
+        "reverts": getattr(c, "reverts", ""),
     }
 
 
