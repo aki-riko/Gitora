@@ -6,6 +6,7 @@ Git服务层 - 封装所有Git命令操作
 import os
 import re
 import subprocess
+import threading
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable
@@ -64,6 +65,7 @@ class CommitInfo:
     date: str
     message: str
     branch: str = ""
+    reverted_by: str = ""
 
 
 @dataclass
@@ -200,6 +202,9 @@ class GitService(QObject):
         self._repo_path: Optional[str] = None
         self._mutex = QMutex()
         self._workers: list[GitWorker] = []
+        self._revert_cache_key: tuple[str, str] | None = None
+        self._revert_cache: dict[str, str] = {}
+        self._revert_cache_lock = threading.Lock()
 
     @property
     def repo_path(self) -> Optional[str]:
@@ -651,6 +656,58 @@ class GitService(QObject):
 
         return branches
 
+    _REVERT_TARGET_PATTERN = re.compile(
+        r"^This reverts commit ([0-9a-f]{40}|[0-9a-f]{64})\.$",
+        re.IGNORECASE | re.MULTILINE,
+    )
+
+    @classmethod
+    def _parse_revert_relations(cls, stdout: str) -> dict[str, str]:
+        """解析 `revert 提交 -> 被撤销提交` 的 Git 标准正文。"""
+        relations: dict[str, str] = {}
+        for raw_record in stdout.split("\x00"):
+            record = raw_record.strip("\r\n")
+            if not record:
+                continue
+            reverting_hash, separator, message = record.partition("\n")
+            if not separator:
+                continue
+            match = cls._REVERT_TARGET_PATTERN.search(message)
+            if match:
+                relations.setdefault(match.group(1).lower(), reverting_hash.lower())
+        return relations
+
+    def _get_revert_relations_at(self, repo_path: str) -> dict[str, str]:
+        """获取当前 HEAD 可达历史的撤销关系，并按仓库与 HEAD 缓存。"""
+        success, stdout, _ = self._run_git_sync_at(repo_path, ['rev-parse', '--verify', 'HEAD'])
+        if not success:
+            return {}
+        cache_key = (os.path.normcase(os.path.realpath(repo_path)), stdout.strip())
+        with self._revert_cache_lock:
+            if cache_key == self._revert_cache_key:
+                return self._revert_cache
+
+        success, stdout, stderr = self._run_git_sync_at(repo_path, [
+            'log', '--format=%H%n%B%x00', '--grep=This reverts commit ',
+            '--fixed-strings', '--regexp-ignore-case', cache_key[1],
+        ])
+        if not success:
+            logger.warning(f"读取撤销关系失败: {stderr or '未知错误'}")
+            return {}
+        relations = self._parse_revert_relations(stdout)
+        with self._revert_cache_lock:
+            self._revert_cache_key = cache_key
+            self._revert_cache = relations
+        return relations
+
+    def _mark_reverted_commits_at(
+        self, repo_path: str, commits: list[CommitInfo]
+    ) -> list[CommitInfo]:
+        relations = self._get_revert_relations_at(repo_path)
+        for commit in commits:
+            commit.reverted_by = relations.get(commit.hash.lower(), "")
+        return commits
+
     def get_log(self, count: int = 50, skip: int = 0, fast_mode: bool = False) -> list[CommitInfo]:
         """获取提交历史
         
@@ -685,7 +742,8 @@ class GitService(QObject):
         if not success:
             return []
 
-        return self._parse_commit_log(stdout, repo_path)
+        commits = self._parse_commit_log(stdout, repo_path)
+        return self._mark_reverted_commits_at(repo_path, commits)
 
     def _parse_commit_log(self, stdout: str, repo_path: str) -> list[CommitInfo]:
         """解析统一的提交日志格式。"""
@@ -801,7 +859,8 @@ class GitService(QObject):
         if not success:
             return []
 
-        return self._parse_commit_log(stdout, repo_path)
+        commits = self._parse_commit_log(stdout, repo_path)
+        return self._mark_reverted_commits_at(repo_path, commits)
 
     def _path_in_repo(self, file_path: str) -> bool:
         """校验文件路径在仓库内(防 ../ 遍历或绝对路径越界)。"""
@@ -2519,7 +2578,7 @@ class GitService(QObject):
         
         parts = stdout.strip().split('|', 6)
         if len(parts) >= 6:
-            return CommitInfo(
+            commit = CommitInfo(
                 hash=parts[0],
                 short_hash=parts[1],
                 author=parts[2],
@@ -2527,6 +2586,7 @@ class GitService(QObject):
                 date=parts[4],
                 message=parts[5] + ('\n' + parts[6] if len(parts) == 7 else '')
             )
+            return self._mark_reverted_commits_at(self._repo_path or "", [commit])[0]
         return None
 
     # ==================== Cherry-pick ====================

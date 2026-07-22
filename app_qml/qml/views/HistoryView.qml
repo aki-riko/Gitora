@@ -98,6 +98,7 @@ Item {
         var indexByLabel = ({})
         for (var i = 0; i < root.allCommits.length; i++) {
             var c = root.allCommits[i]
+            var isReverted = !!c.revertedBy
             var label = _dateGroup(c.date)
             if (indexByLabel[label] === undefined) {
                 indexByLabel[label] = groups.length
@@ -105,7 +106,9 @@ Item {
             }
             groups[indexByLabel[label]].cards.push({
                 "text": c.message,
-                "description": c.shortHash + " · " + c.author,
+                "description": c.shortHash + " · " + c.author + (isReverted ? " · 已撤销" : ""),
+                "status": isReverted ? "warning" : "info",
+                "strikeOut": isReverted,
                 "hash": c.hash,
                 "commit": c
             })
@@ -273,6 +276,13 @@ Item {
                                 color: Fluent.Enums.textColor.secondary
                                 font.family: Fluent.Enums.fontFamily
                                 font.pixelSize: Fluent.Enums.typography.bodySmall
+                            }
+                            Fluent.Tag {
+                                visible: root.selectedCommit && !!root.selectedCommit.revertedBy
+                                status: Fluent.Enums.statusLevel.warning
+                                text: root.selectedCommit
+                                    ? "已撤销 · " + root.selectedCommit.revertedBy.substring(0, 7)
+                                    : ""
                             }
                         }
                     }
