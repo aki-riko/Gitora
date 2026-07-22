@@ -79,6 +79,9 @@ class AiCommitQmlContractTest(unittest.TestCase):
         source = (
             ROOT / "app_qml" / "qml" / "components" / "AiCommitPlanDialog.qml"
         ).read_text(encoding="utf-8")
+        row_source = (
+            ROOT / "app_qml" / "qml" / "components" / "AiCommitChangeRow.qml"
+        ).read_text(encoding="utf-8")
         self.assertIn("AiCommitPlanBridge.preparePlan()", source)
         self.assertIn("AiCommitPlanBridge.prepareHunkPlan()", source)
         self.assertIn("planModel.moveChange", source)
@@ -90,9 +93,10 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("确认发送工作区差异到远程模型", source)
         self.assertIn("模型提示：", source)
         self.assertIn("代码块覆盖：", source)
-        self.assertIn('change.kind === "hunk"', source)
-        self.assertIn("change.content", source)
-        self.assertIn('change.staged ? "已暂存" : "未暂存"', source)
+        self.assertIn("AiCommitChangeRow", source)
+        self.assertIn('row.change.kind === "hunk"', row_source)
+        self.assertIn("row.change.content", row_source)
+        self.assertIn('row.change.staged ? "已暂存" : "未暂存"', row_source)
         self.assertIn("!AiCommitPlanBridge.awaitingCommit", source)
         self.assertNotIn("GitBridge.commit", source)
         self.assertNotIn("GitBridge.push", source)
@@ -102,17 +106,20 @@ class AiCommitQmlContractTest(unittest.TestCase):
         source = (
             ROOT / "app_qml" / "qml" / "components" / "AiCommitPlanDialog.qml"
         ).read_text(encoding="utf-8")
-        text_elements = re.findall(r"(?<![A-Za-z])Text\s*\{", source)
-        self.assertEqual(len(text_elements), source.count("textFormat: Text.PlainText"))
+        row_source = (
+            ROOT / "app_qml" / "qml" / "components" / "AiCommitChangeRow.qml"
+        ).read_text(encoding="utf-8")
+        for qml_source in (source, row_source):
+            text_elements = re.findall(r"(?<![A-Za-z])Text\s*\{", qml_source)
+            self.assertEqual(
+                len(text_elements), qml_source.count("textFormat: Text.PlainText")
+            )
         self.assertIn('title: "计划差异预览"', source)
         self.assertNotIn('title: "计划差异：" + dlg._previewTitle', source)
         self.assertIn("text: dlg._previewTitle", source)
         self.assertIn("enabled: !AiCommitPlanBridge || !AiCommitPlanBridge.busy", source)
-        self.assertIn(
-            "enabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy\n"
-            "                && !AiCommitPlanBridge.awaitingCommit",
-            source,
-        )
+        self.assertIn("interactionEnabled: AiCommitPlanBridge", source)
+        self.assertIn("enabled: interactionEnabled", row_source)
 
     def test_macos_build_runs_packaged_ai_connection_selftest(self) -> None:
         source = (

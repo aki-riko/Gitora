@@ -406,84 +406,15 @@ Fluent.DialogBoxCore {
 
     Component {
         id: changeRowDelegate
-        Rectangle {
+        AiCommitChangeRow {
             required property var modelData
-            property var change: modelData
-            enabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy
+            change: modelData
+            targetIds: dlg._targetIds
+            targetLabels: dlg._targetLabels
+            interactionEnabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy
                 && !AiCommitPlanBridge.awaitingCommit
-            width: parent ? parent.width : 0
-            height: changeLayout.implicitHeight + Fluent.Enums.spacing.s * 2
-            radius: Fluent.Enums.radius.small
-            color: Fluent.Enums.stateColor.hover
-
-            ColumnLayout {
-                id: changeLayout
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.s
-                spacing: Fluent.Enums.spacing.xs
-                Text {
-                    Layout.fillWidth: true
-                    text: change.path + (change.kind === "hunk" ? " · 代码块" : "")
-                    textFormat: Text.PlainText
-                    color: Fluent.Enums.textColor.primary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    elide: Text.ElideMiddle
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: change.kind === "hunk"
-                    text: change.header
-                    textFormat: Text.PlainText
-                    color: Fluent.Enums.textColor.secondary
-                    font.family: "Consolas, Cascadia Code, monospace"
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    elide: Text.ElideRight
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: change.kind === "hunk"
-                    text: change.content
-                    textFormat: Text.PlainText
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: "Consolas, Cascadia Code, monospace"
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    wrapMode: Text.WrapAnywhere
-                    maximumLineCount: 4
-                    elide: Text.ElideRight
-                }
-                RowLayout {
-                    Layout.fillWidth: true
-                    Text {
-                        text: (change.staged ? "已暂存" : "未暂存") + " · "
-                            + change.status + "  +" + change.additions + " / -" + change.deletions
-                        textFormat: Text.PlainText
-                        color: Fluent.Enums.textColor.tertiary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                    }
-                    Item { Layout.fillWidth: true }
-                    Fluent.ComboBox {
-                        Layout.preferredWidth: 160
-                        model: dlg._targetLabels
-                        currentIndex: Math.max(0, dlg._targetIds.indexOf(change.groupId))
-                        onActivated: function(targetIndex) {
-                            AiCommitPlanBridge.planModel.moveChange(
-                                change.changeId, dlg._targetIds[targetIndex]
-                            )
-                        }
-                    }
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: change.unsupportedReason.length > 0
-                    text: change.unsupportedReason
-                    textFormat: Text.PlainText
-                    color: Fluent.Enums.statusLevel.warningColor
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    wrapMode: Text.WordWrap
-                }
+            onMoveRequested: function(changeId, targetGroupId) {
+                AiCommitPlanBridge.planModel.moveChange(changeId, targetGroupId)
             }
         }
     }
