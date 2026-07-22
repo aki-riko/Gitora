@@ -1,7 +1,7 @@
 # AI 提交规划器 v1.3.0 构建验证
 
-> 验证日期：2026-07-22  
-> 构建验证提交：`32f66b17a8a4b125e80930be98e3dfd43effc7f4`
+> 验证日期：2026-07-22
+> 构建验证提交：`d6c9f5961411a02ee0eec68d16e85f1d4d859cae`
 > 验证范围：全量测试、Windows 安装包、Windows/macOS 打包态 QML 启动、设置页导航与本地 AI 连接链
 
 ## 验证结论
@@ -17,13 +17,13 @@ Ollama 模型列表接口，证明打包程序能够读取隔离配置、加载 
 ## Windows 产物
 
 Windows 应用产物基于提交
-`32f66b17a8a4b125e80930be98e3dfd43effc7f4` 完整重建，并使用下列同一 EXE
+`d6c9f5961411a02ee0eec68d16e85f1d4d859cae` 完整重建，并使用下列同一 EXE
 再次完成真实连接自检。
 
 | 产物 | 版本 | 字节数 | SHA-256 |
 |---|---:|---:|---|
-| `build_dist/main_qml.dist/Gitora.exe` | `1.3.0.0` | 13,021,184 | `AAC24A226AC233BDA30A1B736E15B18C6C5314D9BA7FC59FADC52680A1A5CC3C` |
-| `dist_installer/Gitora-Setup-1.3.0.exe` | `1.3.0` | 45,454,879 | `78F7444F552476245781B5DDEFEFCB13E6C6580D2BCBD1599F867AD23E5157BB` |
+| `build_dist/main_qml.dist/Gitora.exe` | `1.3.0.0` | 13,022,208 | `E7F0F71132ED35BC63E9CBCC3AD3EBAB6431B61069DAD547C2BB0DE6838F996B` |
+| `dist_installer/Gitora-Setup-1.3.0.exe` | `1.3.0` | 45,464,494 | `20D793704E025C2A9E49360C9643A75A3AC417FD7A10C9CBB1C87B27661DD790` |
 
 构建所用独立 venv 报告 `prismqml=0.3.1.32`，重建后的 `Gitora.exe` 二进制中也可
 检出同一版本字符串。打包命令由该 venv 的 Python 执行，旧版引擎未进入新产物。
@@ -40,8 +40,9 @@ Windows 应用产物基于提交
 ## macOS 产物
 
 GitHub Actions run
-[`29899423160`](https://github.com/aki-riko/Gitora/actions/runs/29899423160)
-在提交 `32f66b17a8a4b125e80930be98e3dfd43effc7f4` 上完成，以下步骤均成功：
+[`29901858450`](https://github.com/aki-riko/Gitora/actions/runs/29901858450)
+的 job `88864177755` 在提交 `d6c9f5961411a02ee0eec68d16e85f1d4d859cae` 上完成，
+以下步骤均成功：
 
 - Nuitka 构建 `.app`；
 - ad-hoc 重签并通过 `codesign --verify --deep`；
@@ -65,18 +66,19 @@ SELFTEST passed
 
 | 产物 | 字节数 | SHA-256 | UDIF 尾签名 |
 |---|---:|---|---|
-| `build_dist/macos-run-29899423160/Gitora-macOS.dmg` | 197,782,734 | `A30B0C33CFE7B9F6FA33669B5F60B48E26A52EC6000CE6F912146EBBCE7AA06C` | `koly` |
+| `build_dist/macos-run-29901858450/Gitora-macOS.dmg` | 197,677,822 | `C5931074C5AEB094C749F0A4CC4A67D32A45B8C7FF4C89E9728F210750CB08A4` | `koly` |
 
-GitHub artifact `Gitora-macOS-unsigned` 的归档大小为 183,733,704 字节，平台记录的
+GitHub artifact `Gitora-macOS-unsigned`（artifact ID `8522389674`）的归档大小为
+183,567,991 字节，平台记录和下载实物共同核对的
 归档摘要为
-`sha256:1075dd734464c698107a2d25de8462c7072105e27b276adce758609f3490b709`；
+`sha256:cbe72c235c49805c7a5436fa05347d9576901d8efc13c620166cf9e202cfb985`；
 该摘要属于 artifact ZIP，不能与上表中的 DMG 文件摘要混用。
 
 ## 源码级回归
 
-- 提交 `32f66b1` 的本地全量测试结果为 `172 passed`。
+- 提交 `d6c9f59` 的本地全量测试结果为 `173 passed in 203.07s`。
 - Cross-platform SELFTEST run
-  [`29899395493`](https://github.com/aki-riko/Gitora/actions/runs/29899395493)
+  [`29901486587`](https://github.com/aki-riko/Gitora/actions/runs/29901486587)
   在同一提交上的 Ubuntu 与 macOS job 均成功。
 - 源码 QML 在全新进程中的 headless selftest 输出 `exit=0`，并检测到
   `rootObjects = 1` 和 `设置页导航成功: SettingsView 已加载`。
@@ -94,6 +96,27 @@ SettingsView.qml:166:13: AiCommitSettingsCard is not a type
 `qml/components/AiCommitSettingsCard.qml` 时遗漏 `import "../components"`。补齐导入后，
 源码进程、Windows standalone、macOS `.app` 以及 Ubuntu/macOS 跨平台自检均用真实
 `currentIndex` 切换和懒加载栈状态确认设置页已加载并显示；原错误在同一路径中不再出现。
+
+## 本机模型代理泄露复现与修复证据
+
+大型审查发现，明确回环的 Ollama 端点虽然不需要远程发送确认，但 Python `urllib` 默认会
+读取环境代理。修复前使用两个真实回环 HTTP 服务分别作为 Ollama 目标和代理捕获器，设置
+`HTTP_PROXY=http://127.0.0.1:<动态端口>` 且清空 `NO_PROXY` 后，发往
+`127.0.0.1` 的模型列表请求会被代理捕获，违反“本机模型不经过第三方网络路径”的边界。
+
+提交 `d6c9f59` 让仅限明确回环端点的 Ollama 客户端使用空 `ProxyHandler`，非回环 Ollama
+和远程 Responses 端点仍保留环境代理能力。回归测试用同一目标/代理拓扑确认代理捕获列表
+为空，同时目标服务收到 `GET /v1/models`。最终 Windows EXE 又在以下环境中完成打包态
+自检并退出 0：
+
+```text
+HTTP_PROXY=http://127.0.0.1:9
+NO_PROXY=
+[SELFTEST] QML 加载成功,rootObjects = 1
+[SELFTEST] AI 连接检测成功: 连接成功，检测到 1 个本地模型
+[SELFTEST] 设置页导航成功: SettingsView 已加载
+[SELFTEST] 打包态 AI 连接验证通过
+```
 
 ## 打包自检路径失败复现与修复证据
 
