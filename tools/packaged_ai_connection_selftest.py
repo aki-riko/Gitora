@@ -82,9 +82,20 @@ def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
             "QT_QPA_PLATFORM": "offscreen",
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
+            "PYTHONUNBUFFERED": "1",
         }
     )
     return environment
+
+
+def _timeout_output(exc: subprocess.TimeoutExpired) -> str:
+    parts: list[str] = []
+    for value in (exc.stdout, exc.stderr):
+        if isinstance(value, bytes):
+            parts.append(value.decode("utf-8", errors="replace"))
+        elif value:
+            parts.append(value)
+    return "".join(parts)
 
 
 def _run_executable(
@@ -102,7 +113,9 @@ def _run_executable(
             timeout=timeout_seconds, check=False,
         )
     except subprocess.TimeoutExpired as exc:
-        raise PackagedSelftestError("打包程序连接自检超时") from exc
+        output = _timeout_output(exc)
+        detail = f"\n超时前输出:\n{output}" if output else ""
+        raise PackagedSelftestError(f"打包程序连接自检超时{detail}") from exc
 
 
 def _validated_output(

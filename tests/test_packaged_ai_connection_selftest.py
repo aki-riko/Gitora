@@ -79,6 +79,7 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         self.assertEqual(
             self.captured["environment"]["PYTHONIOENCODING"], "utf-8"
         )
+        self.assertEqual(self.captured["environment"]["PYTHONUNBUFFERED"], "1")
 
     def test_resolves_relative_executable_before_changing_cwd(self) -> None:
         relative_executable = Path(os.path.relpath(sys.executable, Path.cwd()))
@@ -103,6 +104,23 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
             run_connection_selftest(
                 Path(sys.executable), timeout_seconds=5, runner=disconnected_runner
             )
+
+    def test_timeout_preserves_partial_process_output(self) -> None:
+        def timed_out_runner(args, **_kwargs):
+            raise subprocess.TimeoutExpired(
+                args,
+                5,
+                output=b"[SELFTEST] QML loaded before timeout\n",
+                stderr=b"credential check pending\n",
+            )
+
+        with self.assertRaisesRegex(
+            PackagedSelftestError, "QML loaded before timeout"
+        ) as raised:
+            run_connection_selftest(
+                Path(sys.executable), timeout_seconds=5, runner=timed_out_runner
+            )
+        self.assertIn("credential check pending", str(raised.exception))
 
     def test_rejects_successful_process_without_connection_marker(self) -> None:
         with self.assertRaisesRegex(PackagedSelftestError, CONNECTION_MARKER):
