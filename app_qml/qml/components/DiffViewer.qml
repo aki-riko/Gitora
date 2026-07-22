@@ -13,6 +13,7 @@ Item {
     property bool loading: false
     property string loadingText: "加载中..."
     property string emptyText: "无差异"
+    readonly property int cellHorizontalPadding: Fluent.Enums.spacing.xs
     signal filterChanged(string path)
 
     ListModel { id: fileModel }
@@ -115,13 +116,15 @@ Item {
     }
 
     function _numCell(value, color) {
-        return '<td width="1" style="color:' + color + ';text-align:right;padding:0 8px;white-space:pre">'
+        return '<td width="1" style="color:' + color + ';text-align:right;padding:0 '
+            + root.cellHorizontalPadding + 'px;white-space:pre">'
             + (value === "" ? "&nbsp;" : value) + '</td>'
     }
 
     function _textCell(text, color, bg) {
         return '<td style="color:' + color + ';background:' + bg
-            + ';white-space:pre;padding:0 8px">' + root._escape(text) + '</td>'
+            + ';white-space:pre;padding:0 ' + root.cellHorizontalPadding + 'px">'
+            + root._escape(text) + '</td>'
     }
 
     // Qt 富文本的自动表格布局会把 colspan 文件头宽度平均分给行号列，
@@ -133,7 +136,8 @@ Item {
 
     // 分栏元信息不参与四列正文的宽度计算，否则长文件路径会把两侧代码推得很远。
     function _splitMetaRow(text, color) {
-        return '</table><div style="color:' + color + ';white-space:pre;padding:0 8px">'
+        return '</table><div style="color:' + color + ';white-space:pre;padding:0 '
+            + root.cellHorizontalPadding + 'px">'
             + root._escape(text) + '</div>' + root._tableStart()
     }
 

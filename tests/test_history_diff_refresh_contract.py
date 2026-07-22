@@ -56,6 +56,18 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("root._tableStart()", split_meta)
         self.assertNotIn("root._textCell(text", split_meta)
 
+    def test_diff_table_columns_use_compact_shared_padding(self) -> None:
+        source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            "readonly property int cellHorizontalPadding: Fluent.Enums.spacing.xs",
+            source,
+        )
+        self.assertEqual(source.count("+ root.cellHorizontalPadding +"), 3)
+        self.assertNotIn("padding:0 8px", source)
+
 
 if __name__ == "__main__":
     unittest.main()
