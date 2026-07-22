@@ -22,6 +22,7 @@ from app.common.ai_commit_evaluation import (  # noqa: E402
     write_manual_template,
 )
 from app.common.ai_commit_http import (  # noqa: E402
+    endpoint_requires_remote_consent,
     HttpProviderConfig,
     OllamaProvider,
     OpenAIResponsesProvider,
@@ -49,7 +50,11 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--cases", required=True, type=Path)
     run.add_argument("--results", required=True, type=Path)
     run.add_argument("--provider-kind", required=True, choices=("local", "remote"))
-    run.add_argument("--allow-remote-source-upload", action="store_true")
+    run.add_argument(
+        "--allow-remote-source-upload",
+        action="store_true",
+        help="允许向远程 Responses API 或非本机 Ollama 上传回放源码",
+    )
     run.add_argument("--max-cases", type=int)
     return parser
 
@@ -80,6 +85,14 @@ def create_provider(settings: AiCommitSettings, provider_kind: str):
     return OpenAIResponsesProvider(config), settings.remote_model
 
 
+def source_upload_requires_consent(
+    settings: AiCommitSettings, provider_kind: str
+) -> bool:
+    if provider_kind != "local":
+        return True
+    return endpoint_requires_remote_consent(settings.local_endpoint)
+
+
 def prepare(args, settings: AiCommitSettings) -> None:
     cases = HistoryReplayBuilder(
         args.repo, settings.timeout_seconds
@@ -90,8 +103,13 @@ def prepare(args, settings: AiCommitSettings) -> None:
 
 
 def run(args, settings: AiCommitSettings) -> None:
-    if args.provider_kind == "remote" and not args.allow_remote_source_upload:
-        raise EvaluationError("远程评测必须显式传入源码上传确认参数")
+    if (
+        source_upload_requires_consent(settings, args.provider_kind)
+        and not args.allow_remote_source_upload
+    ):
+        raise EvaluationError(
+            "远程或非本机端点评测必须显式传入源码上传确认参数"
+        )
     cases = read_case_manifest(args.cases)
     if args.max_cases is not None:
         if args.max_cases <= 0:

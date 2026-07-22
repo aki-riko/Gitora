@@ -6,6 +6,8 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
+from unittest import mock
 
 from app.common.ai_commit_evaluation import (
     EvaluationError,
@@ -19,6 +21,7 @@ from app.common.ai_commit_evaluation import (
 from app.common.ai_commit_provider import ModelProvider
 from app.common.ai_commit_settings import AiCommitSettingsStore
 from tests.git_test_utils import commit_all, init_repo, write_file
+from tools import ai_commit_eval
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -168,6 +171,46 @@ class AiCommitEvaluationTest(unittest.TestCase):
 
         with self.assertRaisesRegex(EvaluationError, "提交哈希"):
             read_case_manifest(manifest)
+
+    def test_source_upload_consent_covers_non_loopback_ollama(self) -> None:
+        loopback = self.settings.with_user_values({
+            "local_endpoint": "http://127.0.0.1:11434",
+        })
+        lan = self.settings.with_user_values({
+            "local_endpoint": "http://192.168.1.20:11434",
+        })
+
+        self.assertFalse(
+            ai_commit_eval.source_upload_requires_consent(loopback, "local")
+        )
+        self.assertTrue(
+            ai_commit_eval.source_upload_requires_consent(lan, "local")
+        )
+        self.assertTrue(
+            ai_commit_eval.source_upload_requires_consent(loopback, "remote")
+        )
+
+    def test_non_loopback_evaluation_stops_before_provider_creation(self) -> None:
+        root = Path(self.temp_dir.name)
+        manifest = root / "cases.jsonl"
+        write_case_manifest(manifest, self.cases)
+        args = SimpleNamespace(
+            provider_kind="local",
+            allow_remote_source_upload=False,
+            cases=manifest,
+            max_cases=1,
+            repo=str(self.repo),
+            results=root / "results.jsonl",
+        )
+        settings = self.settings.with_user_values({
+            "local_endpoint": "http://192.168.1.20:11434",
+        })
+
+        with mock.patch.object(ai_commit_eval, "create_provider") as create:
+            with self.assertRaisesRegex(EvaluationError, "源码上传确认"):
+                ai_commit_eval.run(args, settings)
+
+        create.assert_not_called()
 
 
 if __name__ == "__main__":
