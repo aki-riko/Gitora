@@ -23,6 +23,8 @@ Item {
     property string _quickCommitPushMessage: ""
     property string _quickCommitPushRepoPath: ""
     property string _aiPreparedRequestId: ""
+    readonly property bool _aiPlanLocksIndex: AiCommitPlanBridge
+        && (AiCommitPlanBridge.busy || AiCommitPlanBridge.awaitingCommit)
 
     FontMetrics {
         id: repoPathFontMetrics
@@ -118,6 +120,8 @@ Item {
         target: GitBridge
         function onStatusChanged() { root.reload() }
         function onRepoPathChanged(path) {
+            remoteAiConfirm.reject()
+            root._aiPreparedRequestId = ""
             root._statusRequesting = false
             root._reloadPending = false
             root._statusRequestRepoPath = ""
@@ -194,6 +198,7 @@ Item {
             }
         }
         function onErrorOccurred(message) {
+            root._aiPreparedRequestId = ""
             Fluent.NotificationManager.toast.error(root, "AI 提交规划", message)
         }
     }
@@ -373,6 +378,7 @@ Item {
                 text: "提交"
                 style: Fluent.Enums.button.style_primary
                 enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
+                    && (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)
                 feature: Fluent.Enums.button.feature_split
                 // 下拉:修补上次提交(commit --amend),用输入框内容作为新提交消息
                 menuItems: [
@@ -413,7 +419,7 @@ Item {
             Fluent.Button {
                 text: "一键提交推送"
                 enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
-                    && (!AiCommitPlanBridge || !AiCommitPlanBridge.awaitingCommit)
+                    && !root._aiPlanLocksIndex
                 onClicked: {
                     root._quickCommitPushPending = true
                     root._quickCommitPushMessage = commitInput.text
@@ -452,11 +458,13 @@ Item {
                         Fluent.Button {
                             text: "全部暂存"
                             style: Fluent.Enums.button.style_transparent
+                            enabled: !root._aiPlanLocksIndex
                             onClicked: GitBridge.stageAll()
                         }
                         Fluent.Button {
                             text: "全部取消"
                             style: Fluent.Enums.button.style_transparent
+                            enabled: !root._aiPlanLocksIndex
                             onClicked: GitBridge.unstageAll()
                         }
                     }
@@ -535,6 +543,7 @@ Item {
                                         Fluent.Button {
                                             text: model.staged ? "取消" : "暂存"
                                             style: Fluent.Enums.button.style_transparent
+                                            enabled: !root._aiPlanLocksIndex
                                             visible: hover.hovered
                                             onClicked: {
                                                 if (model.staged) GitBridge.unstageFile(model.path)

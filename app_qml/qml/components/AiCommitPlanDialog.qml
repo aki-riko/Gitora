@@ -62,6 +62,7 @@ Fluent.DialogBoxCore {
             Fluent.ButtonCore {
                 text: "关闭"
                 style: Fluent.Enums.button.style_primary
+                enabled: !AiCommitPlanBridge || !AiCommitPlanBridge.busy
                 width: Fluent.Enums.dialog.buttonWidth
                 height: Fluent.Enums.dialog.buttonHeight
                 onClicked: dlg.reject()
@@ -120,6 +121,7 @@ Fluent.DialogBoxCore {
             Layout.fillWidth: true
             Text {
                 text: dlg._hunkMode ? "AI 代码块级提交计划" : "AI 文件级提交计划"
+                textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.primary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.subtitle
@@ -147,6 +149,7 @@ Fluent.DialogBoxCore {
                     if (AiCommitPlanBridge.planModel.executable) return "覆盖校验通过"
                     return AiCommitPlanBridge.planModel.valid ? "仅可查看" : "需要调整"
                 }
+                textFormat: Text.PlainText
                 color: AiCommitPlanBridge && AiCommitPlanBridge.planModel.executable
                     ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
@@ -157,6 +160,7 @@ Fluent.DialogBoxCore {
         Text {
             Layout.fillWidth: true
             text: AiCommitPlanBridge ? AiCommitPlanBridge.planModel.summary : ""
+            textFormat: Text.PlainText
             visible: text.length > 0
             color: Fluent.Enums.textColor.secondary
             font.family: Fluent.Enums.fontFamily
@@ -172,6 +176,7 @@ Fluent.DialogBoxCore {
             text: (dlg._hunkMode ? "代码块覆盖：" : "文件覆盖：")
                 + stats.assigned + "/" + stats.total + "（" + stats.percent
                 + "%） · 未分配 " + stats.unassigned + " · 重复 " + stats.duplicates
+            textFormat: Text.PlainText
             color: stats.assigned === stats.total && stats.duplicates === 0
                 ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.statusLevel.warningColor
             font.family: Fluent.Enums.fontFamily
@@ -197,6 +202,7 @@ Fluent.DialogBoxCore {
                     spacing: Fluent.Enums.spacing.s
                     Text {
                         text: "未分配改动"
+                        textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.body
@@ -217,6 +223,7 @@ Fluent.DialogBoxCore {
                                 visible: AiCommitPlanBridge
                                     && AiCommitPlanBridge.planModel.unassignedChanges.length === 0
                                 text: "全部改动已分配"
+                                textFormat: Text.PlainText
                                 color: Fluent.Enums.textColor.tertiary
                                 font.family: Fluent.Enums.fontFamily
                                 font.pixelSize: Fluent.Enums.typography.caption
@@ -273,6 +280,7 @@ Fluent.DialogBoxCore {
                                         Layout.fillWidth: true
                                         Text {
                                             text: "提交 " + (groupCard.index + 1)
+                                            textFormat: Text.PlainText
                                             color: Fluent.Enums.textColor.primary
                                             font.family: Fluent.Enums.fontFamily
                                             font.pixelSize: Fluent.Enums.typography.body
@@ -281,6 +289,7 @@ Fluent.DialogBoxCore {
                                         Text {
                                             text: groupCard.group.dependsOn.length > 0
                                                 ? "依赖：" + groupCard.group.dependsOn.join(", ") : ""
+                                            textFormat: Text.PlainText
                                             visible: text.length > 0
                                             color: Fluent.Enums.textColor.tertiary
                                             font.family: Fluent.Enums.fontFamily
@@ -315,6 +324,7 @@ Fluent.DialogBoxCore {
                                         Layout.fillWidth: true
                                         visible: groupCard.group.warnings.length > 0
                                         text: "模型提示：" + groupCard.group.warnings.join("；")
+                                        textFormat: Text.PlainText
                                         color: Fluent.Enums.statusLevel.warningColor
                                         font.family: Fluent.Enums.fontFamily
                                         font.pixelSize: Fluent.Enums.typography.caption
@@ -339,6 +349,7 @@ Fluent.DialogBoxCore {
                                         Text {
                                             Layout.fillWidth: true
                                             text: groupCard.group.rationale
+                                            textFormat: Text.PlainText
                                             color: Fluent.Enums.textColor.tertiary
                                             font.family: Fluent.Enums.fontFamily
                                             font.pixelSize: Fluent.Enums.typography.caption
@@ -383,6 +394,7 @@ Fluent.DialogBoxCore {
                 required property var modelData
                 Layout.fillWidth: true
                 text: (modelData.severity === "error" ? "错误：" : "提示：") + modelData.message
+                textFormat: Text.PlainText
                 color: modelData.severity === "error"
                     ? Fluent.Enums.statusLevel.errorColor : Fluent.Enums.textColor.tertiary
                 font.family: Fluent.Enums.fontFamily
@@ -410,6 +422,7 @@ Fluent.DialogBoxCore {
                 Text {
                     Layout.fillWidth: true
                     text: change.path + (change.kind === "hunk" ? " · 代码块" : "")
+                    textFormat: Text.PlainText
                     color: Fluent.Enums.textColor.primary
                     font.family: Fluent.Enums.fontFamily
                     font.pixelSize: Fluent.Enums.typography.caption
@@ -419,6 +432,7 @@ Fluent.DialogBoxCore {
                     Layout.fillWidth: true
                     visible: change.kind === "hunk"
                     text: change.header
+                    textFormat: Text.PlainText
                     color: Fluent.Enums.textColor.secondary
                     font.family: "Consolas, Cascadia Code, monospace"
                     font.pixelSize: Fluent.Enums.typography.caption
@@ -428,6 +442,7 @@ Fluent.DialogBoxCore {
                     Layout.fillWidth: true
                     visible: change.kind === "hunk"
                     text: change.content
+                    textFormat: Text.PlainText
                     color: Fluent.Enums.textColor.tertiary
                     font.family: "Consolas, Cascadia Code, monospace"
                     font.pixelSize: Fluent.Enums.typography.caption
@@ -440,6 +455,7 @@ Fluent.DialogBoxCore {
                     Text {
                         text: (change.staged ? "已暂存" : "未暂存") + " · "
                             + change.status + "  +" + change.additions + " / -" + change.deletions
+                        textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.caption
@@ -460,6 +476,7 @@ Fluent.DialogBoxCore {
                     Layout.fillWidth: true
                     visible: change.unsupportedReason.length > 0
                     text: change.unsupportedReason
+                    textFormat: Text.PlainText
                     color: Fluent.Enums.statusLevel.warningColor
                     font.family: Fluent.Enums.fontFamily
                     font.pixelSize: Fluent.Enums.typography.caption
@@ -483,7 +500,7 @@ Fluent.DialogBoxCore {
 
     Fluent.MessageBox {
         id: patchPreview
-        title: "计划差异：" + dlg._previewTitle
+        title: "计划差异预览"
         confirmText: "关闭"
         cancelText: ""
         ColumnLayout {

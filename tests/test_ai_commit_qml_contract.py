@@ -1,6 +1,7 @@
 # coding: utf-8
 from __future__ import annotations
 
+import re
 import unittest
 from pathlib import Path
 
@@ -36,11 +37,31 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("AiCommitBridge.cancelCurrent()", source)
         self.assertIn("aiCommitPlanDialog.openPlanner()", source)
         self.assertIn("AiCommitPlanBridge.notifyCommitSucceeded()", source)
-        self.assertIn("!AiCommitPlanBridge.awaitingCommit", source)
+        self.assertIn(
+            "AiCommitPlanBridge.busy || AiCommitPlanBridge.awaitingCommit", source
+        )
         self.assertIn("Fluent.TextEdit {\n                id: commitInput", source)
         ai_handler = source.split("function onCommitMessageReady", 1)[1].split("function onErrorOccurred", 1)[0]
         self.assertNotIn("GitBridge.commit", ai_handler)
         self.assertNotIn("GitBridge.push", ai_handler)
+
+    def test_repo_view_clears_ai_request_and_locks_index_operations(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
+        ).read_text(encoding="utf-8")
+        repo_change_handler = source.split("function onRepoPathChanged", 1)[1].split(
+            "function onStatusReady", 1
+        )[0]
+        error_handler = source.split("function onErrorOccurred", 1)[1].split("}", 1)[0]
+        self.assertIn('root._aiPreparedRequestId = ""', repo_change_handler)
+        self.assertIn("remoteAiConfirm.reject()", repo_change_handler)
+        self.assertIn('root._aiPreparedRequestId = ""', error_handler)
+        self.assertIn("readonly property bool _aiPlanLocksIndex", source)
+        self.assertGreaterEqual(source.count("enabled: !root._aiPlanLocksIndex"), 3)
+        self.assertIn("&& !root._aiPlanLocksIndex", source)
+        self.assertIn(
+            "&& (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)", source
+        )
 
     def test_settings_card_keeps_secret_session_only(self) -> None:
         source = (
@@ -76,6 +97,16 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn("GitBridge.commit", source)
         self.assertNotIn("GitBridge.push", source)
         self.assertNotIn("GitBridge.stage", source)
+
+    def test_plan_dialog_renders_dynamic_content_as_plain_text(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "components" / "AiCommitPlanDialog.qml"
+        ).read_text(encoding="utf-8")
+        text_elements = re.findall(r"(?<![A-Za-z])Text\s*\{", source)
+        self.assertEqual(len(text_elements), source.count("textFormat: Text.PlainText"))
+        self.assertIn('title: "计划差异预览"', source)
+        self.assertNotIn('title: "计划差异：" + dlg._previewTitle', source)
+        self.assertIn("enabled: !AiCommitPlanBridge || !AiCommitPlanBridge.busy", source)
 
     def test_macos_build_runs_packaged_ai_connection_selftest(self) -> None:
         source = (
