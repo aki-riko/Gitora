@@ -70,11 +70,75 @@ Item {
         GitBridge.requestStatus()
     }
 
-    // 修补上次提交:用输入框内容重写 HEAD 的提交消息(git commit --amend)
-    function doAmend() {
-        var res = GitBridge.amendCommit(commitInput.text)
+    function _commitMessage() {
+        return commitComposer.message()
+    }
+
+    function _setCommitMessage(title, body) {
+        commitComposer.setMessage(title, body)
+    }
+
+    function _clearCommitMessage() {
+        commitComposer.clear()
+    }
+
+    function _requestAiCommitMessage() {
+        if (AiCommitBridge.busy) {
+            AiCommitBridge.cancelCurrent()
+            root._aiPreparedRequestId = ""
+            Fluent.NotificationManager.toast.info(
+                root, "已取消 AI 生成", "现有提交信息保持不变"
+            )
+        } else {
+            AiCommitBridge.prepareCommitMessage()
+        }
+    }
+
+    function _commitCurrentMessage() {
+        var message = root._commitMessage()
+        var res = GitBridge.commit(message)
         if (res[0]) {
-            commitInput.text = ""
+            root._clearCommitMessage()
+            if (AiCommitPlanBridge)
+                AiCommitPlanBridge.notifyCommitSucceeded()
+            Fluent.NotificationManager.toast.success(root, "提交成功", res[1] || "")
+            root.reload()
+        } else {
+            Fluent.NotificationManager.toast.error(root, "提交失败", res[1] || "")
+        }
+    }
+
+    function _requestAmend() {
+        if (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit) {
+            Fluent.NotificationManager.toast.warning(
+                root, "无法修补", "请先用普通提交完成当前计划组"
+            )
+            return
+        }
+        if (!commitComposer.hasTitle) {
+            Fluent.NotificationManager.toast.warning(
+                root, "无法修补", "请先填写修补后的提交标题"
+            )
+            return
+        }
+        if (GitBridge.isHeadPushed())
+            amendDanger.start()
+        else
+            root.doAmend()
+    }
+
+    function _quickCommitPushCurrentMessage() {
+        root._quickCommitPushPending = true
+        root._quickCommitPushMessage = root._commitMessage()
+        root._quickCommitPushRepoPath = GitBridge.repoPath
+        GitBridge.quickCommitPush(root._quickCommitPushMessage)
+    }
+
+    // 修补上次提交:用标题和可选正文重写 HEAD 的提交消息(git commit --amend)
+    function doAmend() {
+        var res = GitBridge.amendCommit(root._commitMessage())
+        if (res[0]) {
+            root._clearCommitMessage()
             Fluent.NotificationManager.toast.success(root, "已修补提交", res[1] || "")
             root.reload()
         } else {
@@ -158,8 +222,8 @@ Item {
             root._quickCommitPushRepoPath = ""
             // 失败时保留原文；成功后也不覆盖用户在执行期间新输入的内容。
             if (ok && GitBridge && GitBridge.repoPath === submittedRepoPath
-                    && commitInput.text === submittedMessage)
-                commitInput.text = ""
+                    && root._commitMessage() === submittedMessage)
+                root._clearCommitMessage()
         }
         function onDiffReady(repoPath, path, staged, content) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
@@ -191,7 +255,7 @@ Item {
                     || requestId !== root._aiPreparedRequestId) return
             root._aiPreparedRequestId = ""
             if (ok) {
-                commitInput.text = title + (body.length > 0 ? "\n\n" + body : "")
+                root._setCommitMessage(title, body)
                 Fluent.NotificationManager.toast.success(root, "提交信息已生成", message || "可继续编辑后提交")
             } else {
                 Fluent.NotificationManager.toast.error(root, "生成失败", message || "")
@@ -342,91 +406,27 @@ Item {
         }
 
         // ---------- 提交区(横跨全宽) ----------
-        RowLayout {
+        CommitComposer {
+            id: commitComposer
             Layout.fillWidth: true
-            spacing: Fluent.Enums.spacing.m
-            Fluent.TextEdit {
-                id: commitInput
-                Layout.fillWidth: true
-                Layout.preferredHeight: 68
-                placeholderText: "提交信息"
-                showScrollIndicator: true
-            }
-            Fluent.Button {
-                text: AiCommitBridge && AiCommitBridge.busy ? "取消生成" : "AI 生成"
-                enabled: AiCommitBridge && GitBridge && GitBridge.repoPath.length > 0
-                    && !root._quickCommitPushPending
-                    && (AiCommitBridge.busy || root._aiPreparedRequestId.length === 0)
-                onClicked: {
-                    if (AiCommitBridge.busy) {
-                        AiCommitBridge.cancelCurrent()
-                        root._aiPreparedRequestId = ""
-                        Fluent.NotificationManager.toast.info(root, "已取消 AI 生成", "现有提交信息保持不变")
-                    } else {
-                        AiCommitBridge.prepareCommitMessage()
-                    }
-                }
-            }
-            Fluent.Button {
-                text: "规划提交"
-                enabled: AiCommitPlanBridge && GitBridge
-                    && GitBridge.repoPath.length > 0
-                    && !root._quickCommitPushPending
-                onClicked: aiCommitPlanDialog.openPlanner()
-            }
-            Fluent.Button {
-                text: "提交"
-                style: Fluent.Enums.button.style_primary
-                enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
-                    && (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)
-                feature: Fluent.Enums.button.feature_split
-                // 下拉:修补上次提交(commit --amend),用输入框内容作为新提交消息
-                menuItems: [
-                    { "text": "修补上次提交", "icon": Fluent.Enums.icon.edit }
-                ]
-                onClicked: {
-                    var res = GitBridge.commit(commitInput.text)
-                    if (res[0]) {
-                        commitInput.text = ""
-                        if (AiCommitPlanBridge)
-                            AiCommitPlanBridge.notifyCommitSucceeded()
-                        Fluent.NotificationManager.toast.success(root, "提交成功", res[1] || "")
-                        root.reload()
-                    } else {
-                        Fluent.NotificationManager.toast.error(root, "提交失败", res[1] || "")
-                    }
-                }
-                onMenuItemClicked: function(index, text) {
-                    if (index !== 0) return
-                    if (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit) {
-                        Fluent.NotificationManager.toast.warning(
-                            root, "无法修补", "请先用普通提交完成当前计划组"
-                        )
-                        return
-                    }
-                    // amend 需要一条新消息(输入框内容);为空则提示
-                    if (commitInput.text.length === 0) {
-                        Fluent.NotificationManager.toast.warning(root, "无法修补", "请先在输入框填写修补后的提交消息")
-                        return
-                    }
-                    // 已推送的提交被 amend 会与远端历史分叉,需强制推送 → 弹危险确认
-                    if (GitBridge.isHeadPushed())
-                        amendDanger.start()
-                    else
-                        root.doAmend()
-                }
-            }
-            Fluent.Button {
-                text: "一键提交推送"
-                enabled: commitInput.text.length > 0 && !root._quickCommitPushPending
-                    && !root._aiPlanLocksIndex
-                onClicked: {
-                    root._quickCommitPushPending = true
-                    root._quickCommitPushMessage = commitInput.text
-                    root._quickCommitPushRepoPath = GitBridge.repoPath
-                    GitBridge.quickCommitPush(root._quickCommitPushMessage)
-                }
-            }
+            aiBusy: Boolean(AiCommitBridge && AiCommitBridge.busy)
+            aiActionEnabled: Boolean(AiCommitBridge && GitBridge
+                && GitBridge.repoPath.length > 0
+                && !root._quickCommitPushPending
+                && (AiCommitBridge.busy || root._aiPreparedRequestId.length === 0))
+            planActionEnabled: Boolean(AiCommitPlanBridge && GitBridge
+                && GitBridge.repoPath.length > 0
+                && !root._quickCommitPushPending)
+            commitActionEnabled: hasTitle && !root._quickCommitPushPending
+                && (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)
+            quickPushActionEnabled: hasTitle && !root._quickCommitPushPending
+                && !root._aiPlanLocksIndex
+
+            onAiRequested: root._requestAiCommitMessage()
+            onPlanRequested: aiCommitPlanDialog.openPlanner()
+            onCommitRequested: root._commitCurrentMessage()
+            onAmendRequested: root._requestAmend()
+            onQuickPushRequested: root._quickCommitPushCurrentMessage()
         }
 
         // ---------- 主体分栏 ----------
@@ -830,7 +830,7 @@ Item {
     AiCommitPlanDialog {
         id: aiCommitPlanDialog
         onGroupApplied: function(title, body) {
-            commitInput.text = title + (body.length > 0 ? "\n\n" + body : "")
+            root._setCommitMessage(title, body)
             root.reload()
         }
     }

@@ -9,9 +9,9 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("property bool _quickCommitPushPending: false", source)
         self.assertIn("function onQuickCommitPushFinished(ok, msg)", source)
         self.assertIn("if (ok && GitBridge && GitBridge.repoPath === submittedRepoPath", source)
-        self.assertIn("commitInput.text === submittedMessage", source)
+        self.assertIn("root._commitMessage() === submittedMessage", source)
         self.assertNotIn(
-            'GitBridge.quickCommitPush(commitInput.text)\n                    commitInput.text = ""',
+            'GitBridge.quickCommitPush(root._commitMessage())\n                    root._clearCommitMessage()',
             source,
         )
 

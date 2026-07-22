@@ -59,10 +59,25 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn(
             "AiCommitPlanBridge.busy || AiCommitPlanBridge.awaitingCommit", source
         )
-        self.assertIn("Fluent.TextEdit {\n                id: commitInput", source)
+        self.assertIn("CommitComposer {", source)
+        self.assertIn("root._setCommitMessage(title, body)", source)
         ai_handler = source.split("function onCommitMessageReady", 1)[1].split("function onErrorOccurred", 1)[0]
         self.assertNotIn("GitBridge.commit", ai_handler)
         self.assertNotIn("GitBridge.push", ai_handler)
+
+    def test_commit_composer_uses_single_line_title_and_optional_body(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "components" / "CommitComposer.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("Fluent.LineEdit {\n                id: commitTitleInput", source)
+        self.assertIn("Fluent.TextEdit {\n        id: commitBodyInput", source)
+        self.assertIn('placeholderText: "提交标题"', source)
+        self.assertIn('placeholderText: "提交正文（可选）"', source)
+        self.assertIn('? "编辑正文" : "添加正文"', source)
+        self.assertIn("visible: root.bodyExpanded", source)
+        self.assertIn("root.bodyExpanded = commitBodyInput.text.trim().length > 0", source)
+        self.assertIn('return title + (body.length > 0 ? "\\n\\n" + body : "")', source)
 
     def test_repo_view_clears_ai_request_and_locks_index_operations(self) -> None:
         source = (
