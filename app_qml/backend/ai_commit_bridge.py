@@ -3,29 +3,26 @@
 from __future__ import annotations
 
 import json
-import os
 import threading
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Optional
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
-from app.common.ai_commit_credentials import (
-    CredentialStore,
-    CredentialStoreError,
-    SystemCredentialStore,
-    credential_account,
+from app.common.ai_commit_connection import (
+    AiCommitCredentialService,
+    ProviderFactory,
+    create_model_provider,
 )
+from app.common.ai_commit_credentials import CredentialStore
 from app.common.ai_commit_context import (
     ChangeContextCollector,
     SnapshotCollectionError,
 )
 from app.common.ai_commit_http import (
     endpoint_requires_remote_consent,
-    HttpProviderConfig,
     HttpProviderError,
     OllamaProvider,
-    OpenAIResponsesProvider,
 )
 from app.common.ai_commit_models import (
     ChangeSnapshot,
@@ -46,7 +43,6 @@ from app.common.logger import get_logger
 
 
 logger = get_logger("AiCommitBridge")
-ProviderFactory = Callable[[AiCommitSettings, str], ModelProvider]
 
 
 @dataclass(frozen=True)
@@ -82,30 +78,17 @@ class AiCommitBridge(QObject):
         self._git = git_service
         self._store = settings_store or AiCommitSettingsStore()
         self._settings = self._store.load()
-        self._provider_factory = provider_factory or self._create_provider
-        (
-            self._credential_store,
-            self._credential_store_error,
-        ) = self._initialize_credential_store(credential_store)
+        self._provider_factory = provider_factory or create_model_provider
+        self._credentials = AiCommitCredentialService(
+            self._settings.credential_service, credential_store
+        )
         self._validator = CommitPlanValidator()
-        self._has_stored_api_key = False
         self._busy = False
         self._serial = 0
         self._prepared: _PreparedRequest | None = None
         self._cancel_event = threading.Event()
         self._state_lock = threading.Lock()
-        self._refresh_credential_status()
-
-    def _initialize_credential_store(
-        self, provided: CredentialStore | None
-    ) -> tuple[CredentialStore | None, str]:
-        if provided is not None:
-            return provided, ""
-        try:
-            return SystemCredentialStore(self._settings.credential_service), ""
-        except CredentialStoreError as exc:
-            logger.warning(f"初始化 AI 系统凭据库失败: {type(exc).__name__}")
-            return None, str(exc)
+        self._credentials.refresh(self._settings)
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
@@ -117,14 +100,11 @@ class AiCommitBridge(QObject):
 
     @Property(bool, notify=settingsChanged)
     def hasStoredApiKey(self) -> bool:
-        return self._has_stored_api_key
+        return self._credentials.has_stored_api_key
 
     @Property(bool, notify=settingsChanged)
     def credentialStoreAvailable(self) -> bool:
-        return (
-            self._credential_store is not None
-            and not self._credential_store_error
-        )
+        return self._credentials.available
 
     @Slot(result="QVariantMap")
     def getSettings(self) -> dict:
@@ -139,11 +119,11 @@ class AiCommitBridge(QObject):
             "apiKeyEnv": settings.api_key_env,
             "generateBody": settings.generate_body,
             "remoteScope": settings.remote_scope,
-            "hasStoredApiKey": self._has_stored_api_key,
+            "hasStoredApiKey": self._credentials.has_stored_api_key,
             "credentialStoreAvailable": self.credentialStoreAvailable,
-            "credentialStoreError": self._credential_store_error,
-            "hasEnvironmentApiKey": bool(
-                settings.api_key_env and os.environ.get(settings.api_key_env)
+            "credentialStoreError": self._credentials.error,
+            "hasEnvironmentApiKey": self._credentials.has_environment_api_key(
+                settings
             ),
         }
 
@@ -178,43 +158,23 @@ class AiCommitBridge(QObject):
             return [False, str(exc)]
         self._settings = updated
         self.invalidateWorkspace()
-        self._refresh_credential_status()
+        self._credentials.refresh(self._settings)
         self.settingsChanged.emit()
         return [True, "AI 提交规划设置已保存"]
 
     @Slot(str, result="QVariantList")
     def storeApiKey(self, value: str) -> list:
         self.invalidateWorkspace()
-        try:
-            store = self._require_credential_store()
-            account = self._credential_account(self._settings)
-            store.set(account, value)
-        except CredentialStoreError as exc:
-            logger.warning(f"保存 AI 系统凭据失败: {type(exc).__name__}")
-            self._credential_store_error = str(exc)
-            self.settingsChanged.emit()
-            return [False, str(exc)]
-        self._credential_store_error = ""
-        self._has_stored_api_key = True
+        result = self._credentials.store_api_key(self._settings, value)
         self.settingsChanged.emit()
-        return [True, "密钥已保存到系统凭据库"]
+        return list(result)
 
     @Slot(result="QVariantList")
     def deleteStoredApiKey(self) -> list:
         self.invalidateWorkspace()
-        try:
-            store = self._require_credential_store()
-            account = self._credential_account(self._settings)
-            deleted = store.delete(account)
-        except CredentialStoreError as exc:
-            logger.warning(f"删除 AI 系统凭据失败: {type(exc).__name__}")
-            self._credential_store_error = str(exc)
-            self.settingsChanged.emit()
-            return [False, str(exc)]
-        self._credential_store_error = ""
-        self._has_stored_api_key = False
+        result = self._credentials.delete_stored_api_key(self._settings)
         self.settingsChanged.emit()
-        return [True, "系统凭据已删除" if deleted else "当前端点没有已保存密钥"]
+        return list(result)
 
     def planning_settings(self) -> AiCommitSettings:
         """供同进程文件级规划桥读取当前不可变配置快照。"""
@@ -222,7 +182,9 @@ class AiCommitBridge(QObject):
 
     def create_provider_for(self, settings: AiCommitSettings) -> ModelProvider:
         """复用同一提供方工厂和已解析凭据，不把密钥暴露给 QML。"""
-        return self._provider_factory(settings, self._resolve_api_key(settings))
+        return self._provider_factory(
+            settings, self._credentials.resolve_api_key(settings)
+        )
 
     @Slot()
     def prepareCommitMessage(self) -> None:
@@ -235,7 +197,7 @@ class AiCommitBridge(QObject):
             return
         try:
             self._provider_factory(
-                self._settings, self._resolve_api_key(self._settings)
+                self._settings, self._credentials.resolve_api_key(self._settings)
             )
         except (HttpProviderError, AiCommitSettingsError) as exc:
             self.errorOccurred.emit(str(exc))
@@ -310,7 +272,8 @@ class AiCommitBridge(QObject):
                 if collector.workspace_fingerprint(prepared.repo_path) != prepared.snapshot.workspace_fingerprint:
                     raise SnapshotCollectionError("工作区已变化，请重新生成")
                 provider = self._provider_factory(
-                    prepared.settings, self._resolve_api_key(prepared.settings)
+                    prepared.settings,
+                    self._credentials.resolve_api_key(prepared.settings),
                 )
                 raw_plan = provider.generate_plan(prepared.request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
@@ -374,7 +337,7 @@ class AiCommitBridge(QObject):
         def work() -> None:
             try:
                 provider = self._provider_factory(
-                    settings, self._resolve_api_key(settings)
+                    settings, self._credentials.resolve_api_key(settings)
                 )
                 if isinstance(provider, OllamaProvider):
                     models = provider.list_models()
@@ -410,7 +373,7 @@ class AiCommitBridge(QObject):
         def work() -> None:
             try:
                 provider = self._provider_factory(
-                    settings, self._resolve_api_key(settings)
+                    settings, self._credentials.resolve_api_key(settings)
                 )
                 try:
                     models = provider.list_models()
@@ -520,80 +483,3 @@ class AiCommitBridge(QObject):
             current = serial == self._serial and not self._cancel_event.is_set()
         if current:
             self.commitMessageReady.emit(repo, request_id, False, "", "", message)
-
-    def _resolve_api_key(
-        self, settings: AiCommitSettings | None = None
-    ) -> str:
-        resolved = settings or self._settings
-        if resolved.provider != "openai_responses":
-            return ""
-        store_error = self._credential_store_error
-        if self._credential_store is not None:
-            try:
-                secret = self._credential_store.get(
-                    self._credential_account(resolved)
-                )
-            except CredentialStoreError as exc:
-                logger.warning(f"读取 AI 系统凭据失败: {type(exc).__name__}")
-                store_error = str(exc)
-            else:
-                store_error = ""
-                self._credential_store_error = ""
-                if secret:
-                    return secret
-        name = resolved.api_key_env
-        environment_secret = os.environ.get(name, "") if name else ""
-        if environment_secret:
-            return environment_secret
-        if store_error:
-            raise HttpProviderError(store_error)
-        return ""
-
-    def _refresh_credential_status(self) -> None:
-        self._has_stored_api_key = False
-        if (
-            self._settings.provider != "openai_responses"
-            or not self._settings.remote_endpoint
-        ):
-            return
-        if self._credential_store is None:
-            if not self._credential_store_error:
-                self._credential_store_error = "系统凭据库不可用"
-            return
-        try:
-            account = self._credential_account(self._settings)
-            self._has_stored_api_key = self._credential_store.has(account)
-        except CredentialStoreError as exc:
-            logger.warning(f"刷新 AI 系统凭据状态失败: {type(exc).__name__}")
-            self._credential_store_error = str(exc)
-            return
-        self._credential_store_error = ""
-
-    def _require_credential_store(self) -> CredentialStore:
-        if self._credential_store is None:
-            raise CredentialStoreError(
-                self._credential_store_error or "系统凭据库不可用"
-            )
-        return self._credential_store
-
-    @staticmethod
-    def _credential_account(settings: AiCommitSettings) -> str:
-        if settings.provider != "openai_responses":
-            raise CredentialStoreError("系统凭据仅用于远程 Responses API")
-        return credential_account(settings.provider, settings.remote_endpoint)
-
-    @staticmethod
-    def _create_provider(settings: AiCommitSettings, api_key: str) -> ModelProvider:
-        if settings.provider == "ollama":
-            config = HttpProviderConfig(
-                settings.local_endpoint, settings.local_model, "",
-                settings.timeout_seconds, settings.max_response_chars,
-            )
-            return OllamaProvider(config)
-        if settings.provider == "openai_responses":
-            config = HttpProviderConfig(
-                settings.remote_endpoint, settings.remote_model, api_key,
-                settings.timeout_seconds, settings.max_response_chars,
-            )
-            return OpenAIResponsesProvider(config)
-        raise AiCommitSettingsError("不支持的模型提供方")
