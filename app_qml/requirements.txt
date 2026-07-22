@@ -9,8 +9,8 @@ PySide6>=6.5.0
 # 多皮肤 UI 引擎(Fluent + Neobrutalism)。自动更新所需组件:
 #   Updater(检测/下载/ShellExecute open 提权安装)+ UpdateDialog(Markdown 更新说明)
 #   + Toast 确定/不确定进度环。均自原 fqml 0.2.9~0.2.13 演进,PrismQML 首发版 0.2.14 起继承。
-# 0.3.1.38: 修复 Timeline 分数 DPI 接缝并优化 Fluent 图卡样式；Windows 与 macOS 必须同版
-prismqml==0.3.1.38
+# 0.3.1.39: 修复 Timeline 分数滚动接缝的叠加与错位；Windows 与 macOS 必须同版
+prismqml==0.3.1.39
 
 # 系统凭据库：Windows Credential Manager / macOS Keychain
 keyring==25.7.0
