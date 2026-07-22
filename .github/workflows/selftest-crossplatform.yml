@@ -40,11 +40,13 @@ jobs:
       - name: Run headless SELFTEST
         env:
           GITESS_QML_SELFTEST: "1"
+          GITESS_SETTINGS_NAV_SELFTEST: "1"
           QT_QPA_PLATFORM: offscreen
         run: |
           python app_qml/main_qml.py 2>&1 | tee selftest.log
           # SELFTEST 成功标志:输出含 "rootObjects = N"(N>=1);找不到则失败
-          if grep -qE "rootObjects = [1-9]" selftest.log; then
+          if grep -qE "rootObjects = [1-9]" selftest.log \
+              && grep -q "设置页导航成功" selftest.log; then
             echo "✅ SELFTEST passed on ${{ matrix.os }}"
           else
             echo "❌ SELFTEST failed: rootObjects 未就绪 (引擎平台守卫可能有缺口)"

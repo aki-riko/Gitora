@@ -24,7 +24,14 @@ class AiCommitQmlContractTest(unittest.TestCase):
             source,
         )
         self.assertIn("GITESS_AI_CONNECTION_SELFTEST", source)
+        self.assertIn("GITESS_SETTINGS_NAV_SELFTEST", source)
         self.assertIn("ai_commit_bridge.testConnection", source)
+
+    def test_settings_view_imports_ai_component(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "views" / "SettingsView.qml"
+        ).read_text(encoding="utf-8")
+        self.assertIn('import "../components"', source)
 
     def test_repo_view_uses_two_step_consent_and_does_not_auto_commit(self) -> None:
         source = (
@@ -130,6 +137,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("AI 连接检测成功", source)
         self.assertIn("actions/checkout@v7", source)
         self.assertIn("actions/setup-python@v7", source)
+        self.assertIn("设置页导航成功", source)
         self.assertEqual(source.count("actions/upload-artifact@v7"), 2)
 
     def test_cross_platform_selftest_uses_node_24_actions(self) -> None:
@@ -138,6 +146,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("actions/checkout@v7", source)
         self.assertIn("actions/setup-python@v7", source)
+        self.assertIn("GITESS_SETTINGS_NAV_SELFTEST", source)
+        self.assertIn("设置页导航成功", source)
 
     def test_implementation_plan_records_remaining_quality_evaluation(self) -> None:
         source = (

@@ -4,6 +4,7 @@ import QtQuick
 import QtQuick.Layouts
 
 import PrismQML as Fluent
+import "../components"
 
 Item {
     id: root

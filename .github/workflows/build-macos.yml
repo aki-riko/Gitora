@@ -67,6 +67,7 @@ jobs:
           if [ ! -f "$APP_BIN" ]; then echo "::error::未找到 .app 主程序: $APP_BIN"; exit 1; fi
           python tools/packaged_ai_connection_selftest.py --executable "$APP_BIN" 2>&1 | tee selftest.log
           if grep -qE "rootObjects = [1-9]" selftest.log \
+              && grep -q "设置页导航成功" selftest.log \
               && grep -q "AI 连接检测成功" selftest.log; then
             echo "SELFTEST passed"
           else

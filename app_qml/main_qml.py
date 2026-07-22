@@ -8,6 +8,11 @@ QML 版基于 PrismQML(MIT),无 QFluentWidgets Pro / License 依赖。
 """
 import os
 import sys
+import time
+
+
+SETTINGS_NAV_POLL_MS = 50
+SETTINGS_NAV_TIMEOUT_MS = 5000
 
 # ---- 是否为 Nuitka 打包态 ----
 def _is_frozen() -> bool:
@@ -62,28 +67,98 @@ def _resolve_prismqml_dir():
     return None
 
 
-def _schedule_selftest(app, engine, ai_commit_bridge) -> None:
-    """验证 QML 启动；可选地走打包态 AI 本地连接检测后再退出。"""
+def _start_settings_navigation_selftest(engine, finish) -> None:
+    """切到真实设置页并等待懒加载栈确认页面就绪。"""
     from PySide6.QtCore import QTimer
 
-    print("[SELFTEST] QML 加载成功,rootObjects =", len(engine.rootObjects()))
-    if not os.environ.get("GITESS_AI_CONNECTION_SELFTEST"):
-        QTimer.singleShot(1500, app.quit)
-        return
-
+    root = engine.rootObjects()[0]
+    window = root.property("windowInstance")
+    target_index = root.property("settingsPageIndex")
     state = {"finished": False}
+    deadline = time.monotonic() + SETTINGS_NAV_TIMEOUT_MS / 1000
 
-    def finish(ok: bool, message: str) -> None:
+    def complete(ok: bool, message: str) -> None:
         if state["finished"]:
             return
         state["finished"] = True
-        result = "成功" if ok else "失败"
-        print(f"[SELFTEST] AI 连接检测{result}: {message}")
-        QTimer.singleShot(0, lambda: app.exit(0 if ok else 2))
+        finish(ok, message)
 
-    ai_commit_bridge.connectionTestFinished.connect(finish)
-    QTimer.singleShot(0, ai_commit_bridge.testConnection)
-    QTimer.singleShot(15000, lambda: finish(False, "连接检测超时"))
+    def on_warnings(warnings) -> None:
+        for warning in warnings:
+            message = warning.toString()
+            if "SettingsView.qml" in message or "AiCommitSettingsCard.qml" in message:
+                complete(False, message[-1000:])
+                return
+
+    def poll() -> None:
+        stack = window.property("stackedWidget")
+        is_ready = (
+            stack is not None
+            and stack._isPageLoaded(target_index)
+            and stack.property("currentIndex") == target_index
+            and stack.property("_displayIndex") == target_index
+        )
+        if is_ready:
+            complete(True, "SettingsView 已加载")
+        elif time.monotonic() >= deadline:
+            complete(False, "SettingsView 在超时前未加载并显示")
+        else:
+            QTimer.singleShot(SETTINGS_NAV_POLL_MS, poll)
+
+    if window is None or not isinstance(target_index, int) or target_index < 0:
+        complete(False, "主窗口或设置页索引不可用")
+        return
+    engine.warnings.connect(on_warnings)
+    if not window.setProperty("currentIndex", target_index):
+        complete(False, "无法切换到设置页索引")
+        return
+    QTimer.singleShot(0, poll)
+
+
+def _schedule_selftest(app, engine, ai_commit_bridge) -> None:
+    """验证 QML 启动；可选验证设置导航与打包态 AI 连接。"""
+    from PySide6.QtCore import QTimer
+
+    print("[SELFTEST] QML 加载成功,rootObjects =", len(engine.rootObjects()))
+    needs_ai = bool(os.environ.get("GITESS_AI_CONNECTION_SELFTEST"))
+    needs_settings = bool(os.environ.get("GITESS_SETTINGS_NAV_SELFTEST"))
+    if not needs_ai and not needs_settings:
+        QTimer.singleShot(1500, app.quit)
+        return
+
+    state = {"finished": False, "pending": int(needs_ai) + int(needs_settings)}
+
+    def finish_check(label: str, ok: bool, message: str) -> None:
+        if state["finished"]:
+            return
+        result = "成功" if ok else "失败"
+        print(f"[SELFTEST] {label}{result}: {message}")
+        if not ok:
+            state["finished"] = True
+            QTimer.singleShot(0, lambda: app.exit(2))
+            return
+        state["pending"] -= 1
+        if state["pending"] == 0:
+            state["finished"] = True
+            QTimer.singleShot(0, lambda: app.exit(0))
+
+    if needs_settings:
+        QTimer.singleShot(
+            0,
+            lambda: _start_settings_navigation_selftest(
+                engine,
+                lambda ok, message: finish_check("设置页导航", ok, message),
+            ),
+        )
+    if needs_ai:
+        ai_commit_bridge.connectionTestFinished.connect(
+            lambda ok, message: finish_check("AI 连接检测", ok, message)
+        )
+        QTimer.singleShot(0, ai_commit_bridge.testConnection)
+        QTimer.singleShot(
+            15000,
+            lambda: finish_check("AI 连接检测", False, "连接检测超时"),
+        )
 
 # PRISMQML_PKG_DIR = .../prismqml 包目录(其下含 PrismQML/qmldir 与 python/)
 PRISMQML_PKG_DIR = _resolve_prismqml_dir()

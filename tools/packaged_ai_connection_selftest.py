@@ -17,6 +17,7 @@ from typing import Callable, Sequence
 MODEL_NAME = "gitora-packaged-selftest"
 QML_MARKER = "rootObjects ="
 CONNECTION_MARKER = "AI 连接检测成功"
+SETTINGS_MARKER = "设置页导航成功"
 
 
 class PackagedSelftestError(RuntimeError):
@@ -75,6 +76,7 @@ def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
             "HOME": str(root),
             "GITESS_QML_SELFTEST": "1",
             "GITESS_AI_CONNECTION_SELFTEST": "1",
+            "GITESS_SETTINGS_NAV_SELFTEST": "1",
             "QT_QPA_PLATFORM": "offscreen",
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
@@ -111,7 +113,11 @@ def _validated_output(
         )
     if model_requests < 1:
         raise PackagedSelftestError("打包程序未访问回环模型列表端点")
-    missing = [marker for marker in (QML_MARKER, CONNECTION_MARKER) if marker not in output]
+    missing = [
+        marker
+        for marker in (QML_MARKER, SETTINGS_MARKER, CONNECTION_MARKER)
+        if marker not in output
+    ]
     if missing:
         raise PackagedSelftestError(
             f"打包程序连接自检缺少标志: {', '.join(missing)}\n{output}"
