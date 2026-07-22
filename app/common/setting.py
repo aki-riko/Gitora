@@ -29,10 +29,20 @@ INSTALLER_SILENT_ARGS = ""
 
 # 使用系统用户数据目录
 import os
-if os.name == 'nt':  # Windows
-    CONFIG_FOLDER = Path(os.getenv('LOCALAPPDATA')) / 'Gitora'
-else:  # Linux/macOS
-    CONFIG_FOLDER = Path.home() / '.config' / 'Gitora'
+
+
+def _resolve_config_folder(platform_name: str | None = None) -> Path:
+    current_platform = platform_name or os.name
+    if current_platform == 'nt':  # Windows
+        return Path(os.getenv('LOCALAPPDATA')) / 'Gitora'
+    xdg_config_home = os.getenv('XDG_CONFIG_HOME')
+    config_root = (
+        Path(xdg_config_home) if xdg_config_home else Path.home() / '.config'
+    )
+    return config_root / 'Gitora'
+
+
+CONFIG_FOLDER = _resolve_config_folder()
 
 CONFIG_FOLDER.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE = CONFIG_FOLDER / "config.json"

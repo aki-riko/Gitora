@@ -5,9 +5,11 @@ import json
 import os
 import subprocess
 import sys
+import tempfile
 import unittest
 import urllib.request
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.packaged_ai_connection_selftest import (
     CONNECTION_MARKER,
@@ -16,6 +18,7 @@ from tools.packaged_ai_connection_selftest import (
     QML_MARKER,
     SETTINGS_MARKER,
     PackagedSelftestError,
+    _build_environment,
     run_connection_selftest,
 )
 
@@ -93,6 +96,20 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         resolved_executable = Path(sys.executable).resolve()
         self.assertEqual(Path(self.captured["args"][0]), resolved_executable)
         self.assertEqual(Path(self.captured["cwd"]), resolved_executable.parent)
+
+    def test_macos_keeps_user_home_and_isolates_xdg_config(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, patch.dict(
+            os.environ, {"HOME": "/Users/gitora-selftest"}, clear=False
+        ), patch(
+            "tools.packaged_ai_connection_selftest.sys.platform", "darwin"
+        ):
+            root = Path(temp)
+            environment = _build_environment(root, "http://127.0.0.1:11434")
+
+        self.assertEqual(environment["HOME"], "/Users/gitora-selftest")
+        self.assertEqual(
+            environment["XDG_CONFIG_HOME"], str(root / ".config")
+        )
 
     def test_rejects_success_marker_without_loopback_request(self) -> None:
         def disconnected_runner(args, **_kwargs):

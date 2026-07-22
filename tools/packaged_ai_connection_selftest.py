@@ -74,7 +74,7 @@ def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
     environment.update(
         {
             "LOCALAPPDATA": str(root),
-            "HOME": str(root),
+            "XDG_CONFIG_HOME": str(root / ".config"),
             "GITESS_QML_SELFTEST": "1",
             "GITESS_AI_CONNECTION_SELFTEST": "1",
             "GITESS_SETTINGS_NAV_SELFTEST": "1",
@@ -85,6 +85,8 @@ def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
             "PYTHONUNBUFFERED": "1",
         }
     )
+    if sys.platform != "darwin":
+        environment["HOME"] = str(root)
     return environment
 
 

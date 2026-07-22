@@ -2,14 +2,17 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.common.ai_commit_settings import (
     AiCommitSettingsError,
     AiCommitSettingsStore,
 )
+from app.common.setting import _resolve_config_folder
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -17,6 +20,14 @@ DEFAULTS = ROOT / "app" / "resource" / "config" / "ai_commit_defaults.json"
 
 
 class AiCommitSettingsTest(unittest.TestCase):
+    def test_non_windows_config_honours_xdg_without_changing_home(self) -> None:
+        with tempfile.TemporaryDirectory() as temp, patch.dict(
+            os.environ, {"XDG_CONFIG_HOME": temp}, clear=False
+        ):
+            self.assertEqual(
+                _resolve_config_folder("posix"), Path(temp) / "Gitora"
+            )
+
     def test_repository_defaults_are_complete_and_safe(self) -> None:
         settings = AiCommitSettingsStore(
             defaults_path=DEFAULTS,
