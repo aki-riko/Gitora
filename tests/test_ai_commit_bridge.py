@@ -12,7 +12,10 @@ from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication
 
-from app.common.ai_commit_credentials import SystemCredentialStore
+from app.common.ai_commit_credentials import (
+    CredentialStoreError,
+    SystemCredentialStore,
+)
 from app.common.ai_commit_models import PlannerRequest
 from app.common.ai_commit_provider import ModelProvider, ProviderCancelledError
 from app.common.ai_commit_settings import AiCommitSettingsStore
@@ -82,6 +85,20 @@ class _MemoryCredentialBackend:
 
     def delete_password(self, service: str, username: str) -> None:
         del self.values[(service, username)]
+
+
+class _UnavailableCredentialStore:
+    def get(self, _account: str) -> str:
+        raise CredentialStoreError("系统凭据库读取失败")
+
+    def set(self, _account: str, _secret: str) -> None:
+        raise CredentialStoreError("系统凭据库保存失败")
+
+    def delete(self, _account: str) -> bool:
+        raise CredentialStoreError("系统凭据库删除失败")
+
+    def has(self, account: str) -> bool:
+        return bool(self.get(account))
 
 
 class AiCommitBridgeTest(unittest.TestCase):
@@ -267,6 +284,27 @@ class AiCommitBridgeTest(unittest.TestCase):
         )
         self.assertTrue(saved[0], saved[1])
         self.assertFalse(bridge.hasStoredApiKey)
+
+    def test_failed_native_read_marks_credential_store_unavailable(self) -> None:
+        settings = self.store.load().with_user_values({
+            "enabled": True,
+            "provider": "openai_responses",
+            "remote_endpoint": "https://example.invalid/v1/responses",
+            "remote_model": "test-remote",
+        })
+        self.store.save(settings)
+        bridge = AiCommitBridge(
+            self.service,
+            self.store,
+            provider_factory=lambda _settings, _key: self.provider,
+            credential_store=_UnavailableCredentialStore(),
+        )
+        self.addCleanup(bridge.deleteLater)
+
+        self.assertFalse(bridge.credentialStoreAvailable)
+        exposed = bridge.getSettings()
+        self.assertFalse(exposed["credentialStoreAvailable"])
+        self.assertEqual(exposed["credentialStoreError"], "系统凭据库读取失败")
 
     def test_prepared_request_resolves_its_own_environment_key_name(self) -> None:
         self.stage_change()

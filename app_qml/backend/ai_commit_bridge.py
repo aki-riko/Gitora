@@ -120,7 +120,10 @@ class AiCommitBridge(QObject):
 
     @Property(bool, notify=settingsChanged)
     def credentialStoreAvailable(self) -> bool:
-        return self._credential_store is not None
+        return (
+            self._credential_store is not None
+            and not self._credential_store_error
+        )
 
     @Slot(result="QVariantMap")
     def getSettings(self) -> dict:
@@ -136,7 +139,7 @@ class AiCommitBridge(QObject):
             "generateBody": settings.generate_body,
             "remoteScope": settings.remote_scope,
             "hasStoredApiKey": self._has_stored_api_key,
-            "credentialStoreAvailable": self._credential_store is not None,
+            "credentialStoreAvailable": self.credentialStoreAvailable,
             "credentialStoreError": self._credential_store_error,
             "hasEnvironmentApiKey": bool(
                 settings.api_key_env and os.environ.get(settings.api_key_env)

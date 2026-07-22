@@ -172,10 +172,10 @@ def _run_system_credential_selftest() -> tuple[bool, str]:
         _credential_selftest_step("删除临时凭据")
         if not store.delete(account):
             return False, "系统凭据删除未生效"
-        stored = False
         _credential_selftest_step("确认临时凭据已删除")
         if store.get(account):
             return False, "系统凭据删除后仍可读取"
+        stored = False
     except Exception as exc:  # noqa: BLE001
         return _credential_selftest_failure(exc)
     finally:

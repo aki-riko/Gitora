@@ -23,6 +23,24 @@ from tools.packaged_ai_connection_selftest import (
 )
 
 
+class _StickyDeleteCredentialStore:
+    def __init__(self):
+        self.value = ""
+        self.delete_calls = 0
+
+    def set(self, _account: str, secret: str) -> None:
+        self.value = secret
+
+    def get(self, _account: str) -> str:
+        return self.value
+
+    def delete(self, _account: str) -> bool:
+        self.delete_calls += 1
+        if self.delete_calls >= 2:
+            self.value = ""
+        return True
+
+
 class PackagedAiConnectionSelftestTest(unittest.TestCase):
     def setUp(self) -> None:
         self.captured = {}
@@ -110,6 +128,22 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         self.assertEqual(
             environment["XDG_CONFIG_HOME"], str(root / ".config")
         )
+
+    def test_credential_selftest_retries_cleanup_after_false_delete_success(self) -> None:
+        from app_qml import main_qml
+
+        store = _StickyDeleteCredentialStore()
+        with patch.object(
+            main_qml,
+            "_create_credential_selftest_context",
+            return_value=(store, "packaged-selftest", "temporary-secret"),
+        ):
+            ok, message = main_qml._run_system_credential_selftest()
+
+        self.assertFalse(ok)
+        self.assertIn("仍可读取", message)
+        self.assertEqual(store.delete_calls, 2)
+        self.assertEqual(store.value, "")
 
     def test_rejects_success_marker_without_loopback_request(self) -> None:
         def disconnected_runner(args, **_kwargs):

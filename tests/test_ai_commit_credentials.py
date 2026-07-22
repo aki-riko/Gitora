@@ -79,6 +79,18 @@ class AiCommitCredentialsTest(unittest.TestCase):
         with self.assertRaisesRegex(CredentialStoreError, "不支持"):
             create_native_backend("linux")
 
+    @unittest.skipUnless(sys.platform == "win32", "仅 Windows 验证持久级别")
+    def test_windows_backend_persists_beyond_logon_session(self) -> None:
+        from keyring.backends.Windows import win32cred
+
+        backend = create_native_backend()
+
+        self.assertEqual(
+            backend.persist,
+            win32cred.CRED_PERSIST_LOCAL_MACHINE,
+        )
+        self.assertNotEqual(backend.persist, win32cred.CRED_PERSIST_SESSION)
+
     @unittest.skipUnless(
         sys.platform in {"win32", "darwin"},
         "真实系统凭据库测试仅在 Windows/macOS 运行",
