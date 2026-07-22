@@ -497,13 +497,14 @@ class AiCommitPlanBridge(QObject):
             logger.exception(f"恢复被丢弃的 AI 暂存结果异常: {type(exc).__name__}")
             ok = False
             message = "恢复暂存区时发生异常，请立即检查 git status"
-        finally:
-            self._execution_guard = False
         if ok:
             logger.warning("已恢复切仓库前的 AI 计划暂存区")
         else:
             logger.error("无法安全恢复被丢弃的 AI 计划暂存结果")
-        self.errorOccurred.emit(message)
+        try:
+            self.errorOccurred.emit(message)
+        finally:
+            self._execution_guard = False
 
     def _emit_error_if_current(self, serial: int, message: str) -> None:
         if self._request_state.is_serial_current(serial):
