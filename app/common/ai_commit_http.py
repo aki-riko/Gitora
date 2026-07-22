@@ -59,12 +59,19 @@ class HttpJsonClient:
         timeout_seconds: int,
         max_response_chars: int,
         opener: Any | None = None,
+        bypass_proxy: bool = False,
     ):
         if timeout_seconds <= 0 or max_response_chars <= 0:
             raise ValueError("网络限制必须为正整数")
         self.timeout_seconds = timeout_seconds
         self.max_response_chars = max_response_chars
-        self._opener = opener or urllib.request.build_opener(_NoRedirectHandler())
+        if opener is not None:
+            self._opener = opener
+        else:
+            handlers = [_NoRedirectHandler()]
+            if bypass_proxy:
+                handlers.insert(0, urllib.request.ProxyHandler({}))
+            self._opener = urllib.request.build_opener(*handlers)
 
     def request(
         self,
@@ -110,7 +117,9 @@ class OllamaProvider(ModelProvider):
         self.config = config
         self._base_url = self._validate_base_url(config.endpoint)
         self._client = HttpJsonClient(
-            config.timeout_seconds, config.max_response_chars
+            config.timeout_seconds,
+            config.max_response_chars,
+            bypass_proxy=not endpoint_requires_remote_consent(self._base_url),
         )
 
     @property

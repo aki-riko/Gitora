@@ -2,11 +2,12 @@
 from __future__ import annotations
 
 import json
+import os
 import threading
 import unittest
 import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from app.common.ai_commit_http import (
     endpoint_requires_remote_consent,
@@ -83,6 +84,10 @@ class _OllamaHandler(BaseHTTPRequestHandler):
         return
 
 
+class _ProxyCaptureHandler(_OllamaHandler):
+    requests: list[tuple[str, str, dict | None]] = []
+
+
 class _FakeResponse:
     def __init__(self, payload: dict):
         self.body = json.dumps(payload).encode("utf-8")
@@ -137,6 +142,33 @@ class AiCommitHttpTest(unittest.TestCase):
         self.assertFalse(post[2]["format"]["additionalProperties"])
         change_enum = post[2]["format"]["properties"]["groups"]["items"]["properties"]["change_ids"]["items"]["enum"]
         self.assertEqual(change_enum, ["file_1"])
+
+    def test_loopback_ollama_bypasses_environment_proxy(self) -> None:
+        _OllamaHandler.requests = []
+        _ProxyCaptureHandler.requests = []
+        target = ThreadingHTTPServer(("127.0.0.1", 0), _OllamaHandler)
+        proxy = ThreadingHTTPServer(("127.0.0.1", 0), _ProxyCaptureHandler)
+        for server in (target, proxy):
+            threading.Thread(target=server.serve_forever, daemon=True).start()
+            self.addCleanup(server.server_close)
+            self.addCleanup(server.shutdown)
+
+        proxy_url = f"http://127.0.0.1:{proxy.server_port}"
+        environment = {
+            "HTTP_PROXY": proxy_url,
+            "http_proxy": proxy_url,
+            "NO_PROXY": "",
+            "no_proxy": "",
+        }
+        endpoint = f"http://127.0.0.1:{target.server_port}"
+        with patch.dict(os.environ, environment):
+            provider = OllamaProvider(HttpProviderConfig(
+                endpoint, "local-model", "", 5, 100_000
+            ))
+            self.assertEqual(provider.list_models(), ("local-model",))
+
+        self.assertEqual(_ProxyCaptureHandler.requests, [])
+        self.assertIn(("GET", "/v1/models", None), _OllamaHandler.requests)
 
     def test_openai_responses_uses_structured_output_and_bearer_auth(self) -> None:
         output = {
