@@ -10,6 +10,18 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class AiCommitQmlContractTest(unittest.TestCase):
+    @staticmethod
+    def _settings_qml_source() -> str:
+        components = ROOT / "app_qml" / "qml" / "components"
+        return "\n".join(
+            (components / name).read_text(encoding="utf-8")
+            for name in (
+                "AiCommitSettingsCard.qml",
+                "AiCommitConnectionSection.qml",
+                "AiCommitRulesSection.qml",
+            )
+        )
+
     def test_main_registers_shared_ai_bridge(self) -> None:
         source = (ROOT / "app_qml" / "main_qml.py").read_text(encoding="utf-8")
         self.assertIn("AiCommitBridge(git_bridge.service)", source)
@@ -71,9 +83,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         )
 
     def test_settings_card_uses_system_credential_store_only(self) -> None:
-        source = (
-            ROOT / "app_qml" / "qml" / "components" / "AiCommitSettingsCard.qml"
-        ).read_text(encoding="utf-8")
+        source = self._settings_qml_source()
         self.assertIn("input.type_password", source)
         self.assertIn("AiCommitBridge.storeApiKey", source)
         self.assertIn("AiCommitBridge.deleteStoredApiKey", source)
@@ -85,6 +95,42 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("仅本机回环 Ollama 直接发送", source)
         self.assertIn("非本机 Ollama 与远程 API 每次发送前都会确认", source)
         self.assertNotIn("api_key\"", source)
+
+    def test_settings_card_groups_connection_and_generation_rules(self) -> None:
+        source = self._settings_qml_source()
+
+        self.assertIn('text: "模型连接"', source)
+        self.assertIn('text: "生成规则"', source)
+        self.assertIn('text: "模型来源"', source)
+        self.assertIn('text: "服务地址"', source)
+        self.assertIn('text: "系统凭据"', source)
+        self.assertIn('text: "环境变量回退（可选）"', source)
+        self.assertIn("Fluent.ToggleSwitch", source)
+        self.assertIn("AiCommitConnectionSection", source)
+        self.assertIn("AiCommitRulesSection", source)
+        self.assertIn("columns: root.compact ? 1 : 3", source)
+        self.assertIn("columns: root.compact ? 1 : 2", source)
+        self.assertIn("root.width < 760", source)
+        self.assertNotIn("connectionPanel", source)
+        self.assertNotIn("rulesPanel", source)
+        self.assertNotIn("enabledCheck", source)
+        self.assertNotIn("bodyCheck", source)
+
+    def test_rules_grid_keeps_both_columns_inside_available_width(self) -> None:
+        source = (
+            ROOT
+            / "app_qml"
+            / "qml"
+            / "components"
+            / "AiCommitRulesSection.qml"
+        ).read_text(encoding="utf-8")
+        column_constraints = source.split("id: rulesFields", 1)[1].split(
+            "id: bodyOptionLayout", 1
+        )[0]
+
+        self.assertEqual(column_constraints.count("Layout.minimumWidth: 0"), 2)
+        self.assertEqual(column_constraints.count("Layout.preferredWidth: 1"), 2)
+        self.assertIn("Layout.columnSpan: rulesFields.columns", source)
 
     def test_builds_include_native_keyring_dependencies_without_alt(self) -> None:
         windows = (ROOT / "build_nuitka.py").read_text(encoding="utf-8")

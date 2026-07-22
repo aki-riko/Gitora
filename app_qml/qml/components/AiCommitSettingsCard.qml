@@ -8,8 +8,12 @@ Fluent.SettingsCardGroup {
     title: "AI 提交规划"
 
     property bool _loading: false
+    property bool _hasEnvironmentApiKey: false
+    property bool _credentialStoreAvailable: true
+    property string _credentialStoreError: ""
     property var _providerValues: ["ollama", "openai_responses"]
     property var _scopeValues: ["staged", "all"]
+    readonly property bool _compactFields: root.width < 760
 
     Component.onCompleted: root.loadSettings()
 
@@ -43,140 +47,87 @@ Fluent.SettingsCardGroup {
 
             RowLayout {
                 Layout.fillWidth: true
+                spacing: Fluent.Enums.spacing.m
+
                 Fluent.Icon {
                     icon: Fluent.Enums.icon.code
                     size: 24
                     color: Fluent.Enums.textColor.secondary
+                    Layout.alignment: Qt.AlignTop
                 }
+
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: Fluent.Enums.spacing.xxs
+
                     Text {
-                        text: "模型只生成建议，不会自动提交或推送"
+                        Layout.fillWidth: true
+                        text: "让模型整理提交，执行权始终在你手里"
+                        textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.body
                         font.bold: true
                     }
+
                     Text {
                         Layout.fillWidth: true
-                        text: "仅本机回环 Ollama 直接发送；非本机 Ollama 与远程 API 每次发送前都会确认范围。"
+                        text: "生成提交信息与拆分建议，不会自动提交或推送。"
+                        textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.caption
                         wrapMode: Text.WordWrap
                     }
                 }
-                Fluent.CheckBox {
-                    id: enabledCheck
-                    text: "启用"
+
+                Fluent.ToggleSwitch {
+                    id: enabledSwitch
+                    text: "启用 AI 规划"
+                    Layout.alignment: Qt.AlignTop
                 }
             }
 
-            GridLayout {
+            Fluent.Separator { Layout.fillWidth: true }
+
+            AiCommitConnectionSection {
+                id: connectionSection
                 Layout.fillWidth: true
-                columns: root.width < 760 ? 1 : 2
-                columnSpacing: Fluent.Enums.spacing.m
-                rowSpacing: Fluent.Enums.spacing.s
-
-                Fluent.ComboBox {
-                    id: providerCombo
-                    Layout.fillWidth: true
-                    model: ["本地 Ollama", "远程 Responses API"]
-                    currentIndex: 0
-                }
-
-                Fluent.ComboBox {
-                    id: scopeCombo
-                    Layout.fillWidth: true
-                    model: ["提交规划：仅已暂存差异", "提交规划：全部工作区改动"]
-                    currentIndex: 0
-                }
-
-                Fluent.LineEdit {
-                    id: localEndpointInput
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 0
-                    placeholderText: "Ollama 服务地址"
-                }
-                Fluent.LineEdit {
-                    id: localModelInput
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 0
-                    placeholderText: "本地模型名"
-                }
-
-                Fluent.LineEdit {
-                    id: remoteEndpointInput
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 1
-                    placeholderText: "Responses API 完整 HTTPS 地址"
-                }
-                Fluent.LineEdit {
-                    id: remoteModelInput
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 1
-                    placeholderText: "远程模型名"
-                }
-
-                Fluent.LineEdit {
-                    id: apiKeyEnvInput
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 1
-                    placeholderText: "密钥环境变量名"
-                }
-                Fluent.LineEdit {
-                    id: apiKeyInput
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 1
-                    inputType: Fluent.Enums.input.type_password
-                    placeholderText: "API 密钥（保存到系统凭据库）"
-                }
+                compact: root._compactFields
+                hasStoredApiKey: Boolean(
+                    AiCommitBridge && AiCommitBridge.hasStoredApiKey
+                )
+                credentialStatusText: root.credentialStatusText()
+                credentialStatusColor: root.credentialStatusColor()
+                onDeleteCredentialRequested: root.deleteStoredCredential()
             }
 
-            RowLayout {
+            Fluent.Separator { Layout.fillWidth: true }
+
+            AiCommitRulesSection {
+                id: rulesSection
                 Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.m
-
-                Fluent.CheckBox {
-                    id: bodyCheck
-                    text: "生成提交正文"
-                }
-                Text {
-                    Layout.fillWidth: true
-                    visible: providerCombo.currentIndex === 1
-                    text: {
-                        if (!AiCommitBridge) return ""
-                        if (AiCommitBridge.hasStoredApiKey) return "已保存到系统凭据库"
-                        var settings = AiCommitBridge.getSettings()
-                        if (settings.hasEnvironmentApiKey) return "已检测到环境变量密钥"
-                        if (!settings.credentialStoreAvailable)
-                            return settings.credentialStoreError || "系统凭据库不可用"
-                        return "未保存远程密钥"
-                    }
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    horizontalAlignment: Text.AlignRight
-                }
+                compact: root._compactFields
             }
+
+            Fluent.Separator { Layout.fillWidth: true }
 
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Fluent.Enums.spacing.s
-                Fluent.Button {
-                    text: "删除系统凭据"
-                    visible: providerCombo.currentIndex === 1 && AiCommitBridge && AiCommitBridge.hasStoredApiKey
-                    style: Fluent.Enums.button.style_transparent
-                    onClicked: {
-                        var result = AiCommitBridge.deleteStoredApiKey()
-                        if (result[0])
-                            Fluent.NotificationManager.toast.success(root, "系统凭据", result[1] || "密钥已删除")
-                        else
-                            Fluent.NotificationManager.toast.error(root, "删除失败", result[1] || "无法删除系统凭据")
-                    }
+
+                Text {
+                    Layout.fillWidth: true
+                    text: enabledSwitch.checked
+                        ? "保存后即可在仓库页使用 AI 规划"
+                        : "AI 提交规划当前未启用"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.tertiary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    elide: Text.ElideRight
                 }
-                Item { Layout.fillWidth: true }
+
                 Fluent.Button {
                     text: AiCommitBridge && AiCommitBridge.busy ? "检测中…" : "检测连接"
                     enabled: AiCommitBridge && !AiCommitBridge.busy
@@ -184,8 +135,10 @@ Fluent.SettingsCardGroup {
                         if (root.saveSettings(false)) AiCommitBridge.testConnection()
                     }
                 }
+
                 Fluent.Button {
-                    text: "保存"
+                    text: "保存设置"
+                    icon: Fluent.Enums.icon.save
                     style: Fluent.Enums.button.style_primary
                     onClicked: root.saveSettings(true)
                 }
@@ -193,36 +146,66 @@ Fluent.SettingsCardGroup {
         }
     }
 
+    function credentialStatusText() {
+        if (!AiCommitBridge) return ""
+        if (AiCommitBridge.hasStoredApiKey) return "已安全保存到系统凭据库"
+        if (root._hasEnvironmentApiKey) return "将使用环境变量中的密钥"
+        if (!root._credentialStoreAvailable)
+            return root._credentialStoreError || "系统凭据库不可用"
+        return "尚未保存 API 密钥"
+    }
+
+    function credentialStatusColor() {
+        if (AiCommitBridge && AiCommitBridge.hasStoredApiKey)
+            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.successStr)
+        if (!root._credentialStoreAvailable)
+            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.errorStr)
+        if (root._hasEnvironmentApiKey)
+            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.infoStr)
+        return Fluent.Enums.textColor.tertiary
+    }
+
+    function deleteStoredCredential() {
+        var result = AiCommitBridge.deleteStoredApiKey()
+        if (result[0])
+            Fluent.NotificationManager.toast.success(root, "系统凭据", result[1] || "密钥已删除")
+        else
+            Fluent.NotificationManager.toast.error(root, "删除失败", result[1] || "无法删除系统凭据")
+    }
+
     function loadSettings() {
         if (!AiCommitBridge || root._loading) return
         root._loading = true
         var settings = AiCommitBridge.getSettings()
-        enabledCheck.checked = settings.enabled
+        enabledSwitch.checked = settings.enabled
         var providerIndex = root._providerValues.indexOf(settings.provider)
-        providerCombo.currentIndex = providerIndex >= 0 ? providerIndex : 0
-        localEndpointInput.text = settings.localEndpoint || ""
-        localModelInput.text = settings.localModel || ""
-        remoteEndpointInput.text = settings.remoteEndpoint || ""
-        remoteModelInput.text = settings.remoteModel || ""
-        apiKeyEnvInput.text = settings.apiKeyEnv || ""
-        bodyCheck.checked = settings.generateBody
+        connectionSection.providerIndex = providerIndex >= 0 ? providerIndex : 0
+        connectionSection.localEndpoint = settings.localEndpoint || ""
+        connectionSection.localModel = settings.localModel || ""
+        connectionSection.remoteEndpoint = settings.remoteEndpoint || ""
+        connectionSection.remoteModel = settings.remoteModel || ""
+        connectionSection.apiKeyEnvironment = settings.apiKeyEnv || ""
+        rulesSection.generateBody = settings.generateBody
+        root._hasEnvironmentApiKey = settings.hasEnvironmentApiKey || false
+        root._credentialStoreAvailable = settings.credentialStoreAvailable !== false
+        root._credentialStoreError = settings.credentialStoreError || ""
         var scopeIndex = root._scopeValues.indexOf(settings.remoteScope)
-        scopeCombo.currentIndex = scopeIndex >= 0 ? scopeIndex : 0
+        rulesSection.scopeIndex = scopeIndex >= 0 ? scopeIndex : 0
         root._loading = false
     }
 
     function saveSettings(showToast) {
         if (!AiCommitBridge) return false
         var result = AiCommitBridge.saveSettings(
-            enabledCheck.checked,
-            root._providerValues[providerCombo.currentIndex],
-            localEndpointInput.text.trim(),
-            localModelInput.text.trim(),
-            remoteEndpointInput.text.trim(),
-            remoteModelInput.text.trim(),
-            apiKeyEnvInput.text.trim(),
-            bodyCheck.checked,
-            root._scopeValues[scopeCombo.currentIndex]
+            enabledSwitch.checked,
+            root._providerValues[connectionSection.providerIndex],
+            connectionSection.localEndpoint.trim(),
+            connectionSection.localModel.trim(),
+            connectionSection.remoteEndpoint.trim(),
+            connectionSection.remoteModel.trim(),
+            connectionSection.apiKeyEnvironment.trim(),
+            rulesSection.generateBody,
+            root._scopeValues[rulesSection.scopeIndex]
         )
         if (!result[0]) {
             Fluent.NotificationManager.toast.error(root, "保存失败", result[1] || "")
@@ -242,9 +225,9 @@ Fluent.SettingsCardGroup {
     }
 
     function saveCredentialInput() {
-        if (apiKeyInput.text.length === 0) return [true, ""]
-        var result = AiCommitBridge.storeApiKey(apiKeyInput.text)
-        if (result[0]) apiKeyInput.text = ""
+        if (connectionSection.credentialInput.length === 0) return [true, ""]
+        var result = AiCommitBridge.storeApiKey(connectionSection.credentialInput)
+        if (result[0]) connectionSection.credentialInput = ""
         return result
     }
 }
