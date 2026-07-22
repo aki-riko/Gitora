@@ -266,11 +266,23 @@ class AiCommitPlanBridge(QObject):
 
     @Slot(str)
     def invalidateRepo(self, _path: str) -> None:
+        applied_to_restore = (
+            self._applied
+            if self._awaiting_commit and not self._execution_guard
+            else None
+        )
         if not self._execution_guard:
             self._cancel_request()
         self._model.clear()
         self._set_awaiting_commit(False)
         self._applied = None
+        if applied_to_restore is not None:
+            self._execution_guard = True
+            threading.Thread(
+                target=self._restore_discarded_apply,
+                args=(applied_to_restore,),
+                daemon=True,
+            ).start()
 
     @Slot()
     def clearPlan(self) -> None:

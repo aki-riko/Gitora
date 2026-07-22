@@ -412,6 +412,44 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, "")
         self.assertTrue(any("已恢复" in message for message in errors))
 
+    def test_repo_switch_while_awaiting_commit_restores_old_index(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        other_repo = init_repo(Path(self.temp_dir.name) / "awaiting-other-repo")
+        write_file(other_repo, "other.txt", "other\n")
+        commit_all(other_repo, "chore: other")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        applied: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+        bridge.groupApplied.connect(lambda *args: applied.append(args))
+        bridge.errorOccurred.connect(errors.append)
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        before_tree = run_git(self.repo, "write-tree").stdout.strip()
+
+        bridge.applyNextGroup()
+        self.assertTrue(self.wait_until(lambda: len(applied) == 1))
+        self.assertTrue(bridge.awaitingCommit)
+        self.assertNotEqual(
+            run_git(self.repo, "write-tree").stdout.strip(), before_tree
+        )
+
+        self.service.set_repo_path(str(other_repo), emit_status=False)
+        bridge.invalidateRepo(str(other_repo))
+
+        self.assertTrue(self.wait_until(lambda: not bridge._execution_guard))
+        self.assertEqual(run_git(self.repo, "write-tree").stdout.strip(), before_tree)
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, "")
+        self.assertFalse(bridge.awaitingCommit)
+        self.assertFalse(bridge.planModel.hasPlan)
+        self.assertTrue(any("已恢复" in message for message in errors))
+
     def wait_until(self, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
