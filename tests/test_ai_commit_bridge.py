@@ -178,6 +178,23 @@ class AiCommitBridgeTest(unittest.TestCase):
         bridge.clearSessionApiKey()
         self.assertFalse(bridge.hasSessionApiKey)
 
+    def test_session_key_change_invalidates_prepared_remote_request(self) -> None:
+        self.stage_change()
+        bridge = self.make_bridge("openai_responses")
+        prepared: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.errorOccurred.connect(errors.append)
+        bridge.prepareCommitMessage()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+
+        bridge.setSessionApiKey("replacement-session-key")
+        bridge.generatePrepared(prepared[0][0], True)
+
+        self.assertTrue(self.wait_until(lambda: bool(errors)))
+        self.assertIn("已过期", errors[-1])
+        self.assertEqual(self.provider.requests, [])
+
     def test_prepared_request_resolves_its_own_environment_key_name(self) -> None:
         self.stage_change()
         settings = self.store.load().with_user_values({

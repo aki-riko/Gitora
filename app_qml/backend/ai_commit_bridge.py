@@ -149,11 +149,13 @@ class AiCommitBridge(QObject):
 
     @Slot(str)
     def setSessionApiKey(self, value: str) -> None:
+        self.invalidateWorkspace()
         self._session_api_key = value
         self.settingsChanged.emit()
 
     @Slot()
     def clearSessionApiKey(self) -> None:
+        self.invalidateWorkspace()
         self._session_api_key = ""
         self.settingsChanged.emit()
 
