@@ -89,9 +89,11 @@ def _run_executable(
     timeout_seconds: int,
     runner: Callable[..., subprocess.CompletedProcess[str]],
 ) -> subprocess.CompletedProcess[str]:
+    resolved_executable = executable.resolve(strict=True)
     try:
         return runner(
-            [str(executable)], cwd=str(executable.parent), env=environment,
+            [str(resolved_executable)], cwd=str(resolved_executable.parent),
+            env=environment,
             capture_output=True, text=True, encoding="utf-8", errors="replace",
             timeout=timeout_seconds, check=False,
         )

@@ -36,7 +36,11 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         ) as response:
             models = json.loads(response.read().decode("utf-8"))
         self.captured.update(
-            settings=settings, environment=environment, models=models
+            args=args,
+            cwd=kwargs["cwd"],
+            settings=settings,
+            environment=environment,
+            models=models,
         )
         return subprocess.CompletedProcess(
             args, 0,
@@ -63,6 +67,19 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         self.assertEqual(
             self.captured["environment"]["PYTHONIOENCODING"], "utf-8"
         )
+
+    def test_resolves_relative_executable_before_changing_cwd(self) -> None:
+        relative_executable = Path(os.path.relpath(sys.executable, Path.cwd()))
+
+        run_connection_selftest(
+            relative_executable,
+            timeout_seconds=5,
+            runner=self._connected_runner,
+        )
+
+        resolved_executable = Path(sys.executable).resolve()
+        self.assertEqual(Path(self.captured["args"][0]), resolved_executable)
+        self.assertEqual(Path(self.captured["cwd"]), resolved_executable.parent)
 
     def test_rejects_success_marker_without_loopback_request(self) -> None:
         def disconnected_runner(args, **_kwargs):
