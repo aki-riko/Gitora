@@ -68,8 +68,12 @@ class _OllamaHandler(BaseHTTPRequestHandler):
         payload = json.loads(self.rfile.read(length).decode("utf-8"))
         self.__class__.requests.append(("POST", self.path, payload))
         self._send({
-            "message": {"role": "assistant", "content": json.dumps(plan_payload())},
-            "done": True,
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(plan_payload()),
+                },
+            }],
         })
 
     def _send(self, payload: dict) -> None:
@@ -121,7 +125,7 @@ class AiCommitHttpTest(unittest.TestCase):
                     endpoint_requires_remote_consent(endpoint), expected
                 )
 
-    def test_ollama_uses_verified_chat_schema_and_model_list_endpoints(self) -> None:
+    def test_local_provider_uses_openai_compatible_schema_and_endpoints(self) -> None:
         _OllamaHandler.requests = []
         server = ThreadingHTTPServer(("127.0.0.1", 0), _OllamaHandler)
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -136,11 +140,15 @@ class AiCommitHttpTest(unittest.TestCase):
 
         self.assertEqual(result["snapshot_id"], "snapshot-1")
         post = next(item for item in _OllamaHandler.requests if item[0] == "POST")
-        self.assertEqual(post[1], "/api/chat")
+        self.assertEqual(post[1], "/v1/chat/completions")
         self.assertFalse(post[2]["stream"])
-        self.assertFalse(post[2]["think"])
-        self.assertFalse(post[2]["format"]["additionalProperties"])
-        change_enum = post[2]["format"]["properties"]["groups"]["items"]["properties"]["change_ids"]["items"]["enum"]
+        response_format = post[2]["response_format"]
+        self.assertEqual(response_format["type"], "json_schema")
+        self.assertEqual(response_format["json_schema"]["name"], "gitora_commit_plan")
+        self.assertTrue(response_format["json_schema"]["strict"])
+        schema = response_format["json_schema"]["schema"]
+        self.assertFalse(schema["additionalProperties"])
+        change_enum = schema["properties"]["groups"]["items"]["properties"]["change_ids"]["items"]["enum"]
         self.assertEqual(change_enum, ["file_1"])
 
     def test_loopback_ollama_bypasses_environment_proxy(self) -> None:

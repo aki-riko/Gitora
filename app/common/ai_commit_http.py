@@ -1,5 +1,5 @@
 # coding: utf-8
-"""基于已核对官方接口的远程 Responses 与本地 Ollama 提供方。"""
+"""基于已核对接口的远程 Responses 与本地 OpenAI 兼容提供方。"""
 from __future__ import annotations
 
 import ipaddress
@@ -150,7 +150,7 @@ class OllamaProvider(ModelProvider):
         self._check_ready(cancel_event)
         response = self._client.request(
             "POST",
-            self._base_url + "/api/chat",
+            self._base_url + "/v1/chat/completions",
             {
                 "model": self.config.model,
                 "messages": [
@@ -158,20 +158,22 @@ class OllamaProvider(ModelProvider):
                     {"role": "user", "content": build_user_input(request)},
                 ],
                 "stream": False,
-                "think": False,
-                "format": build_plan_schema(request),
+                "response_format": {
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "gitora_commit_plan",
+                        "strict": True,
+                        "schema": build_plan_schema(request),
+                    },
+                },
             },
         )
         self._check_cancelled(cancel_event)
-        try:
-            content = response["message"]["content"]
-        except (KeyError, TypeError) as exc:
-            raise HttpProviderError("Ollama 响应缺少 message.content") from exc
-        return self._parse_plan_text(content)
+        return self._parse_plan_text(self._extract_chat_content(response))
 
     def list_models(self) -> tuple[str, ...]:
         response = self._client.request("GET", self._base_url + "/v1/models")
-        return _extract_model_ids(response, "Ollama ")
+        return _extract_model_ids(response, "本地服务")
 
     def _check_ready(self, cancel_event: Event | None) -> None:
         self._check_cancelled(cancel_event)
@@ -192,6 +194,15 @@ class OllamaProvider(ModelProvider):
     def _check_cancelled(cancel_event: Event | None) -> None:
         if cancel_event is not None and cancel_event.is_set():
             raise ProviderCancelledError("请求已取消")
+
+    @staticmethod
+    def _extract_chat_content(response: Mapping[str, Any]) -> Any:
+        try:
+            return response["choices"][0]["message"]["content"]
+        except (IndexError, KeyError, TypeError) as exc:
+            raise HttpProviderError(
+                "本地模型响应缺少 choices[0].message.content"
+            ) from exc
 
     @staticmethod
     def _parse_plan_text(content: Any) -> Mapping[str, Any]:
