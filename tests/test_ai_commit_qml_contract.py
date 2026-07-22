@@ -127,6 +127,22 @@ class AiCommitQmlContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn("tools/packaged_ai_connection_selftest.py", source)
         self.assertIn("AI 连接检测成功", source)
+        self.assertIn("actions/checkout@v7", source)
+        self.assertIn("actions/setup-python@v7", source)
+        self.assertEqual(source.count("actions/upload-artifact@v7"), 2)
+
+    def test_cross_platform_selftest_uses_node_24_actions(self) -> None:
+        source = (
+            ROOT / ".github" / "workflows" / "selftest-crossplatform.yml"
+        ).read_text(encoding="utf-8")
+        self.assertIn("actions/checkout@v7", source)
+        self.assertIn("actions/setup-python@v7", source)
+
+    def test_implementation_plan_records_remaining_quality_evaluation(self) -> None:
+        source = (
+            ROOT / "docs" / "ai-commit-planner-plan.md"
+        ).read_text(encoding="utf-8")
+        self.assertIn("状态: 已实施（v1.3.0；真实模型质量评测待运行）", source)
 
 
 if __name__ == "__main__":
