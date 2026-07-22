@@ -38,10 +38,10 @@ Item {
 
     function _op(res) {
         if (res[0]) {
-            Fluent.NotificationManager.toast.success(root, "成功", res[1] || "操作完成")
+            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
             root.reload()
         } else {
-            Fluent.NotificationManager.toast.error(root, "失败", res[1] || "操作失败")
+            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
         }
     }
 

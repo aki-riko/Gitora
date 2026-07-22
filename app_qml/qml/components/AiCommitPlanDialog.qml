@@ -93,23 +93,23 @@ Fluent.DialogBoxCore {
         function onPlanReady(ok, message) {
             dlg._preparedRequestId = ""
             if (ok)
-                Fluent.NotificationManager.toast.success(dlg, "提交计划已生成", message)
+                Fluent.NotificationManager.desktop.success("提交计划已生成", message)
         }
         function onErrorOccurred(message) {
             dlg._preparedRequestId = ""
-            Fluent.NotificationManager.toast.error(dlg, "提交规划失败", message)
+            Fluent.NotificationManager.desktop.error("提交规划失败", message)
         }
         function onGroupApplied(groupId, title, body, message) {
             dlg._preparedRequestId = ""
             dlg.groupApplied(title, body)
-            Fluent.NotificationManager.toast.success(dlg, "计划组已应用", message)
+            Fluent.NotificationManager.desktop.success("计划组已应用", message)
             dlg.reject()
         }
         function onPlanAdvanced(completed, message) {
             if (completed)
-                Fluent.NotificationManager.toast.success(dlg, "提交计划完成", message)
+                Fluent.NotificationManager.desktop.success("提交计划完成", message)
             else
-                Fluent.NotificationManager.toast.info(dlg, "提交计划已推进", message)
+                Fluent.NotificationManager.desktop.info("提交计划已推进", message)
         }
     }
 

@@ -86,8 +86,7 @@ Item {
         if (AiCommitBridge.busy) {
             AiCommitBridge.cancelCurrent()
             root._aiPreparedRequestId = ""
-            Fluent.NotificationManager.toast.info(
-                root, "已取消 AI 生成", "现有提交信息保持不变"
+            Fluent.NotificationManager.desktop.info("已取消 AI 生成", "现有提交信息保持不变"
             )
         } else {
             AiCommitBridge.prepareCommitMessage()
@@ -101,23 +100,21 @@ Item {
             root._clearCommitMessage()
             if (AiCommitPlanBridge)
                 AiCommitPlanBridge.notifyCommitSucceeded()
-            Fluent.NotificationManager.toast.success(root, "提交成功", res[1] || "")
+            Fluent.NotificationManager.desktop.success("提交成功", res[1] || "")
             root.reload()
         } else {
-            Fluent.NotificationManager.toast.error(root, "提交失败", res[1] || "")
+            Fluent.NotificationManager.desktop.error("提交失败", res[1] || "")
         }
     }
 
     function _requestAmend() {
         if (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit) {
-            Fluent.NotificationManager.toast.warning(
-                root, "无法修补", "请先用普通提交完成当前计划组"
+            Fluent.NotificationManager.desktop.warning("无法修补", "请先用普通提交完成当前计划组"
             )
             return
         }
         if (!commitComposer.hasTitle) {
-            Fluent.NotificationManager.toast.warning(
-                root, "无法修补", "请先填写修补后的提交标题"
+            Fluent.NotificationManager.desktop.warning("无法修补", "请先填写修补后的提交标题"
             )
             return
         }
@@ -139,10 +136,10 @@ Item {
         var res = GitBridge.amendCommit(root._commitMessage())
         if (res[0]) {
             root._clearCommitMessage()
-            Fluent.NotificationManager.toast.success(root, "已修补提交", res[1] || "")
+            Fluent.NotificationManager.desktop.success("已修补提交", res[1] || "")
             root.reload()
         } else {
-            Fluent.NotificationManager.toast.error(root, "修补失败", res[1] || "")
+            Fluent.NotificationManager.desktop.error("修补失败", res[1] || "")
         }
     }
 
@@ -256,9 +253,9 @@ Item {
             root._aiPreparedRequestId = ""
             if (ok) {
                 root._setCommitMessage(title, body)
-                Fluent.NotificationManager.toast.success(root, "提交信息已生成", message || "可继续编辑后提交")
+                Fluent.NotificationManager.desktop.success("提交信息已生成", message || "可继续编辑后提交")
             } else {
-                Fluent.NotificationManager.toast.error(root, "生成失败", message || "")
+                Fluent.NotificationManager.desktop.error("生成失败", message || "")
             }
         }
         function onErrorOccurred(message) {
@@ -872,9 +869,9 @@ Item {
         onConfirmed: {
             var ok = GitBridge.discardFile(_path)
             if (ok)
-                Fluent.NotificationManager.toast.success(root, "已丢弃", _path)
+                Fluent.NotificationManager.desktop.success("已丢弃", _path)
             else
-                Fluent.NotificationManager.toast.error(root, "失败", "丢弃失败: " + _path)
+                Fluent.NotificationManager.desktop.error("失败", "丢弃失败: " + _path)
         }
     }
 

@@ -79,8 +79,7 @@ Item {
                 return
             }
         }
-        Fluent.NotificationManager.toast.error(
-            root, "无法跳转", "关联提交不在当前分支历史中"
+        Fluent.NotificationManager.desktop.error("无法跳转", "关联提交不在当前分支历史中"
         )
     }
 
@@ -112,9 +111,9 @@ Item {
 
     function _op(res) {
         if (res[0]) {
-            Fluent.NotificationManager.toast.success(root, "成功", res[1] || "操作完成")
+            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
         } else {
-            Fluent.NotificationManager.toast.error(root, "失败", res[1] || "操作失败")
+            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
         }
     }
 

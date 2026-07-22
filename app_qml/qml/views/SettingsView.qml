@@ -262,17 +262,17 @@ Item {
     // ==================== 操作 ====================
     function _cleanFiles() {
         if (!GitBridge || !GitBridge.repoPath) {
-            Fluent.NotificationManager.toast.warning(root, "提示", "请先打开一个 Git 仓库")
+            Fluent.NotificationManager.desktop.warning("提示", "请先打开一个 Git 仓库")
             return
         }
         var res = GitBridge.clean(true)
-        if (res[0]) Fluent.NotificationManager.toast.success(root, "清理完成", res[1] || "")
-        else Fluent.NotificationManager.toast.error(root, "清理失败", res[1] || "")
+        if (res[0]) Fluent.NotificationManager.desktop.success("清理完成", res[1] || "")
+        else Fluent.NotificationManager.desktop.error("清理失败", res[1] || "")
     }
 
     function _runGc() {
         if (!GitBridge || !GitBridge.repoPath) {
-            Fluent.NotificationManager.toast.warning(root, "提示", "请先打开一个 Git 仓库")
+            Fluent.NotificationManager.desktop.warning("提示", "请先打开一个 Git 仓库")
             return
         }
         GitBridge.gc()  // 异步,结果经 operationFinished 反馈(由全局监听统一弹 toast,避免重复)
@@ -289,13 +289,13 @@ Item {
 
     function _saveGitUserInfo() {
         if (!GitBridge) {
-            Fluent.NotificationManager.toast.warning(root, "提示", "Git 组件不可用")
+            Fluent.NotificationManager.desktop.warning("提示", "Git 组件不可用")
             return
         }
         var name = root._gitUserName.trim()
         var email = root._gitUserEmail.trim()
         if (name.length === 0 || email.length === 0) {
-            Fluent.NotificationManager.toast.warning(root, "提示", "请填写用户名和邮箱")
+            Fluent.NotificationManager.desktop.warning("提示", "请填写用户名和邮箱")
             return
         }
 
@@ -303,9 +303,9 @@ Item {
         if (res[0]) {
             root._gitUserName = name
             root._gitUserEmail = email
-            Fluent.NotificationManager.toast.success(root, "已保存 Git 用户", name + " <" + email + ">")
+            Fluent.NotificationManager.desktop.success("已保存 Git 用户", name + " <" + email + ">")
         } else {
-            Fluent.NotificationManager.toast.error(root, "保存失败", res[1] || "")
+            Fluent.NotificationManager.desktop.error("保存失败", res[1] || "")
         }
     }
 
@@ -315,7 +315,7 @@ Item {
     // 和主窗口 host(弹框/提示)接收,职责不重叠。
     function _manualCheck() {
         if (!Updater) {
-            Fluent.NotificationManager.toast.warning(root, "提示", "更新组件不可用")
+            Fluent.NotificationManager.desktop.warning("提示", "更新组件不可用")
             return
         }
         root._checking = true

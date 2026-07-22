@@ -1,4 +1,4 @@
-// 主窗口级耗时操作 toast 进度承载
+// 主窗口级耗时操作桌面进度通知承载
 import QtQuick
 
 import PrismQML as Fluent
@@ -54,15 +54,26 @@ Item {
         return toast
     }
 
+    function _createProgressNotification(title, message, feature) {
+        return Fluent.NotificationManager.desktop.info(
+            title,
+            message,
+            0,
+            undefined,
+            {
+                "feature": feature,
+                "progress": 0
+            }
+        )
+    }
+
     function _ensureGitToast(determinate, title, message) {
         var feature = determinate
             ? Fluent.Enums.notification.feature_progress_ring
             : Fluent.Enums.notification.feature_indeterminate_ring
         var toast = root._gitToast
         if (!toast || !toast.visible) {
-            toast = determinate
-                ? Fluent.NotificationManager.toast.progressRing(root, title, message)
-                : Fluent.NotificationManager.toast.indeterminateRing(root, title, message)
+            toast = root._createProgressNotification(title, message, feature)
             root._gitToast = root._trackGitToast(toast)
         }
         if (!toast) return null
@@ -79,9 +90,7 @@ Item {
             : Fluent.Enums.notification.feature_indeterminate_ring
         var toast = root._downloadToast
         if (!toast || !toast.visible) {
-            toast = determinate
-                ? Fluent.NotificationManager.toast.progressRing(root, title, message)
-                : Fluent.NotificationManager.toast.indeterminateRing(root, title, message)
+            toast = root._createProgressNotification(title, message, feature)
             root._downloadToast = root._trackDownloadToast(toast)
         }
         if (!toast) return null
@@ -94,9 +103,9 @@ Item {
 
     function _showResult(ok, title, message) {
         if (ok)
-            Fluent.NotificationManager.toast.success(root, title, message || "")
+            Fluent.NotificationManager.desktop.success(title, message || "")
         else
-            Fluent.NotificationManager.toast.error(root, title, message || "")
+            Fluent.NotificationManager.desktop.error(title, message || "")
     }
 
     function _finishProgressToast(toast, isDownloadToast, ok, title, message) {
@@ -200,13 +209,13 @@ Item {
 
         function onUpToDate(currentVersion) {
             if (!root._updateSilent)
-                Fluent.NotificationManager.toast.success(root, "已是最新", "当前已是最新版本 " + currentVersion)
+                Fluent.NotificationManager.desktop.success("已是最新", "当前已是最新版本 " + currentVersion)
             root._updateSilent = false
         }
 
         function onCheckFailed(error) {
             if (!root._updateSilent)
-                Fluent.NotificationManager.toast.error(root, "检查更新失败", error || "网络错误")
+                Fluent.NotificationManager.desktop.error("检查更新失败", error || "网络错误")
             root._updateSilent = false
         }
 
@@ -229,7 +238,7 @@ Item {
             var args = AppInfo ? AppInfo.installerSilentArgs : ""
             var ok = Updater.runInstallerAndQuit(localPath, args)
             if (!ok)
-                Fluent.NotificationManager.toast.warning(root, "安装未开始", "已取消或需要管理员权限,安装包已下载到临时目录,可手动运行")
+                Fluent.NotificationManager.desktop.warning("安装未开始", "已取消或需要管理员权限,安装包已下载到临时目录,可手动运行")
         }
 
         function onDownloadFailed(error) {

@@ -149,12 +149,12 @@ Fluent.DialogBoxCore {
             onClicked: {
                 var res = GitBridge.addRemote(addNameInput.text, addUrlInput.text)
                 if (res[0]) {
-                    Fluent.NotificationManager.toast.success(dlg, "已添加远程", addNameInput.text)
+                    Fluent.NotificationManager.desktop.success("已添加远程", addNameInput.text)
                     dlg.remoteRequested(addNameInput.text, addUrlInput.text)
                     addNameInput.text = ""; addUrlInput.text = ""
                     dlg.refresh()
                 } else {
-                    Fluent.NotificationManager.toast.error(dlg, "添加失败", res[1] || "")
+                    Fluent.NotificationManager.desktop.error("添加失败", res[1] || "")
                 }
             }
         }
@@ -170,10 +170,10 @@ Fluent.DialogBoxCore {
         onAccepted: {
             var res = GitBridge.removeRemote(dlg._pendingDelete)
             if (res[0]) {
-                Fluent.NotificationManager.toast.success(dlg, "已删除远程", dlg._pendingDelete)
+                Fluent.NotificationManager.desktop.success("已删除远程", dlg._pendingDelete)
                 dlg.refresh()
             } else {
-                Fluent.NotificationManager.toast.error(dlg, "删除失败", res[1] || "")
+                Fluent.NotificationManager.desktop.error("删除失败", res[1] || "")
             }
             dlg._pendingDelete = ""
         }
@@ -188,10 +188,10 @@ Fluent.DialogBoxCore {
         onAccepted: {
             var res = GitBridge.setRemoteUrl(dlg._editTarget, editUrlInput.text)
             if (res[0]) {
-                Fluent.NotificationManager.toast.success(dlg, "已更新 URL", dlg._editTarget)
+                Fluent.NotificationManager.desktop.success("已更新 URL", dlg._editTarget)
                 dlg.refresh()
             } else {
-                Fluent.NotificationManager.toast.error(dlg, "更新失败", res[1] || "")
+                Fluent.NotificationManager.desktop.error("更新失败", res[1] || "")
             }
         }
         ColumnLayout {
@@ -220,10 +220,10 @@ Fluent.DialogBoxCore {
         onAccepted: {
             var res = GitBridge.renameRemote(dlg._renameTarget, renameRemoteInput.text)
             if (res[0]) {
-                Fluent.NotificationManager.toast.success(dlg, "已重命名远程", res[1] || "")
+                Fluent.NotificationManager.desktop.success("已重命名远程", res[1] || "")
                 dlg.refresh()
             } else {
-                Fluent.NotificationManager.toast.error(dlg, "重命名失败", res[1] || "")
+                Fluent.NotificationManager.desktop.error("重命名失败", res[1] || "")
             }
             dlg._renameTarget = ""
             renameRemoteInput.text = ""

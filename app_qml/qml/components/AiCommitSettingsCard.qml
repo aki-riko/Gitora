@@ -25,9 +25,9 @@ Fluent.SettingsCardGroup {
         function onSettingsChanged() { root.loadSettings() }
         function onConnectionTestFinished(ok, message) {
             if (ok)
-                Fluent.NotificationManager.toast.success(root, "连接检测", message)
+                Fluent.NotificationManager.desktop.success("连接检测", message)
             else
-                Fluent.NotificationManager.toast.error(root, "连接失败", message)
+                Fluent.NotificationManager.desktop.error("连接失败", message)
         }
         function onModelListFinished(provider, ok, models, message) {
             if (provider !== root._modelFetchProvider) return
@@ -38,9 +38,9 @@ Fluent.SettingsCardGroup {
             if (!matchesCurrentConnection) return
             if (ok) {
                 connectionSection.setAvailableModels(provider, models)
-                Fluent.NotificationManager.toast.success(root, "模型列表", message)
+                Fluent.NotificationManager.desktop.success("模型列表", message)
             } else {
-                Fluent.NotificationManager.toast.error(root, "获取失败", message)
+                Fluent.NotificationManager.desktop.error("获取失败", message)
             }
         }
         function onBusyChanged() {
@@ -191,9 +191,9 @@ Fluent.SettingsCardGroup {
     function deleteStoredCredential() {
         var result = AiCommitBridge.deleteStoredApiKey()
         if (result[0])
-            Fluent.NotificationManager.toast.success(root, "系统凭据", result[1] || "密钥已删除")
+            Fluent.NotificationManager.desktop.success("系统凭据", result[1] || "密钥已删除")
         else
-            Fluent.NotificationManager.toast.error(root, "删除失败", result[1] || "无法删除系统凭据")
+            Fluent.NotificationManager.desktop.error("删除失败", result[1] || "无法删除系统凭据")
     }
 
     function fetchModels() {
@@ -243,19 +243,19 @@ Fluent.SettingsCardGroup {
             root._scopeValues[rulesSection.scopeIndex]
         )
         if (!result[0]) {
-            Fluent.NotificationManager.toast.error(root, "保存失败", result[1] || "")
+            Fluent.NotificationManager.desktop.error("保存失败", result[1] || "")
             return false
         }
         var successMessage = result[1] || "AI 提交规划设置已保存"
         var credentialResult = root.saveCredentialInput()
         if (!credentialResult[0]) {
-            Fluent.NotificationManager.toast.error(root, "密钥保存失败", credentialResult[1] || "")
+            Fluent.NotificationManager.desktop.error("密钥保存失败", credentialResult[1] || "")
             return false
         }
         if (credentialResult[1])
             successMessage = credentialResult[1]
         if (showToast)
-            Fluent.NotificationManager.toast.success(root, "设置已保存", successMessage)
+            Fluent.NotificationManager.desktop.success("设置已保存", successMessage)
         return true
     }
 
