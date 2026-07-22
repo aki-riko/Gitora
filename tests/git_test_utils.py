@@ -63,3 +63,35 @@ def commit_all(repo: Path, message: str) -> str:
     run_git(repo, "add", "-A")
     run_git(repo, "commit", "-m", message)
     return run_git(repo, "rev-parse", "HEAD").stdout.strip()
+
+
+def build_branched_repo(root: Path) -> tuple[Path, dict[str, str]]:
+    """构造含分叉、--no-ff 合并、tag 与 remote ref 的真实仓库。"""
+    repo = init_repo(root / "repo")
+    write_file(repo, "root.txt", "root\n")
+    initial = commit_all(repo, "initial")
+
+    run_git(repo, "branch", "feature")
+    write_file(repo, "main.txt", "main\n")
+    main_work = commit_all(repo, "main work")
+
+    run_git(repo, "checkout", "feature")
+    write_file(repo, "feature.txt", "feature\n")
+    feature_work = commit_all(repo, "feature work")
+    run_git(repo, "checkout", "master")
+    run_git(repo, "merge", "--no-ff", "feature", "-m", "merge feature")
+    merge = run_git(repo, "rev-parse", "HEAD").stdout.strip()
+    run_git(repo, "tag", "v-graph", merge)
+    run_git(repo, "update-ref", "refs/remotes/origin/master", merge)
+
+    run_git(repo, "checkout", "-b", "side", initial)
+    write_file(repo, "side.txt", "side\n")
+    side = commit_all(repo, "side work")
+    run_git(repo, "checkout", "master")
+    return repo, {
+        "initial": initial,
+        "main": main_work,
+        "feature": feature_work,
+        "merge": merge,
+        "side": side,
+    }
