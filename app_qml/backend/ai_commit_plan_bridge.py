@@ -231,7 +231,7 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def invalidateSettings(self) -> None:
-        """配置或会话密钥变化时取消尚未执行的模型请求，保留已校验计划。"""
+        """配置或凭据变化时取消尚未执行的模型请求，保留已校验计划。"""
         if not self._execution_guard:
             self._cancel_request()
 

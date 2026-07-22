@@ -217,7 +217,7 @@ class AiCommitBridge(QObject):
         return self._settings
 
     def create_provider_for(self, settings: AiCommitSettings) -> ModelProvider:
-        """复用同一提供方工厂和会话密钥，不把密钥暴露给 QML。"""
+        """复用同一提供方工厂和已解析凭据，不把密钥暴露给 QML。"""
         return self._provider_factory(settings, self._resolve_api_key(settings))
 
     @Slot()
