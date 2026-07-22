@@ -73,6 +73,15 @@ class _BlockingProvider(_EchoProvider):
         raise ProviderCancelledError("请求已取消")
 
 
+class _ModelListProvider(_EchoProvider):
+    def __init__(self, models: tuple[str, ...]):
+        super().__init__()
+        self.models = models
+
+    def list_models(self) -> tuple[str, ...]:
+        return self.models
+
+
 class _MemoryCredentialBackend:
     def __init__(self):
         self.values: dict[tuple[str, str], str] = {}
@@ -376,6 +385,33 @@ class AiCommitBridgeTest(unittest.TestCase):
         bridge.prepareCommitMessage()
         self.assertTrue(self.wait_until(lambda: bool(errors)))
         self.assertIn("暂存区为空", errors[-1])
+
+    def test_model_list_fetch_returns_sorted_unique_models(self) -> None:
+        self.provider = _ModelListProvider(("model-z", "model-a", "model-z"))
+        bridge = self.make_bridge()
+        results: list[tuple] = []
+        bridge.modelListFinished.connect(lambda *args: results.append(args))
+
+        bridge.fetchModels()
+
+        self.assertTrue(self.wait_until(lambda: len(results) == 1))
+        provider_id, ok, models, message = results[0]
+        self.assertEqual(provider_id, "ollama")
+        self.assertTrue(ok)
+        self.assertEqual(models, ["model-a", "model-z"])
+        self.assertEqual(message, "已获取 2 个可用模型")
+        self.assertFalse(bridge.busy)
+
+    def test_model_list_fetch_reports_unsupported_provider(self) -> None:
+        bridge = self.make_bridge()
+        results: list[tuple] = []
+        bridge.modelListFinished.connect(lambda *args: results.append(args))
+
+        bridge.fetchModels()
+
+        self.assertTrue(self.wait_until(lambda: len(results) == 1))
+        self.assertFalse(results[0][1])
+        self.assertIn("不支持获取模型列表", results[0][3])
 
     def test_repo_switch_before_prepared_store_discards_old_context(self) -> None:
         self.stage_change()

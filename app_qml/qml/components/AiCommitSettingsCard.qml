@@ -5,12 +5,15 @@ import PrismQML as Fluent
 
 Fluent.SettingsCardGroup {
     id: root
+    objectName: "aiCommitSettingsCard"
     title: "AI 提交规划"
 
     property bool _loading: false
     property bool _hasEnvironmentApiKey: false
     property bool _credentialStoreAvailable: true
     property string _credentialStoreError: ""
+    property string _modelFetchProvider: ""
+    property string _modelFetchEndpoint: ""
     property var _providerValues: ["ollama", "openai_responses"]
     property var _scopeValues: ["staged", "all"]
     readonly property bool _compactFields: root.width < 760
@@ -25,6 +28,24 @@ Fluent.SettingsCardGroup {
                 Fluent.NotificationManager.toast.success(root, "连接检测", message)
             else
                 Fluent.NotificationManager.toast.error(root, "连接失败", message)
+        }
+        function onModelListFinished(provider, ok, models, message) {
+            if (provider !== root._modelFetchProvider) return
+            var matchesCurrentConnection = provider === root._providerValues[
+                connectionSection.providerIndex
+            ] && connectionSection.activeEndpoint.trim() === root._modelFetchEndpoint
+            root.clearModelFetchState()
+            if (!matchesCurrentConnection) return
+            if (ok) {
+                connectionSection.setAvailableModels(provider, models)
+                Fluent.NotificationManager.toast.success(root, "模型列表", message)
+            } else {
+                Fluent.NotificationManager.toast.error(root, "获取失败", message)
+            }
+        }
+        function onBusyChanged() {
+            if (!AiCommitBridge.busy && root._modelFetchProvider.length > 0)
+                root.clearModelFetchState()
         }
         function onErrorOccurred(message) {
             Fluent.NotificationManager.toast.error(root, "AI 提交规划", message)
@@ -99,7 +120,12 @@ Fluent.SettingsCardGroup {
                 )
                 credentialStatusText: root.credentialStatusText()
                 credentialStatusColor: root.credentialStatusColor()
+                modelsLoading: root._modelFetchProvider.length > 0
+                modelFetchEnabled: Boolean(
+                    AiCommitBridge && !AiCommitBridge.busy
+                )
                 onDeleteCredentialRequested: root.deleteStoredCredential()
+                onFetchModelsRequested: root.fetchModels()
             }
 
             Fluent.Separator { Layout.fillWidth: true }
@@ -171,6 +197,18 @@ Fluent.SettingsCardGroup {
             Fluent.NotificationManager.toast.success(root, "系统凭据", result[1] || "密钥已删除")
         else
             Fluent.NotificationManager.toast.error(root, "删除失败", result[1] || "无法删除系统凭据")
+    }
+
+    function fetchModels() {
+        if (!AiCommitBridge || !root.saveSettings(false)) return
+        root._modelFetchProvider = root._providerValues[connectionSection.providerIndex]
+        root._modelFetchEndpoint = connectionSection.activeEndpoint.trim()
+        AiCommitBridge.fetchModels()
+    }
+
+    function clearModelFetchState() {
+        root._modelFetchProvider = ""
+        root._modelFetchEndpoint = ""
     }
 
     function loadSettings() {

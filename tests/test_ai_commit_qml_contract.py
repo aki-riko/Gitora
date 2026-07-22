@@ -131,6 +131,28 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn("enabledCheck", source)
         self.assertNotIn("bodyCheck", source)
 
+    def test_settings_fetches_models_into_combobox_selection(self) -> None:
+        card_source = self._settings_qml_source()
+        connection_source = (
+            ROOT / "app_qml" / "qml" / "components" / "AiCommitConnectionSection.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("function onModelListFinished(provider, ok, models, message)", card_source)
+        self.assertIn("AiCommitBridge.fetchModels()", card_source)
+        self.assertIn("connectionSection.setAvailableModels(provider, models)", card_source)
+        self.assertIn("property string _modelFetchEndpoint", card_source)
+        self.assertIn("matchesCurrentConnection", card_source)
+        self.assertIn("connectionSection.activeEndpoint.trim()", card_source)
+        self.assertIn("root.clearModelFetchState()", card_source)
+        self.assertEqual(connection_source.count("Fluent.ComboBox {"), 3)
+        self.assertIn("signal fetchModelsRequested()", connection_source)
+        self.assertIn("function setAvailableModels(provider, models)", connection_source)
+        self.assertIn('text: root.modelsLoading ? "获取中…" : "获取"', connection_source)
+        self.assertIn('objectName: "localModelCombo"', connection_source)
+        self.assertIn('objectName: "fetchModelsButton"', connection_source)
+        self.assertNotIn("id: localModelInput", connection_source)
+        self.assertNotIn("id: remoteModelInput", connection_source)
+
     def test_rules_grid_keeps_both_columns_inside_available_width(self) -> None:
         source = (
             ROOT

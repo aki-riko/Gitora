@@ -27,6 +27,10 @@ class ModelProvider(ABC):
     ) -> Mapping[str, Any]:
         raise NotImplementedError
 
+    def list_models(self) -> tuple[str, ...]:
+        """返回当前连接可用的模型标识；不支持时由桥接层给出明确提示。"""
+        raise NotImplementedError
+
 
 class StaticModelProvider(ModelProvider):
     """测试和离线特征化使用的固定响应提供方。"""

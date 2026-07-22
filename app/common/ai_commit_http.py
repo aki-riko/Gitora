@@ -9,7 +9,7 @@ import urllib.request
 from dataclasses import dataclass
 from threading import Event
 from typing import Any, Mapping
-from urllib.parse import urlsplit
+from urllib.parse import urlsplit, urlunsplit
 
 from .ai_commit_models import PlannerRequest
 from .ai_commit_provider import ModelProvider, ProviderCancelledError
@@ -112,6 +112,24 @@ class HttpJsonClient:
         return parsed
 
 
+def _extract_model_ids(
+    response: Mapping[str, Any], source_name: str
+) -> tuple[str, ...]:
+    items = response.get("data")
+    if not isinstance(items, list):
+        raise HttpProviderError(f"{source_name}模型列表格式无效")
+    models = tuple(dict.fromkeys(
+        item["id"].strip()
+        for item in items
+        if isinstance(item, Mapping)
+        and isinstance(item.get("id"), str)
+        and item["id"].strip()
+    ))
+    if not models:
+        raise HttpProviderError(f"{source_name}未返回可用模型")
+    return models
+
+
 class OllamaProvider(ModelProvider):
     def __init__(self, config: HttpProviderConfig):
         self.config = config
@@ -153,13 +171,7 @@ class OllamaProvider(ModelProvider):
 
     def list_models(self) -> tuple[str, ...]:
         response = self._client.request("GET", self._base_url + "/v1/models")
-        items = response.get("data")
-        if not isinstance(items, list):
-            raise HttpProviderError("Ollama 模型列表格式无效")
-        return tuple(
-            item["id"] for item in items
-            if isinstance(item, Mapping) and isinstance(item.get("id"), str)
-        )
+        return _extract_model_ids(response, "Ollama ")
 
     def _check_ready(self, cancel_event: Event | None) -> None:
         self._check_cancelled(cancel_event)
@@ -212,10 +224,6 @@ class OpenAIResponsesProvider(ModelProvider):
         OllamaProvider._check_cancelled(cancel_event)
         if not self.config.model:
             raise HttpProviderError("未配置远程模型名")
-        if not self.config.api_key:
-            raise HttpProviderError("未提供远程模型密钥")
-        if any(ord(char) < 32 or ord(char) == 127 for char in self.config.api_key):
-            raise HttpProviderError("远程模型密钥包含非法控制字符")
         response = self._client.request(
             "POST",
             self._endpoint,
@@ -232,10 +240,34 @@ class OpenAIResponsesProvider(ModelProvider):
                     }
                 },
             },
-            {"Authorization": f"Bearer {self.config.api_key}"},
+            self._authorization_headers(),
         )
         OllamaProvider._check_cancelled(cancel_event)
         return OllamaProvider._parse_plan_text(self._extract_output_text(response))
+
+    def list_models(self) -> tuple[str, ...]:
+        response = self._client.request(
+            "GET", self._models_endpoint(), headers=self._authorization_headers()
+        )
+        return _extract_model_ids(response, "远程服务")
+
+    def _models_endpoint(self) -> str:
+        parsed = urlsplit(self._endpoint)
+        path = parsed.path.rstrip("/")
+        if not path.endswith("/responses"):
+            raise HttpProviderError(
+                "远程 Responses API 地址需以 /responses 结尾，无法获取模型列表"
+            )
+        models_path = path.removesuffix("/responses") + "/models"
+        return urlunsplit((parsed.scheme, parsed.netloc, models_path, "", ""))
+
+    def _authorization_headers(self) -> dict[str, str]:
+        api_key = self.config.api_key
+        if not api_key:
+            raise HttpProviderError("未提供远程模型密钥")
+        if any(ord(char) < 32 or ord(char) == 127 for char in api_key):
+            raise HttpProviderError("远程模型密钥包含非法控制字符")
+        return {"Authorization": f"Bearer {api_key}"}
 
     @staticmethod
     def _validate_endpoint(value: str) -> str:

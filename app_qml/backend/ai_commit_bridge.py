@@ -67,6 +67,7 @@ class AiCommitBridge(QObject):
     contextPrepared = Signal(str, bool, int, int, str)
     commitMessageReady = Signal(str, str, bool, str, str, str)
     connectionTestFinished = Signal(bool, str)
+    modelListFinished = Signal(str, bool, "QVariantList", str)
     errorOccurred = Signal(str)
 
     def __init__(
@@ -392,6 +393,47 @@ class AiCommitBridge(QObject):
                 logger.exception(f"检测 AI 连接异常: {type(exc).__name__}")
                 if self._is_serial_current(serial, cancel_event):
                     self.connectionTestFinished.emit(False, "模型连接检测失败")
+            finally:
+                self._set_busy_if_current(serial, False)
+
+        threading.Thread(target=work, daemon=True).start()
+
+    @Slot()
+    def fetchModels(self) -> None:
+        if self._busy:
+            self.errorOccurred.emit("已有 AI 操作正在进行")
+            return
+        settings = self._settings
+        provider_id = settings.provider
+        serial, cancel_event = self._start_request(clear_prepared=False)
+
+        def work() -> None:
+            try:
+                provider = self._provider_factory(
+                    settings, self._resolve_api_key(settings)
+                )
+                try:
+                    models = provider.list_models()
+                except NotImplementedError as exc:
+                    raise HttpProviderError("当前模型提供方不支持获取模型列表") from exc
+                available = sorted(set(models), key=str.casefold)
+                if not available:
+                    raise HttpProviderError("模型服务未返回可用模型")
+                message = f"已获取 {len(available)} 个可用模型"
+                if self._is_serial_current(serial, cancel_event):
+                    self.modelListFinished.emit(
+                        provider_id, True, available, message
+                    )
+            except (HttpProviderError, AiCommitSettingsError) as exc:
+                logger.warning(f"获取 AI 模型列表失败: {type(exc).__name__}")
+                if self._is_serial_current(serial, cancel_event):
+                    self.modelListFinished.emit(provider_id, False, [], str(exc))
+            except Exception as exc:  # noqa: BLE001
+                logger.exception(f"获取 AI 模型列表异常: {type(exc).__name__}")
+                if self._is_serial_current(serial, cancel_event):
+                    self.modelListFinished.emit(
+                        provider_id, False, [], "获取模型列表失败"
+                    )
             finally:
                 self._set_busy_if_current(serial, False)
 

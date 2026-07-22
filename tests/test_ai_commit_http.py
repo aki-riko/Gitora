@@ -198,6 +198,40 @@ class AiCommitHttpTest(unittest.TestCase):
         self.assertTrue(body["text"]["format"]["strict"])
         self.assertNotIn("repo-token", body["input"])
 
+    def test_openai_lists_models_from_responses_sibling_with_bearer_auth(self) -> None:
+        config = HttpProviderConfig(
+            "https://example.invalid/v1/responses",
+            "remote-model",
+            "top-secret",
+            5,
+            100_000,
+        )
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse({
+            "object": "list",
+            "data": [
+                {"id": "model-b"},
+                {"id": "model-a"},
+                {"id": "model-b"},
+            ],
+        })
+        provider = OpenAIResponsesProvider(config)
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+        self.assertEqual(provider.list_models(), ("model-b", "model-a"))
+        request = fake_opener.open.call_args.args[0]
+        self.assertEqual(request.full_url, "https://example.invalid/v1/models")
+        self.assertEqual(request.headers["Authorization"], "Bearer top-secret")
+        self.assertIsNone(request.data)
+
+    def test_openai_model_list_requires_responses_endpoint_path(self) -> None:
+        provider = OpenAIResponsesProvider(HttpProviderConfig(
+            "https://example.invalid/custom/generate", "model", "key", 5, 1000
+        ))
+
+        with self.assertRaisesRegex(HttpProviderError, "以 /responses 结尾"):
+            provider.list_models()
+
     def test_remote_provider_rejects_insecure_or_embedded_credential_url(self) -> None:
         for endpoint in (
             "http://example.com/v1/responses",
