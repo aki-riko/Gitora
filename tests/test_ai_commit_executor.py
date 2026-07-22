@@ -69,6 +69,28 @@ class FilePlanExecutorTest(unittest.TestCase):
         )
         return snapshot, plan, validation
 
+    @staticmethod
+    def make_single_change_plan(snapshot):
+        change_id = snapshot.changes[0].change_id
+        plan = CommitPlan.from_mapping({
+            "schema_version": "1",
+            "snapshot_id": snapshot.snapshot_id,
+            "level": "file",
+            "summary": "单项文件计划",
+            "groups": [{
+                "group_id": "only",
+                "title": "chore: 应用文件改动",
+                "body": "",
+                "change_ids": [change_id],
+                "depends_on": [],
+                "rationale": "单项改动",
+                "warnings": [],
+            }],
+            "unassigned_change_ids": [],
+            "warnings": [],
+        })
+        return plan, CommitPlanValidator().validate(plan, snapshot, "file")
+
     def test_failed_stage_restores_exact_original_index_tree(self) -> None:
         write_file(self.repo, "a.txt", "changed a\n")
         write_file(self.repo, "b.txt", "changed b\n")
@@ -225,6 +247,59 @@ class FilePlanExecutorTest(unittest.TestCase):
 
         self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, before_cached)
         self.assertEqual(run_git(self.repo, "diff").stdout, before_unstaged)
+
+    def test_staged_mode_only_change_is_applied_without_loss(self) -> None:
+        run_git(self.repo, "update-index", "--chmod=+x", "a.txt")
+        snapshot = ChangeContextCollector(
+            self.service, self.settings.limits
+        ).collect(str(self.repo), include_unstaged=False)
+        plan, validation = self.make_single_change_plan(snapshot)
+        before_cached = run_git(self.repo, "diff", "--cached").stdout
+
+        FilePlanExecutor(self.service).apply_next(
+            str(self.repo), snapshot, plan, validation, False, self.settings.limits
+        )
+
+        self.assertIn("new mode 100755", before_cached)
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, before_cached)
+
+    def test_staged_executable_add_keeps_index_mode(self) -> None:
+        write_file(self.repo, "script.sh", "echo hello\n")
+        run_git(self.repo, "add", "script.sh")
+        run_git(self.repo, "update-index", "--chmod=+x", "script.sh")
+        snapshot = ChangeContextCollector(
+            self.service, self.settings.limits
+        ).collect(str(self.repo), include_unstaged=False)
+        plan, validation = self.make_single_change_plan(snapshot)
+        before_cached = run_git(self.repo, "diff", "--cached").stdout
+
+        FilePlanExecutor(self.service).apply_next(
+            str(self.repo), snapshot, plan, validation, False, self.settings.limits
+        )
+
+        self.assertIn("new file mode 100755", before_cached)
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, before_cached)
+
+    def test_staged_executable_rename_keeps_index_mode(self) -> None:
+        write_file(self.repo, "old.sh", "echo hello\n")
+        run_git(self.repo, "add", "old.sh")
+        run_git(self.repo, "update-index", "--chmod=+x", "old.sh")
+        run_git(self.repo, "commit", "-m", "test: add executable")
+        run_git(self.repo, "mv", "old.sh", "new.sh")
+        snapshot = ChangeContextCollector(
+            self.service, self.settings.limits
+        ).collect(str(self.repo), include_unstaged=False)
+        plan, validation = self.make_single_change_plan(snapshot)
+        before_cached = run_git(self.repo, "diff", "--cached").stdout
+
+        FilePlanExecutor(self.service).apply_next(
+            str(self.repo), snapshot, plan, validation, False, self.settings.limits
+        )
+
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, before_cached)
+        self.assertTrue(
+            run_git(self.repo, "ls-files", "-s", "new.sh").stdout.startswith("100755 ")
+        )
 
     def test_restore_refuses_to_overwrite_index_after_head_changes(self) -> None:
         write_file(self.repo, "a.txt", "changed a\n")

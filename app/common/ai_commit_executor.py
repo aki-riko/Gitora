@@ -93,6 +93,9 @@ class FilePlanExecutor:
                     ["--literal-pathspecs", "add", "-A", "--", *target_paths],
                     "暂存下一提交组失败",
                 )
+                self._restore_staged_modes(
+                    repo_path, index_tree_before, target_changes
+                )
                 if repo_path != (self._git.repo_path or ""):
                     raise PlanExecutionError("应用期间已切换仓库，已恢复原暂存区")
                 if self._git.get_head_at(repo_path) != snapshot.head:
@@ -197,6 +200,50 @@ class FilePlanExecutor:
         if not ok or not tree.strip():
             raise PlanExecutionError(self._error_text(error, "无法快照当前暂存区"))
         return tree.strip()
+
+    def _restore_staged_modes(
+        self,
+        repo_path: str,
+        index_tree_before: str,
+        target_changes: list,
+    ) -> None:
+        for change in target_changes:
+            if not change.staged:
+                continue
+            path = change.new_path or change.path
+            mode = self._tree_mode(repo_path, index_tree_before, path)
+            if not mode:
+                continue
+            if mode not in {"100644", "100755"}:
+                raise PlanExecutionError(
+                    f"{path} 的索引模式不支持文件级自动应用"
+                )
+            chmod = "+x" if mode == "100755" else "-x"
+            self._run_required(
+                repo_path,
+                [
+                    "--literal-pathspecs", "update-index",
+                    f"--chmod={chmod}", "--", path,
+                ],
+                f"恢复 {path} 的索引模式失败",
+            )
+
+    def _tree_mode(self, repo_path: str, tree: str, path: str) -> str:
+        ok, output, error = self._git._run_git_sync_at(  # noqa: SLF001
+            repo_path,
+            ["--literal-pathspecs", "ls-tree", "-z", tree, "--", path],
+        )
+        if not ok:
+            raise PlanExecutionError(
+                self._error_text(error or output, "无法读取原索引模式")
+            )
+        record = output.split("\0", 1)[0]
+        if not record:
+            return ""
+        fields = record.split("\t", 1)[0].split()
+        if len(fields) != 3:
+            raise PlanExecutionError("原索引模式记录无效")
+        return fields[0]
 
     def _restore_tree(self, repo_path: str, tree: str) -> bool:
         ok, _, _ = self._git._run_git_sync_at(  # noqa: SLF001
