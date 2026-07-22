@@ -205,19 +205,16 @@ class AiCommitBridge(QObject):
 
         serial, cancel_event = self._start_request(clear_prepared=True)
         settings = self._settings
-        include_unstaged = settings.remote_scope == "all"
 
         def work() -> None:
             try:
                 snapshot = ChangeContextCollector(
                     self._git, settings.limits
-                ).collect(repo, include_unstaged=include_unstaged)
+                ).collect(repo, include_unstaged=True)
                 if not snapshot.changes:
-                    message = (
+                    raise SnapshotCollectionError(
                         "工作区没有可生成提交信息的改动"
-                        if include_unstaged else "暂存区为空，请先暂存改动"
                     )
-                    raise SnapshotCollectionError(message)
                 if not snapshot.complete:
                     raise SnapshotCollectionError(
                         "改动超过配置上限，无法生成可靠的提交信息"
@@ -236,16 +233,12 @@ class AiCommitBridge(QObject):
                 ):
                     return
                 character_count = len(build_user_input(request))
-                scope_summary = (
-                    "分析已暂存、未暂存和未跟踪改动"
-                    if include_unstaged else "仅分析已暂存差异"
-                )
                 self.contextPrepared.emit(
                     request_id,
                     prepared.is_remote,
                     len(snapshot.changes),
                     character_count,
-                    scope_summary,
+                    "分析整个工作区的已暂存、未暂存和未跟踪改动",
                 )
             except (SnapshotCollectionError, AiCommitSettingsError) as exc:
                 logger.warning(f"准备 AI 提交上下文失败: {type(exc).__name__}")

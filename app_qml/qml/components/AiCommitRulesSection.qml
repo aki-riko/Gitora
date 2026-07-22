@@ -7,7 +7,6 @@ ColumnLayout {
     id: root
 
     property bool compact: false
-    property alias scopeIndex: scopeCombo.currentIndex
     property alias generateBody: bodySwitch.checked
 
     spacing: Fluent.Enums.spacing.s
@@ -24,7 +23,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: "控制规划范围和生成内容。"
+        text: "AI 提交固定分析并提交整个工作区；这里仅控制是否生成正文。"
         textFormat: Text.PlainText
         color: Fluent.Enums.textColor.tertiary
         font.family: Fluent.Enums.fontFamily
@@ -32,130 +31,97 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
-    GridLayout {
-        id: rulesFields
+    Rectangle {
         Layout.fillWidth: true
-        columns: root.compact ? 1 : 2
-        columnSpacing: Fluent.Enums.spacing.m
-        rowSpacing: Fluent.Enums.spacing.s
+        implicitHeight: bodyOptionLayout.implicitHeight + Fluent.Enums.spacing.s * 2
+        radius: Fluent.Enums.radius.small
+        color: Fluent.Enums.stateColor.actionsRowBg
+        border.color: Fluent.Enums.stateColor.settingCardBorder
+        border.width: Fluent.Enums.border.thin
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            spacing: Fluent.Enums.spacing.xxs
+        RowLayout {
+            id: bodyOptionLayout
+            anchors.fill: parent
+            anchors.margins: Fluent.Enums.spacing.s
+            spacing: Fluent.Enums.spacing.m
 
-            Text {
-                text: "规划范围"
-                textFormat: Text.PlainText
-                color: Fluent.Enums.textColor.secondary
-                font.family: Fluent.Enums.fontFamily
-                font.pixelSize: Fluent.Enums.typography.caption
-            }
-
-            Fluent.ComboBox {
-                id: scopeCombo
+            ColumnLayout {
                 Layout.fillWidth: true
-                model: ["提交规划：仅已暂存差异", "提交规划：全部工作区改动"]
-                currentIndex: 0
-            }
-        }
+                Layout.minimumWidth: 0
+                spacing: Fluent.Enums.spacing.xxs
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            implicitHeight: bodyOptionLayout.implicitHeight + Fluent.Enums.spacing.s * 2
-            radius: Fluent.Enums.radius.small
-            color: Fluent.Enums.stateColor.actionsRowBg
-            border.color: Fluent.Enums.stateColor.settingCardBorder
-            border.width: Fluent.Enums.border.thin
-
-            RowLayout {
-                id: bodyOptionLayout
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.s
-                spacing: Fluent.Enums.spacing.m
-
-                ColumnLayout {
+                Text {
                     Layout.fillWidth: true
-                    Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.xxs
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "生成提交正文"
-                        textFormat: Text.PlainText
-                        color: Fluent.Enums.textColor.primary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.body
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "在提交标题之外补充变更说明。"
-                        textFormat: Text.PlainText
-                        color: Fluent.Enums.textColor.tertiary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        wrapMode: Text.WordWrap
-                    }
+                    text: "生成提交正文"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.primary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.body
                 }
 
-                Fluent.ToggleSwitch {
-                    id: bodySwitch
-                    type: Fluent.Enums.toggle.type_indicator
+                Text {
+                    Layout.fillWidth: true
+                    text: "在提交标题之外补充变更说明。"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.tertiary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    wrapMode: Text.WordWrap
                 }
             }
+
+            Fluent.ToggleSwitch {
+                id: bodySwitch
+                type: Fluent.Enums.toggle.type_indicator
+            }
         }
+    }
 
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.columnSpan: rulesFields.columns
-            implicitHeight: boundaryLayout.implicitHeight + Fluent.Enums.spacing.s * 2
-            radius: Fluent.Enums.radius.small
-            color: Fluent.Enums.stateColor.actionsRowBg
+    Rectangle {
+        Layout.fillWidth: true
+        implicitHeight: boundaryLayout.implicitHeight + Fluent.Enums.spacing.s * 2
+        radius: Fluent.Enums.radius.small
+        color: Fluent.Enums.stateColor.actionsRowBg
 
-            RowLayout {
-                id: boundaryLayout
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.s
-                spacing: Fluent.Enums.spacing.s
+        RowLayout {
+            id: boundaryLayout
+            anchors.fill: parent
+            anchors.margins: Fluent.Enums.spacing.s
+            spacing: Fluent.Enums.spacing.s
 
-                Rectangle {
-                    width: 8
-                    height: 8
-                    radius: 4
-                    color: Fluent.Enums.statusLevel.getColor(
-                        Fluent.Enums.statusLevel.infoStr
-                    )
-                    Layout.alignment: Qt.AlignTop
-                    Layout.topMargin: 5
+            Rectangle {
+                width: 8
+                height: 8
+                radius: 4
+                color: Fluent.Enums.statusLevel.getColor(
+                    Fluent.Enums.statusLevel.infoStr
+                )
+                Layout.alignment: Qt.AlignTop
+                Layout.topMargin: 5
+            }
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Fluent.Enums.spacing.xxs
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "发送边界"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.secondary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    font.bold: true
                 }
 
-                ColumnLayout {
+                Text {
                     Layout.fillWidth: true
-                    spacing: Fluent.Enums.spacing.xxs
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "发送边界"
-                        textFormat: Text.PlainText
-                        color: Fluent.Enums.textColor.secondary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        font.bold: true
-                    }
-
-                    Text {
-                        Layout.fillWidth: true
-                        text: "点击“AI 提交”即按上方范围发送；仅本机回环 Ollama 保证源码不离开本机。"
-                        textFormat: Text.PlainText
-                        color: Fluent.Enums.textColor.tertiary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        wrapMode: Text.WordWrap
-                    }
+                    text: "点击“AI 提交”会把已暂存、未暂存和未跟踪改动一起发送给所选模型；仅本机回环 Ollama 保证源码不离开本机。"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.tertiary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    wrapMode: Text.WordWrap
                 }
             }
         }

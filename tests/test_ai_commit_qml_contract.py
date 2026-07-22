@@ -68,9 +68,13 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("onAiCommitRequested: root._requestAiCommitMessage()", source)
         accepted_handler = source.split("onAccepted:", 1)[1].split("onRejected:", 1)[0]
         self.assertIn("root._submitAiCommit(planTitle, planBody)", accepted_handler)
-        self.assertIn("GitBridge.commit(message)", source)
-        self.assertIn("GitBridge.push()", source)
-        self.assertIn("root._quickCommitPush(message)", source)
+        submit_handler = source.split("function _submitAiCommit", 1)[1].split(
+            "function doAmend", 1
+        )[0]
+        self.assertIn("root._quickCommitPush(message)", submit_handler)
+        self.assertNotIn("GitBridge.commit", submit_handler)
+        self.assertNotIn("GitBridge.push", submit_handler)
+        self.assertNotIn("_aiCommitScope", source)
 
         self.assertIn("Fluent.DialogBoxCore {", result_source)
         self.assertEqual(
@@ -147,9 +151,9 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("保存到系统凭据库", source)
         self.assertNotIn("setSessionApiKey", source)
         self.assertNotIn("仅保留到退出", source)
-        self.assertIn("提交规划：仅已暂存差异", source)
-        self.assertIn("提交规划：全部工作区改动", source)
-        self.assertIn("点击“AI 提交”即按上方范围发送", source)
+        self.assertNotIn("提交规划：仅已暂存差异", source)
+        self.assertNotIn("提交规划：全部工作区改动", source)
+        self.assertIn("AI 提交固定分析并提交整个工作区", source)
         self.assertIn("仅本机回环 Ollama 保证源码不离开本机", source)
         self.assertNotIn("api_key\"", source)
 
@@ -165,7 +169,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("Fluent.ToggleSwitch", source)
         self.assertIn("AiCommitConnectionSection", source)
         self.assertIn("AiCommitRulesSection", source)
-        self.assertEqual(source.count("columns: root.compact ? 1 : 2"), 2)
+        self.assertEqual(source.count("columns: root.compact ? 1 : 2"), 1)
         self.assertIn("root.width < 760", source)
         self.assertNotIn("connectionPanel", source)
         self.assertNotIn("rulesPanel", source)
@@ -207,7 +211,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn("id: localModelInput", connection_source)
         self.assertNotIn("id: remoteModelInput", connection_source)
 
-    def test_rules_grid_keeps_both_columns_inside_available_width(self) -> None:
+    def test_rules_section_exposes_only_body_generation_choice(self) -> None:
         source = (
             ROOT
             / "app_qml"
@@ -215,13 +219,11 @@ class AiCommitQmlContractTest(unittest.TestCase):
             / "components"
             / "AiCommitRulesSection.qml"
         ).read_text(encoding="utf-8")
-        column_constraints = source.split("id: rulesFields", 1)[1].split(
-            "id: bodyOptionLayout", 1
-        )[0]
-
-        self.assertEqual(column_constraints.count("Layout.minimumWidth: 0"), 2)
-        self.assertEqual(column_constraints.count("Layout.preferredWidth: 1"), 2)
-        self.assertIn("Layout.columnSpan: rulesFields.columns", source)
+        self.assertNotIn("id: rulesFields", source)
+        self.assertNotIn("id: scopeCombo", source)
+        self.assertNotIn("property alias scopeIndex", source)
+        self.assertIn("id: bodyOptionLayout", source)
+        self.assertIn("property alias generateBody", source)
 
     def test_builds_include_native_keyring_dependencies_without_alt(self) -> None:
         windows = (ROOT / "build_nuitka.py").read_text(encoding="utf-8")

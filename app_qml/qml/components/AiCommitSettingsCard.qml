@@ -15,7 +15,6 @@ Fluent.SettingsCardGroup {
     property string _modelFetchProvider: ""
     property string _modelFetchEndpoint: ""
     property var _providerValues: ["ollama", "openai_responses"]
-    property var _scopeValues: ["staged", "all"]
     readonly property bool _compactFields: root.width < 760
 
     Component.onCompleted: root.loadSettings()
@@ -80,7 +79,7 @@ Fluent.SettingsCardGroup {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "让模型整理提交，执行权始终在你手里"
+                        text: "让模型整理整个工作区，一次确认即可提交推送"
                         textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
@@ -90,7 +89,7 @@ Fluent.SettingsCardGroup {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "生成提交信息与拆分建议，不会自动提交或推送。"
+                        text: "生成方案后，只有点击“采用并提交推送”才会执行 Git 写操作。"
                         textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
@@ -101,7 +100,7 @@ Fluent.SettingsCardGroup {
 
                 Fluent.ToggleSwitch {
                     id: enabledSwitch
-                    text: "启用 AI 规划"
+                    text: "启用 AI 提交"
                     Layout.alignment: Qt.AlignTop
                 }
             }
@@ -142,8 +141,8 @@ Fluent.SettingsCardGroup {
                 Text {
                     Layout.fillWidth: true
                     text: enabledSwitch.checked
-                        ? "保存后即可在仓库页使用 AI 规划"
-                        : "AI 提交规划当前未启用"
+                        ? "保存后可在提交下拉菜单使用 AI 提交"
+                        : "AI 提交当前未启用"
                     textFormat: Text.PlainText
                     color: Fluent.Enums.textColor.tertiary
                     font.family: Fluent.Enums.fontFamily
@@ -224,13 +223,12 @@ Fluent.SettingsCardGroup {
         root._hasEnvironmentApiKey = settings.hasEnvironmentApiKey || false
         root._credentialStoreAvailable = settings.credentialStoreAvailable !== false
         root._credentialStoreError = settings.credentialStoreError || ""
-        var scopeIndex = root._scopeValues.indexOf(settings.remoteScope)
-        rulesSection.scopeIndex = scopeIndex >= 0 ? scopeIndex : 0
         root._loading = false
     }
 
     function saveSettings(showToast) {
         if (!AiCommitBridge) return false
+        var currentSettings = AiCommitBridge.getSettings()
         var result = AiCommitBridge.saveSettings(
             enabledSwitch.checked,
             root._providerValues[connectionSection.providerIndex],
@@ -240,7 +238,7 @@ Fluent.SettingsCardGroup {
             connectionSection.remoteModel.trim(),
             connectionSection.apiKeyEnvironment.trim(),
             rulesSection.generateBody,
-            root._scopeValues[rulesSection.scopeIndex]
+            currentSettings.remoteScope
         )
         if (!result[0]) {
             Fluent.NotificationManager.desktop.error("保存失败", result[1] || "")

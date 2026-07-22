@@ -159,6 +159,7 @@ class AiCommitBridgeTest(unittest.TestCase):
 
     def test_two_step_local_generation_only_fills_message(self) -> None:
         self.stage_change()
+        write_file(self.repo, "extra.txt", "untracked\n")
         before_status = run_git(self.repo, "status", "--porcelain=v1").stdout
         before_head = run_git(self.repo, "rev-parse", "HEAD").stdout.strip()
         bridge = self.make_bridge()
@@ -171,9 +172,9 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
         request_id, is_remote, file_count, character_count, scope = prepared[0]
         self.assertFalse(is_remote)
-        self.assertEqual(file_count, 1)
+        self.assertEqual(file_count, 2)
         self.assertGreater(character_count, 0)
-        self.assertEqual(scope, "仅分析已暂存差异")
+        self.assertEqual(scope, "分析整个工作区的已暂存、未暂存和未跟踪改动")
 
         bridge.generatePrepared(request_id, False)
         self.assertTrue(self.wait_until(lambda: len(ready) == 1))
@@ -184,9 +185,9 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
         self.assertEqual(run_git(self.repo, "rev-parse", "HEAD").stdout.strip(), before_head)
 
-    def test_all_scope_generation_includes_unstaged_workspace(self) -> None:
+    def test_ai_submit_includes_workspace_when_legacy_scope_is_staged(self) -> None:
         write_file(self.repo, "tracked.txt", "changed but unstaged\n")
-        bridge = self.make_bridge(remote_scope="all")
+        bridge = self.make_bridge(remote_scope="staged")
         prepared: list[tuple] = []
         ready: list[tuple] = []
         bridge.contextPrepared.connect(lambda *args: prepared.append(args))
@@ -194,7 +195,10 @@ class AiCommitBridgeTest(unittest.TestCase):
 
         bridge.prepareCommitMessage()
         self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
-        self.assertEqual(prepared[0][4], "分析已暂存、未暂存和未跟踪改动")
+        self.assertEqual(
+            prepared[0][4],
+            "分析整个工作区的已暂存、未暂存和未跟踪改动",
+        )
 
         bridge.generatePrepared(prepared[0][0], False)
         self.assertTrue(self.wait_until(lambda: len(ready) == 1))
@@ -397,13 +401,13 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.assertEqual(ready, [])
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
 
-    def test_empty_staging_area_returns_actionable_error(self) -> None:
+    def test_empty_workspace_returns_actionable_error(self) -> None:
         bridge = self.make_bridge()
         errors: list[str] = []
         bridge.errorOccurred.connect(errors.append)
         bridge.prepareCommitMessage()
         self.assertTrue(self.wait_until(lambda: bool(errors)))
-        self.assertIn("暂存区为空", errors[-1])
+        self.assertIn("工作区没有可生成提交信息的改动", errors[-1])
 
     def test_model_list_fetch_returns_sorted_unique_models(self) -> None:
         self.provider = _ModelListProvider(("model-z", "model-a", "model-z"))

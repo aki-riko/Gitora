@@ -23,7 +23,6 @@ Item {
     property string _quickCommitPushMessage: ""
     property string _quickCommitPushRepoPath: ""
     property string _aiPreparedRequestId: ""
-    property string _aiCommitScope: "staged"
     property bool _aiResultPending: false
 
     FontMetrics {
@@ -80,8 +79,6 @@ Item {
 
     function _requestAiCommitMessage() {
         if (!AiCommitBridge || AiCommitBridge.busy) return
-        var settings = AiCommitBridge.getSettings()
-        root._aiCommitScope = settings.remoteScope || "staged"
         root._aiPreparedRequestId = ""
         aiCommitProgress.open()
         AiCommitBridge.prepareCommitMessage()
@@ -126,18 +123,7 @@ Item {
         var cleanTitle = (title || "").trim()
         var cleanBody = (body || "").trim()
         var message = cleanTitle + (cleanBody.length > 0 ? "\n\n" + cleanBody : "")
-        if (root._aiCommitScope === "all") {
-            root._quickCommitPush(message)
-            return
-        }
-        var res = GitBridge.commit(message)
-        if (!res[0]) {
-            Fluent.NotificationManager.desktop.error("AI 提交失败", res[1] || "")
-            return
-        }
-        Fluent.NotificationManager.desktop.success("AI 提交成功", "正在推送到远程仓库")
-        GitBridge.push()
-        root.reload()
+        root._quickCommitPush(message)
     }
 
     // 修补上次提交:用标题和可选正文重写 HEAD 的提交消息(git commit --amend)
@@ -203,7 +189,6 @@ Item {
             aiCommitProgress.close()
             aiCommitResultDialog.reject()
             root._aiPreparedRequestId = ""
-            root._aiCommitScope = "staged"
             root._aiResultPending = false
             root._statusRequesting = false
             root._reloadPending = false
