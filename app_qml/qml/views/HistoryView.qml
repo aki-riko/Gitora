@@ -395,7 +395,13 @@ Item {
                         }
                     }
 
-                    Item { Layout.fillHeight: true }
+                    // ── 变更概览:状态统计 + 文件列表 ──
+                    CommitFilesPanel {
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        Layout.minimumHeight: 140
+                        commit: root.selectedCommit
+                    }
 
                     Fluent.Separator { Layout.fillWidth: true }
 

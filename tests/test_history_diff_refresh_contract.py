@@ -47,6 +47,42 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("border.width: Fluent.Enums.border.thin", source)
         self.assertIn("anchors.margins: Fluent.Enums.spacing.m", source)
 
+    def test_history_detail_fills_space_with_real_commit_files(self) -> None:
+        history_source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
+            encoding="utf-8"
+        )
+        source = (QML_ROOT / "components" / "CommitFilesPanel.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("CommitFilesPanel {", history_source)
+        self.assertIn("commit: root.selectedCommit", history_source)
+        self.assertIn('objectName: "historyCommitFilesPanel"', source)
+        self.assertIn('objectName: "historyCommitFilesList"', source)
+        self.assertIn("GitBridge.requestCommitFiles(hash)", source)
+        self.assertIn('text: "变更文件"', source)
+        self.assertIn('text: "新增 " + root.countStatus("A")', source)
+        self.assertIn('text: "修改 " + root.countStatus("M")', source)
+        self.assertIn('text: "删除 " + root.countStatus("D")', source)
+        self.assertIn("root.displayPath(model.path)", source)
+        self.assertNotIn(
+            "Item { Layout.fillHeight: true }\n\n                    Fluent.Separator",
+            history_source,
+        )
+
+    def test_history_commit_files_ignore_stale_async_results(self) -> None:
+        source = (QML_ROOT / "components" / "CommitFilesPanel.qml").read_text(
+            encoding="utf-8"
+        )
+        handler = source.split("function onCommitFilesReady", 1)[1].split(
+            "\n        }", 1
+        )[0]
+
+        self.assertIn("repoPath !== GitBridge.repoPath", handler)
+        self.assertIn("repoPath !== root.requestRepoPath", handler)
+        self.assertIn("hash !== root.requestHash", handler)
+        self.assertIn("root.commit.hash !== hash", handler)
+
     def test_diff_tables_do_not_use_full_span_rows_that_distort_columns(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
