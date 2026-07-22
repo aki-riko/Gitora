@@ -18,12 +18,12 @@ Item {
     property string pendingJumpHash: ""
 
     property var allCommits: []        // 已加载的提交(累积)
-    property var timelineItems: []      // 按日期分组的 Timeline items
+    readonly property var timelineItems: historyTimelineModel.items
+    readonly property int graphLaneCount: historyTimelineModel.laneCount
 
     // ==================== 数据加载 ====================
     function resetAndLoad() {
         root.allCommits = []
-        root.timelineItems = []
         root.loadedCount = 0
         root.hasMore = true
         root.searchMode = false
@@ -95,56 +95,13 @@ Item {
             root.loadedCount += batch.length
             root.hasMore = batch.length === root.pageSize
             root.loading = false
-            rebuildTimeline()
         }
         function onSearchReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
             if (!root.searchMode) return  // 已退出搜索,丢弃过期搜索结果
             root.allCommits = results
-            rebuildTimeline()
             root._selectPendingJump(results)
         }
-    }
-
-    // 提交日期 -> 分组标签(今天/昨天/本周/更早 + 日期)
-    function _dateGroup(dateStr) {
-        var d = (dateStr || "").substring(0, 10)  // "YYYY-MM-DD"
-        if (d === "") return "未知日期"
-        var today = new Date()
-        var pad = function(n) { return n < 10 ? "0" + n : "" + n }
-        var todayStr = today.getFullYear() + "-" + pad(today.getMonth() + 1) + "-" + pad(today.getDate())
-        var y = new Date(today.getTime() - 86400000)
-        var yStr = y.getFullYear() + "-" + pad(y.getMonth() + 1) + "-" + pad(y.getDate())
-        if (d === todayStr) return "今天"
-        if (d === yStr) return "昨天"
-        return d
-    }
-
-    // 把 allCommits 按日期分组成 Timeline.items
-    function rebuildTimeline() {
-        var groups = []
-        var indexByLabel = ({})
-        for (var i = 0; i < root.allCommits.length; i++) {
-            var c = root.allCommits[i]
-            var isReverted = !!c.revertedBy
-            var relationText = ""
-            if (c.reverts) relationText += " · 撤销 " + c.reverts.substring(0, 8)
-            if (isReverted) relationText += " · 已撤销"
-            var label = _dateGroup(c.date)
-            if (indexByLabel[label] === undefined) {
-                indexByLabel[label] = groups.length
-                groups.push({ "title": label, "status": "info", "cards": [] })
-            }
-            groups[indexByLabel[label]].cards.push({
-                "text": c.message,
-                "description": c.shortHash + " · " + c.author + relationText,
-                "status": isReverted ? "warning" : "info",
-                "strikeOut": isReverted,
-                "hash": c.hash,
-                "commit": c
-            })
-        }
-        root.timelineItems = groups
     }
 
     Connections {
@@ -177,6 +134,11 @@ Item {
     }
 
     Component.onCompleted: root.resetAndLoad()
+
+    CommitTimelineModel {
+        id: historyTimelineModel
+        commits: root.allCommits
+    }
 
     // ==================== 布局 ====================
     Fluent.SplitPane {
@@ -223,7 +185,9 @@ Item {
 
                     Fluent.Timeline {
                         anchors.fill: parent
+                        type: Fluent.Enums.timeline.type_graph
                         virtualized: true
+                        graphLaneCount: root.graphLaneCount
                         items: root.timelineItems
                         selectedRole: "hash"
                         selectedKey: root.selectedCommit ? root.selectedCommit.hash : undefined

@@ -76,25 +76,39 @@ class GitRevertMarkerTest(unittest.TestCase):
 
 class HistoryRevertMarkerContractTest(unittest.TestCase):
     def test_history_marks_reverted_commit_in_list_and_detail(self) -> None:
-        qml_path = (
+        history_path = (
             Path(__file__).resolve().parents[1]
             / "app_qml"
             / "qml"
             / "views"
             / "HistoryView.qml"
         )
-        source = qml_path.read_text(encoding="utf-8")
+        model_path = (
+            Path(__file__).resolve().parents[1]
+            / "app_qml"
+            / "qml"
+            / "components"
+            / "CommitTimelineModel.qml"
+        )
+        history_source = history_path.read_text(encoding="utf-8")
+        model_source = model_path.read_text(encoding="utf-8")
 
-        self.assertIn('var isReverted = !!c.revertedBy', source)
-        self.assertIn('" · 撤销 " + c.reverts.substring(0, 8)', source)
-        self.assertIn('if (isReverted) relationText += " · 已撤销"', source)
-        self.assertIn('"strikeOut": isReverted', source)
-        self.assertIn('property string pendingJumpHash: ""', source)
-        self.assertIn('function jumpToCommit(hash)', source)
-        self.assertIn('root._selectPendingJump(results)', source)
-        self.assertEqual(source.count('style: Fluent.Enums.button.style_hyperlink'), 2)
-        self.assertIn('root.jumpToCommit(root.selectedCommit.revertedBy)', source)
-        self.assertIn('root.jumpToCommit(root.selectedCommit.reverts)', source)
+        self.assertIn('var isReverted = !!commit.revertedBy', model_source)
+        self.assertIn('" · 撤销 " + commit.reverts.substring(0, 8)', model_source)
+        self.assertIn('if (isReverted) relationText += " · 已撤销"', model_source)
+        self.assertIn('"strikeOut": isReverted', model_source)
+        self.assertIn('property string pendingJumpHash: ""', history_source)
+        self.assertIn('function jumpToCommit(hash)', history_source)
+        self.assertIn('root._selectPendingJump(results)', history_source)
+        self.assertEqual(
+            history_source.count('style: Fluent.Enums.button.style_hyperlink'), 2
+        )
+        self.assertIn(
+            'root.jumpToCommit(root.selectedCommit.revertedBy)', history_source
+        )
+        self.assertIn(
+            'root.jumpToCommit(root.selectedCommit.reverts)', history_source
+        )
 
 
 if __name__ == "__main__":

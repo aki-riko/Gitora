@@ -14,7 +14,21 @@ from app.common.git_service import (
     SubmoduleInfo,
     WorktreeInfo,
 )
+from app.common.git_graph import CommitGraphRow, CommitGraphSegment
 from app_qml.backend.git_bridge import GitBridge
+
+
+def _sample_graph_commit() -> CommitInfo:
+    row = CommitGraphRow(
+        node_lane=1,
+        node_color_index=2,
+        segments=(CommitGraphSegment(1, 0, 2, start_at_node=True),),
+        header_segments=(CommitGraphSegment(0, 0, 0),),
+        lane_count=2,
+    )
+    return CommitInfo(
+        "hash", "short", "author", "", "", "message", graph=row
+    )
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
@@ -118,6 +132,85 @@ class GitBridgeAsyncTest(unittest.TestCase):
         self.assertTrue(bridge.fileChangeModel.contains("repo/main.py", False))
         bridge.deleteLater()
         app.processEvents()
+
+    def test_log_request_uses_graph_payload(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        commit = _sample_graph_commit()
+        calls: list[tuple[str, int, int]] = []
+        emitted: list[tuple[str, int, list]] = []
+
+        def fake_graph_log(repo_path: str, count: int, skip: int):
+            calls.append((repo_path, count, skip))
+            return [commit]
+
+        bridge._svc.get_graph_log_at = fake_graph_log  # type: ignore[method-assign]
+        bridge.logReady.connect(
+            lambda repo, skip, items: emitted.append((repo, skip, items))
+        )
+        try:
+            bridge.requestLog(30, 60)
+            self.assertTrue(self._wait_until(app, lambda: len(emitted) == 1))
+            self.assertEqual(calls, [("repo", 30, 60)])
+            payload = emitted[0][2][0]
+            self.assertEqual(payload["graph"]["nodeLane"], 1)
+            self.assertTrue(payload["graph"]["segments"][0]["startAtNode"])
+            self.assertEqual(payload["graphHeader"]["segments"][0]["fromLane"], 0)
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def _configure_delayed_log(self, bridge: GitBridge):
+        started = [threading.Event() for _ in range(3)]
+        release = [threading.Event() for _ in range(3)]
+        finished = [threading.Event() for _ in range(3)]
+        calls: list[str] = []
+        emitted: list[tuple[str, str]] = []
+
+        def fake_graph_log(repo_path: str, _count: int, _skip: int):
+            index = len(calls)
+            calls.append(repo_path)
+            started[index].set()
+            release[index].wait(5)
+            finished[index].set()
+            return [
+                CommitInfo(
+                    f"hash-{index}", f"h-{index}", "author", "", "", f"result-{index}"
+                )
+            ]
+
+        bridge._svc.get_graph_log_at = fake_graph_log  # type: ignore[method-assign]
+        bridge.logReady.connect(
+            lambda repo, _skip, items: emitted.append((repo, items[0]["message"]))
+        )
+        return started, release, finished, calls, emitted
+
+    def test_latest_log_request_wins_across_a_b_a_switch(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        started, release, finished, calls, emitted = self._configure_delayed_log(bridge)
+        self.addCleanup(app.processEvents)
+        self.addCleanup(bridge.deleteLater)
+        for event in release:
+            self.addCleanup(event.set)
+
+        for index, repo in enumerate(("repo-a", "repo-b", "repo-a")):
+            bridge._svc._repo_path = repo
+            bridge.requestLog(30, 0)
+            self.assertTrue(started[index].wait(5), f"request {index} did not start")
+
+        release[2].set()
+        self.assertTrue(
+            self._wait_until(app, lambda: emitted == [("repo-a", "result-2")])
+        )
+        release[0].set()
+        release[1].set()
+        self.assertTrue(self._wait_until(app, lambda: all(e.is_set() for e in finished)))
+        self.assertEqual(calls, ["repo-a", "repo-b", "repo-a"])
+        self.assertEqual(emitted, [("repo-a", "result-2")])
 
     def test_stale_status_result_does_not_replace_current_repo_model(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])

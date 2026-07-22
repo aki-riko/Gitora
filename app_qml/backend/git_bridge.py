@@ -43,6 +43,45 @@ def _commit_to_dict(c: CommitInfo) -> dict:
         "branch": getattr(c, "branch", ""),
         "revertedBy": getattr(c, "reverted_by", ""),
         "reverts": getattr(c, "reverts", ""),
+        "parents": list(getattr(c, "parents", [])),
+        "refs": [
+            {"name": ref.name, "kind": ref.kind}
+            for ref in getattr(c, "refs", [])
+        ],
+        "graph": _graph_row_to_dict(getattr(c, "graph", None)),
+        "graphHeader": _graph_header_to_dict(getattr(c, "graph", None)),
+    }
+
+
+def _graph_segment_to_dict(segment) -> dict:
+    return {
+        "fromLane": segment.from_lane,
+        "toLane": segment.to_lane,
+        "colorIndex": segment.color_index,
+        "startAtNode": segment.start_at_node,
+        "endAtNode": segment.end_at_node,
+    }
+
+
+def _graph_row_to_dict(row) -> dict:
+    if row is None:
+        return {}
+    return {
+        "nodeLane": row.node_lane,
+        "nodeColorIndex": row.node_color_index,
+        "laneCount": row.lane_count,
+        "segments": [_graph_segment_to_dict(segment) for segment in row.segments],
+    }
+
+
+def _graph_header_to_dict(row) -> dict:
+    if row is None:
+        return {}
+    return {
+        "segments": [
+            _graph_segment_to_dict(segment)
+            for segment in row.header_segments
+        ]
     }
 
 
@@ -160,6 +199,7 @@ class GitBridge(QObject):
         self._svc.operationStarted.connect(self.operationStarted)
         self._svc.operationFinished.connect(self.operationFinished)
         self._svc.progressUpdated.connect(self.progressUpdated)
+        self._log_request_serial = 0
         self._search_request_serial = 0
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
@@ -611,14 +651,22 @@ class GitBridge(QObject):
         """后台分页获取提交,完成发 logReady(repoPath, skip, list),不阻塞主线程。"""
         import threading
         repo = self._svc.repo_path or ""
+        self._log_request_serial += 1
+        request_serial = self._log_request_serial
 
         def work():
             try:
-                fast = self._svc.is_large_repo_at(repo)
-                batch = [_commit_to_dict(c) for c in self._svc.get_log_at(repo, count, skip, fast)]
+                batch = [
+                    _commit_to_dict(c)
+                    for c in self._svc.get_graph_log_at(repo, count, skip)
+                ]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取提交历史失败: {e}")
                 batch = []
+            if request_serial != self._log_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
             self.logReady.emit(repo, skip, batch)
 
         threading.Thread(target=work, daemon=True).start()

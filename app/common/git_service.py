@@ -15,6 +15,12 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QThread, QMutex, QMutexLocker
 
 from .git_push_progress import GitPushWorker, run_git_push_with_progress
+from .git_graph import (
+    CommitGraphRow,
+    CommitRef,
+    layout_commit_graph,
+    parse_commit_refs,
+)
 from .logger import get_logger
 
 logger = get_logger("GitService")
@@ -67,6 +73,9 @@ class CommitInfo:
     branch: str = ""
     reverted_by: str = ""
     reverts: str = ""
+    parents: list[str] = field(default_factory=list)
+    refs: list[CommitRef] = field(default_factory=list)
+    graph: Optional[CommitGraphRow] = None
 
 
 @dataclass
@@ -753,6 +762,75 @@ class GitService(QObject):
 
         commits = self._parse_commit_log(stdout, repo_path)
         return self._mark_reverted_commits_at(repo_path, commits)
+
+    _GRAPH_LOG_FORMAT = (
+        "%H%x00%P%x00%h%x00%an%x00%ae%x00%ad%x00%s%x00%D%x00"
+    )
+
+    @staticmethod
+    def _graph_commit_from_fields(fields: list[str]) -> Optional[CommitInfo]:
+        if len(fields) != 8:
+            logger.warning(f"提交图记录字段数异常: {len(fields)}")
+            return None
+        full_hash, parents, short_hash, author, email, date, message, decorations = fields
+        refs = list(parse_commit_refs(decorations))
+        branches = [ref.name for ref in refs if ref.kind == "branch"]
+        return CommitInfo(
+            hash=full_hash,
+            short_hash=short_hash,
+            author=author,
+            email=email,
+            date=date,
+            message=message,
+            branch=" · ".join(branches),
+            parents=parents.split() if parents else [],
+            refs=refs,
+        )
+
+    @classmethod
+    def _parse_graph_commit_log(cls, stdout: str) -> list[CommitInfo]:
+        commits: list[CommitInfo] = []
+        fields = stdout.split("\x00")
+        if fields and not fields[-1].strip("\r\n"):
+            fields.pop()
+        for start in range(0, len(fields), 8):
+            record_fields = fields[start:start + 8]
+            if record_fields:
+                record_fields[0] = record_fields[0].lstrip("\r\n")
+            commit = cls._graph_commit_from_fields(record_fields)
+            if commit is not None:
+                commits.append(commit)
+        return commits
+
+    def get_graph_log_at(
+        self, repo_path: str, count: int = 50, skip: int = 0
+    ) -> list[CommitInfo]:
+        """获取包含全部引用、父关系和稳定轨道的提交图分页。"""
+        safe_count = max(0, count)
+        safe_skip = max(0, skip)
+        if safe_count == 0:
+            return []
+        cmd = [
+            "log",
+            "--all",
+            "--topo-order",
+            "--decorate=full",
+            f"--max-count={safe_skip + safe_count}",
+            f"--format={self._GRAPH_LOG_FORMAT}",
+            "--date=format:%Y-%m-%d %H:%M",
+        ]
+        success, stdout, stderr = self._run_git_sync_at(repo_path, cmd)
+        if not success:
+            logger.warning(f"获取提交图失败: {stderr or '未知错误'}")
+            return []
+        commits = self._parse_graph_commit_log(stdout)
+        rows = layout_commit_graph(
+            (commit.hash, commit.parents) for commit in commits
+        )
+        for commit, row in zip(commits, rows):
+            commit.graph = row
+        self._mark_reverted_commits_at(repo_path, commits)
+        return commits[safe_skip:safe_skip + safe_count]
 
     def _parse_commit_log(self, stdout: str, repo_path: str) -> list[CommitInfo]:
         """解析统一的提交日志格式。"""
