@@ -9,8 +9,8 @@ PySide6>=6.5.0
 # 多皮肤 UI 引擎(Fluent + Neobrutalism)。自动更新所需组件:
 #   Updater(检测/下载/ShellExecute open 提权安装)+ UpdateDialog(Markdown 更新说明)
 #   + Toast 确定/不确定进度环。均自原 fqml 0.2.9~0.2.13 演进,PrismQML 首发版 0.2.14 起继承。
-# 0.3.1.41: Qt 管理原生下拉弹窗，恢复跨窗口显示并保留远程交互路径；Windows 与 macOS 必须同版
-prismqml==0.3.1.41
+# 0.3.1.43: 修复更新检查空闲 SSL 警告与单实例退出清理；Windows 与 macOS 必须同版
+prismqml==0.3.1.43
 
 # 系统凭据库：Windows Credential Manager / macOS Keychain
 keyring==25.7.0
