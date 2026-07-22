@@ -1,8 +1,8 @@
 # AI 提交规划器 v1.3.0 构建验证
 
 > 验证日期：2026-07-22  
-> macOS 验证提交：`97e9ef588a5c5b597bc695629b702118d8babd18`  
-> 验证范围：Windows 安装包、Windows/macOS 打包态 QML 启动与本地 AI 连接链
+> 构建验证提交：`7cef1fd03ed49194cb99b6e70d51ed8250c247fd`
+> 验证范围：全量测试、Windows 安装包、Windows/macOS 打包态 QML 启动与本地 AI 连接链
 
 ## 验证结论
 
@@ -16,14 +16,13 @@ Ollama 模型列表接口，证明打包程序能够读取隔离配置、加载 
 ## Windows 产物
 
 Windows 应用产物基于提交
-`986ec9b2421523512c986060564757b07a4a7526` 完整重建。之后的
-`97e9ef5` 只修改外部自检工具及其测试，不改变安装包中的应用载荷；修正后的工具已再次
-使用下列同一 EXE 完成真实连接自检。
+`7cef1fd03ed49194cb99b6e70d51ed8250c247fd` 完整重建，并使用下列同一 EXE
+再次完成真实连接自检。
 
 | 产物 | 版本 | 字节数 | SHA-256 |
 |---|---:|---:|---|
-| `build_dist/main_qml.dist/Gitora.exe` | `1.3.0.0` | 12,851,200 | `6E53A89DD81B1F28C1A0F6640502F0FE64EBCCD93CFEE3318D48E20045EF57D5` |
-| `dist_installer/Gitora-Setup-1.3.0.exe` | `1.3.0` | 45,437,553 | `D38731FBB9E9B6537BEE184E496CAF79F2299F82AFAC01FC998F331018943CCC` |
+| `build_dist/main_qml.dist/Gitora.exe` | `1.3.0.0` | 12,909,056 | `D49F16035D1F7072A92B7ABB5973DA0AC3D2744D16403ADCBD818B708BD5ADE4` |
+| `dist_installer/Gitora-Setup-1.3.0.exe` | `1.3.0` | 45,435,769 | `90776B8AB0C3FF49A6FE8F2A15994263E1C8A8DD546E8D9863821A5F315C4A60` |
 
 修正后的相对路径调用验证输出包含：
 
@@ -36,8 +35,8 @@ Windows 应用产物基于提交
 ## macOS 产物
 
 GitHub Actions run
-[`29879070674`](https://github.com/aki-riko/Gitora/actions/runs/29879070674)
-在提交 `97e9ef588a5c5b597bc695629b702118d8babd18` 上完成，以下步骤均成功：
+[`29884387085`](https://github.com/aki-riko/Gitora/actions/runs/29884387085)
+在提交 `7cef1fd03ed49194cb99b6e70d51ed8250c247fd` 上完成，以下步骤均成功：
 
 - Nuitka 构建 `.app`；
 - ad-hoc 重签并通过 `codesign --verify --deep`；
@@ -59,12 +58,21 @@ SELFTEST passed
 
 | 产物 | 字节数 | SHA-256 | UDIF 尾签名 |
 |---|---:|---|---|
-| `build_dist/macos-run-29879070674/Gitora-macOS.dmg` | 197,332,093 | `6252CF1144C897CC856BE72D8DAE4450DA8C47E8E717C389300C3F6C3495271A` | `koly` |
+| `build_dist/macos-run-29884387085/Gitora-macOS.dmg` | 195,897,583 | `F5D576161D2BD3F0847A22E660BAF26A8DA976BFDB137F2C216930A694F93772` | `koly` |
 
-GitHub artifact `Gitora-macOS-unsigned` 的归档大小为 183,348,683 字节，平台记录的
+GitHub artifact `Gitora-macOS-unsigned` 的归档大小为 183,344,896 字节，平台记录的
 归档摘要为
-`sha256:d340fd4efa1a6be2e654649fbf3c04fb084236e6b9f1ea7eda04f157e720c928`；
+`sha256:850d7dbacba666f9d4f6cf7f18c031c3044ed8aa74de063faa47b6e1489631fa`；
 该摘要属于 artifact ZIP，不能与上表中的 DMG 文件摘要混用。
+
+## 源码级回归
+
+- 提交 `7cef1fd` 的本地全量测试结果为 `170 passed`。
+- Cross-platform SELFTEST run
+  [`29884149477`](https://github.com/aki-riko/Gitora/actions/runs/29884149477)
+  在同一提交上的 Ubuntu 与 macOS job 均成功。
+- 源码 QML 在全新进程中的 headless selftest 输出 `exit=0`，并检测到
+  `rootObjects = 1`。
 
 ## 失败复现与修复证据
 
@@ -77,8 +85,8 @@ GitHub artifact `Gitora-macOS-unsigned` 的归档大小为 183,348,683 字节，
 ```
 
 根因是自检工具在切换子进程工作目录后仍传递相对可执行路径。提交 `97e9ef5` 在切换工作
-目录前严格解析绝对路径，并增加相对路径回归测试。run `29879070674` 使用同一工作流输入
-通过该步骤，构成同类真实失败输入的修复后验证。
+目录前严格解析绝对路径，并增加相对路径回归测试。最终 run `29884387085` 包含该修复并
+使用同一工作流输入通过该步骤，构成同类真实失败输入的修复后验证。
 
 ## 隔离与隐私边界
 
