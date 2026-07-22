@@ -108,6 +108,11 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn('title: "计划差异：" + dlg._previewTitle', source)
         self.assertIn("text: dlg._previewTitle", source)
         self.assertIn("enabled: !AiCommitPlanBridge || !AiCommitPlanBridge.busy", source)
+        self.assertIn(
+            "enabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy\n"
+            "                && !AiCommitPlanBridge.awaitingCommit",
+            source,
+        )
 
     def test_macos_build_runs_packaged_ai_connection_selftest(self) -> None:
         source = (

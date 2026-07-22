@@ -409,6 +409,8 @@ Fluent.DialogBoxCore {
         Rectangle {
             required property var modelData
             property var change: modelData
+            enabled: AiCommitPlanBridge && !AiCommitPlanBridge.busy
+                && !AiCommitPlanBridge.awaitingCommit
             width: parent ? parent.width : 0
             height: changeLayout.implicitHeight + Fluent.Enums.spacing.s * 2
             radius: Fluent.Enums.radius.small
