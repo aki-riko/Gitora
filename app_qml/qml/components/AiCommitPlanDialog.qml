@@ -505,6 +505,16 @@ Fluent.DialogBoxCore {
         cancelText: ""
         ColumnLayout {
             width: 760
+            Text {
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: dlg._previewTitle
+                textFormat: Text.PlainText
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
+                elide: Text.ElideRight
+            }
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 480
