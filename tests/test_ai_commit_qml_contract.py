@@ -97,6 +97,28 @@ class AiCommitQmlContractTest(unittest.TestCase):
             "&& (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)", source
         )
 
+    def test_ai_bridge_errors_have_single_global_notification_owner(self) -> None:
+        repo_source = (
+            ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
+        ).read_text(encoding="utf-8")
+        settings_source = (
+            ROOT / "app_qml" / "qml" / "components" / "AiCommitSettingsCard.qml"
+        ).read_text(encoding="utf-8")
+        host_source = (
+            ROOT / "app_qml" / "qml" / "components" / "ToastProgressHost.qml"
+        ).read_text(encoding="utf-8")
+
+        repo_error_handler = repo_source.split(
+            "function onErrorOccurred", 1
+        )[1].split("}", 1)[0]
+        self.assertNotIn("NotificationManager", repo_error_handler)
+        self.assertNotIn("function onErrorOccurred", settings_source)
+        self.assertEqual(host_source.count("function onErrorOccurred"), 1)
+        self.assertIn(
+            'Fluent.NotificationManager.desktop.error("AI 提交规划", message)',
+            host_source,
+        )
+
     def test_settings_card_uses_system_credential_store_only(self) -> None:
         source = self._settings_qml_source()
         self.assertIn("input.type_password", source)

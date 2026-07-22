@@ -263,7 +263,6 @@ Item {
         }
         function onErrorOccurred(message) {
             root._aiPreparedRequestId = ""
-            Fluent.NotificationManager.toast.error(root, "AI 提交规划", message)
         }
     }
 

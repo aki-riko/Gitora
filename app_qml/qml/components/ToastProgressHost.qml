@@ -130,6 +130,14 @@ Item {
         Updater.downloadUpdate(url)
     }
 
+    Connections {
+        target: AiCommitBridge
+
+        function onErrorOccurred(message) {
+            Fluent.NotificationManager.desktop.error("AI 提交规划", message)
+        }
+    }
+
     function _fmtSize(bytes) {
         if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
         if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB"

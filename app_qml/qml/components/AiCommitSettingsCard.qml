@@ -47,9 +47,6 @@ Fluent.SettingsCardGroup {
             if (!AiCommitBridge.busy && root._modelFetchProvider.length > 0)
                 root.clearModelFetchState()
         }
-        function onErrorOccurred(message) {
-            Fluent.NotificationManager.toast.error(root, "AI 提交规划", message)
-        }
     }
 
     Rectangle {
