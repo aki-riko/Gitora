@@ -126,11 +126,11 @@ Fluent.SettingsCardGroup {
                     placeholderText: "密钥环境变量名"
                 }
                 Fluent.LineEdit {
-                    id: sessionKeyInput
+                    id: apiKeyInput
                     Layout.fillWidth: true
                     visible: providerCombo.currentIndex === 1
                     inputType: Fluent.Enums.input.type_password
-                    placeholderText: "会话密钥（仅保留到退出）"
+                    placeholderText: "API 密钥（保存到系统凭据库）"
                 }
             }
 
@@ -144,11 +144,15 @@ Fluent.SettingsCardGroup {
                 }
                 Text {
                     Layout.fillWidth: true
+                    visible: providerCombo.currentIndex === 1
                     text: {
                         if (!AiCommitBridge) return ""
-                        if (AiCommitBridge.hasSessionApiKey) return "已设置会话密钥"
+                        if (AiCommitBridge.hasStoredApiKey) return "已保存到系统凭据库"
                         var settings = AiCommitBridge.getSettings()
-                        return settings.hasEnvironmentApiKey ? "已检测到环境变量密钥" : "未检测到远程密钥"
+                        if (settings.hasEnvironmentApiKey) return "已检测到环境变量密钥"
+                        if (!settings.credentialStoreAvailable)
+                            return settings.credentialStoreError || "系统凭据库不可用"
+                        return "未保存远程密钥"
                     }
                     color: Fluent.Enums.textColor.tertiary
                     font.family: Fluent.Enums.fontFamily
@@ -161,10 +165,16 @@ Fluent.SettingsCardGroup {
                 Layout.fillWidth: true
                 spacing: Fluent.Enums.spacing.s
                 Fluent.Button {
-                    text: "清除会话密钥"
-                    visible: providerCombo.currentIndex === 1 && AiCommitBridge && AiCommitBridge.hasSessionApiKey
+                    text: "删除系统凭据"
+                    visible: providerCombo.currentIndex === 1 && AiCommitBridge && AiCommitBridge.hasStoredApiKey
                     style: Fluent.Enums.button.style_transparent
-                    onClicked: AiCommitBridge.clearSessionApiKey()
+                    onClicked: {
+                        var result = AiCommitBridge.deleteStoredApiKey()
+                        if (result[0])
+                            Fluent.NotificationManager.toast.success(root, "系统凭据", result[1] || "密钥已删除")
+                        else
+                            Fluent.NotificationManager.toast.error(root, "删除失败", result[1] || "无法删除系统凭据")
+                    }
                 }
                 Item { Layout.fillWidth: true }
                 Fluent.Button {
@@ -218,12 +228,23 @@ Fluent.SettingsCardGroup {
             Fluent.NotificationManager.toast.error(root, "保存失败", result[1] || "")
             return false
         }
-        if (sessionKeyInput.text.length > 0) {
-            AiCommitBridge.setSessionApiKey(sessionKeyInput.text)
-            sessionKeyInput.text = ""
+        var successMessage = result[1] || "AI 提交规划设置已保存"
+        var credentialResult = root.saveCredentialInput()
+        if (!credentialResult[0]) {
+            Fluent.NotificationManager.toast.error(root, "密钥保存失败", credentialResult[1] || "")
+            return false
         }
+        if (credentialResult[1])
+            successMessage = credentialResult[1]
         if (showToast)
-            Fluent.NotificationManager.toast.success(root, "设置已保存", result[1] || "")
+            Fluent.NotificationManager.toast.success(root, "设置已保存", successMessage)
         return true
+    }
+
+    function saveCredentialInput() {
+        if (apiKeyInput.text.length === 0) return [true, ""]
+        var result = AiCommitBridge.storeApiKey(apiKeyInput.text)
+        if (result[0]) apiKeyInput.text = ""
+        return result
     }
 }

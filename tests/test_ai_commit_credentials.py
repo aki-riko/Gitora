@@ -63,6 +63,8 @@ class AiCommitCredentialsTest(unittest.TestCase):
 
     def test_secret_validation_and_backend_errors_are_sanitized(self) -> None:
         store = SystemCredentialStore("Gitora.Test", _MemoryBackend())
+        with self.assertRaisesRegex(CredentialStoreError, "账户"):
+            store.get("")
         with self.assertRaisesRegex(CredentialStoreError, "不能为空"):
             store.set("account", "")
         with self.assertRaisesRegex(CredentialStoreError, "控制字符"):

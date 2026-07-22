@@ -12,6 +12,7 @@ from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication
 
+from app.common.ai_commit_credentials import SystemCredentialStore
 from app.common.ai_commit_models import PlannerRequest
 from app.common.ai_commit_provider import ModelProvider, ProviderCancelledError
 from app.common.ai_commit_settings import AiCommitSettingsStore
@@ -69,6 +70,20 @@ class _BlockingProvider(_EchoProvider):
         raise ProviderCancelledError("请求已取消")
 
 
+class _MemoryCredentialBackend:
+    def __init__(self):
+        self.values: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self.values.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self.values[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        del self.values[(service, username)]
+
+
 class AiCommitBridgeTest(unittest.TestCase):
     def setUp(self) -> None:
         self.app = QCoreApplication.instance() or QCoreApplication([])
@@ -82,6 +97,7 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.config_path = Path(self.temp_dir.name) / "ai_commit.json"
         self.store = AiCommitSettingsStore(DEFAULTS, self.config_path)
         self.provider = _EchoProvider()
+        self.credential_backend = _MemoryCredentialBackend()
 
     def make_bridge(
         self,
@@ -101,6 +117,9 @@ class AiCommitBridgeTest(unittest.TestCase):
             self.service,
             self.store,
             provider_factory=lambda _settings, _key: self.provider,
+            credential_store=SystemCredentialStore(
+                "Gitora.AiCommit.Test", self.credential_backend
+            ),
         )
         self.addCleanup(bridge.deleteLater)
         self.addCleanup(self.app.processEvents)
@@ -189,17 +208,22 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.assertIn("工作区已变化", ready[0][5])
         self.assertEqual(self.provider.requests, [])
 
-    def test_session_key_is_never_persisted(self) -> None:
+    def test_system_key_is_persisted_outside_settings_and_deletable(self) -> None:
         bridge = self.make_bridge("openai_responses")
-        bridge.setSessionApiKey("session-top-secret")
-        self.assertTrue(bridge.hasSessionApiKey)
-        self.assertNotIn(
-            "session-top-secret", self.config_path.read_text(encoding="utf-8")
-        )
-        bridge.clearSessionApiKey()
-        self.assertFalse(bridge.hasSessionApiKey)
+        result = bridge.storeApiKey("system-top-secret")
 
-    def test_session_key_change_invalidates_prepared_remote_request(self) -> None:
+        self.assertTrue(result[0], result[1])
+        self.assertTrue(bridge.hasStoredApiKey)
+        self.assertNotIn(
+            "system-top-secret", self.config_path.read_text(encoding="utf-8")
+        )
+        restarted = self.make_bridge("openai_responses")
+        self.assertTrue(restarted.hasStoredApiKey)
+        deleted = restarted.deleteStoredApiKey()
+        self.assertTrue(deleted[0], deleted[1])
+        self.assertFalse(restarted.hasStoredApiKey)
+
+    def test_system_key_change_invalidates_prepared_remote_request(self) -> None:
         self.stage_change()
         bridge = self.make_bridge("openai_responses")
         prepared: list[tuple] = []
@@ -209,12 +233,40 @@ class AiCommitBridgeTest(unittest.TestCase):
         bridge.prepareCommitMessage()
         self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
 
-        bridge.setSessionApiKey("replacement-session-key")
+        result = bridge.storeApiKey("replacement-system-key")
+        self.assertTrue(result[0], result[1])
         bridge.generatePrepared(prepared[0][0], True)
 
         self.assertTrue(self.wait_until(lambda: bool(errors)))
         self.assertIn("已过期", errors[-1])
         self.assertEqual(self.provider.requests, [])
+
+    def test_system_key_precedes_environment_and_is_scoped_to_endpoint(self) -> None:
+        captured_keys: list[str] = []
+        bridge = self.make_bridge("openai_responses")
+        bridge._provider_factory = lambda _settings, key: (
+            captured_keys.append(key) or self.provider
+        )
+        stored = bridge.storeApiKey("system-key")
+        self.assertTrue(stored[0], stored[1])
+
+        with patch.dict(os.environ, {"OPENAI_API_KEY": "environment-key"}):
+            bridge.create_provider_for(bridge.planning_settings())
+        self.assertEqual(captured_keys, ["system-key"])
+
+        saved = bridge.saveSettings(
+            True,
+            "openai_responses",
+            "",
+            "",
+            "https://other.example.invalid/v1/responses",
+            "test-remote",
+            "OPENAI_API_KEY",
+            True,
+            "staged",
+        )
+        self.assertTrue(saved[0], saved[1])
+        self.assertFalse(bridge.hasStoredApiKey)
 
     def test_prepared_request_resolves_its_own_environment_key_name(self) -> None:
         self.stage_change()
@@ -232,6 +284,9 @@ class AiCommitBridgeTest(unittest.TestCase):
             self.store,
             provider_factory=lambda _settings, key: (
                 captured_keys.append(key) or self.provider
+            ),
+            credential_store=SystemCredentialStore(
+                "Gitora.AiCommit.Test", self.credential_backend
             ),
         )
         self.addCleanup(bridge.deleteLater)

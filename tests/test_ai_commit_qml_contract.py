@@ -70,13 +70,16 @@ class AiCommitQmlContractTest(unittest.TestCase):
             "&& (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)", source
         )
 
-    def test_settings_card_keeps_secret_session_only(self) -> None:
+    def test_settings_card_uses_system_credential_store_only(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "components" / "AiCommitSettingsCard.qml"
         ).read_text(encoding="utf-8")
         self.assertIn("input.type_password", source)
-        self.assertIn("AiCommitBridge.setSessionApiKey", source)
-        self.assertIn("仅保留到退出", source)
+        self.assertIn("AiCommitBridge.storeApiKey", source)
+        self.assertIn("AiCommitBridge.deleteStoredApiKey", source)
+        self.assertIn("保存到系统凭据库", source)
+        self.assertNotIn("setSessionApiKey", source)
+        self.assertNotIn("仅保留到退出", source)
         self.assertIn("提交规划：仅已暂存差异", source)
         self.assertIn("提交规划：全部工作区改动", source)
         self.assertIn("仅本机回环 Ollama 直接发送", source)

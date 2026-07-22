@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import sys
+from threading import RLock
 from typing import NoReturn, Protocol
 
 from .logger import get_logger
@@ -14,6 +15,16 @@ logger = get_logger("AiCommitCredentials")
 
 class CredentialStoreError(RuntimeError):
     """系统凭据库不可用或拒绝操作。"""
+
+
+class CredentialStore(Protocol):
+    def get(self, account: str) -> str: ...
+
+    def set(self, account: str, secret: str) -> None: ...
+
+    def delete(self, account: str) -> bool: ...
+
+    def has(self, account: str) -> bool: ...
 
 
 class _NativeBackend(Protocol):
@@ -67,8 +78,14 @@ class SystemCredentialStore:
         if not self._service:
             raise CredentialStoreError("系统凭据服务名不能为空")
         self._backend = backend or create_native_backend()
+        self._lock = RLock()
 
     def get(self, account: str) -> str:
+        self._validate_account(account)
+        with self._lock:
+            return self._get_unlocked(account)
+
+    def _get_unlocked(self, account: str) -> str:
         try:
             value = self._backend.get_password(self._service, account)
         except Exception as exc:
@@ -86,22 +103,30 @@ class SystemCredentialStore:
             raise CredentialStoreError("密钥不能为空")
         if any(ord(char) < 32 or ord(char) == 127 for char in secret):
             raise CredentialStoreError("密钥包含非法控制字符")
-        try:
-            self._backend.set_password(self._service, account, secret)
-        except Exception as exc:
-            self._raise_operation_error("保存", exc)
+        with self._lock:
+            try:
+                self._backend.set_password(self._service, account, secret)
+            except Exception as exc:
+                self._raise_operation_error("保存", exc)
 
     def delete(self, account: str) -> bool:
-        if not self.get(account):
-            return False
-        try:
-            self._backend.delete_password(self._service, account)
-        except Exception as exc:
-            self._raise_operation_error("删除", exc)
-        return True
+        self._validate_account(account)
+        with self._lock:
+            if not self._get_unlocked(account):
+                return False
+            try:
+                self._backend.delete_password(self._service, account)
+            except Exception as exc:
+                self._raise_operation_error("删除", exc)
+            return True
 
     def has(self, account: str) -> bool:
         return bool(self.get(account))
+
+    @staticmethod
+    def _validate_account(account: str) -> None:
+        if not account:
+            raise CredentialStoreError("系统凭据账户不能为空")
 
     @staticmethod
     def _raise_operation_error(operation: str, exc: Exception) -> NoReturn:
