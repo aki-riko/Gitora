@@ -129,6 +129,7 @@ class AiCommitBridgeTest(unittest.TestCase):
         self,
         provider: str = "ollama",
         local_endpoint: str = "http://127.0.0.1:11434",
+        remote_scope: str = "staged",
     ) -> AiCommitBridge:
         settings = self.store.load().with_user_values({
             "enabled": True,
@@ -137,6 +138,7 @@ class AiCommitBridgeTest(unittest.TestCase):
             "local_model": "test-local",
             "remote_endpoint": "https://example.invalid/v1/responses",
             "remote_model": "test-remote",
+            "remote_scope": remote_scope,
         })
         self.store.save(settings)
         bridge = AiCommitBridge(
@@ -181,6 +183,23 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.assertEqual(len(self.provider.requests), 1)
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
         self.assertEqual(run_git(self.repo, "rev-parse", "HEAD").stdout.strip(), before_head)
+
+    def test_all_scope_generation_includes_unstaged_workspace(self) -> None:
+        write_file(self.repo, "tracked.txt", "changed but unstaged\n")
+        bridge = self.make_bridge(remote_scope="all")
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.commitMessageReady.connect(lambda *args: ready.append(args))
+
+        bridge.prepareCommitMessage()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        self.assertEqual(prepared[0][4], "分析已暂存、未暂存和未跟踪改动")
+
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        self.assertTrue(ready[0][2])
+        self.assertEqual(len(self.provider.requests[0].snapshot.changes), 1)
 
     def test_remote_generation_requires_explicit_consent(self) -> None:
         self.stage_change()

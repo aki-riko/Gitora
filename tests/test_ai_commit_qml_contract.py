@@ -45,49 +45,63 @@ class AiCommitQmlContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('import "../components"', source)
 
-    def test_repo_view_uses_two_step_consent_and_does_not_auto_commit(self) -> None:
+    def test_repo_view_uses_single_ai_commit_flow(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
         ).read_text(encoding="utf-8")
-        self.assertIn("AiCommitBridge.prepareCommitMessage()", source)
-        self.assertIn("AiCommitBridge.generatePrepared(requestId, false)", source)
-        self.assertIn("确认发送差异到远程模型", source)
-        self.assertIn("AiCommitBridge.generatePrepared(root._aiPreparedRequestId, true)", source)
-        self.assertIn("AiCommitBridge.cancelCurrent()", source)
-        self.assertIn("aiCommitPlanDialog.openPlanner()", source)
-        self.assertIn("AiCommitPlanBridge.notifyCommitSucceeded()", source)
-        self.assertIn(
-            "AiCommitPlanBridge.busy || AiCommitPlanBridge.awaitingCommit", source
-        )
-        self.assertIn("CommitComposer {", source)
-        self.assertIn("root._setCommitMessage(title, body)", source)
-        ai_handler = source.split("function onCommitMessageReady", 1)[1].split("function onErrorOccurred", 1)[0]
-        self.assertNotIn("GitBridge.commit", ai_handler)
-        self.assertNotIn("GitBridge.push", ai_handler)
+        result_source = (
+            ROOT / "app_qml" / "qml" / "components" / "AiCommitResultDialog.qml"
+        ).read_text(encoding="utf-8")
 
-    def test_commit_composer_uses_single_line_title_and_optional_body(self) -> None:
+        self.assertIn("AiCommitBridge.prepareCommitMessage()", source)
+        self.assertIn("AiCommitBridge.generatePrepared(requestId, isRemote)", source)
+        self.assertIn("Fluent.ProgressDialog {", source)
+        self.assertIn("aiCommitProgress.open()", source)
+        self.assertIn("aiCommitProgress.close()", source)
+        self.assertIn("AiCommitResultDialog {", source)
+        self.assertIn("aiCommitResultDialog.openPlan(title, body, message)", source)
+        self.assertIn('"AI 提交方案已失效", "工作区发生变化，请重新生成"', source)
+        self.assertIn("aiCommitResultDialog.reject()", source)
+        self.assertNotIn("remoteAiConfirm", source)
+        self.assertNotIn("AiCommitPlanDialog {", source)
+        self.assertIn("CommitComposer {", source)
+        self.assertIn("onAiCommitRequested: root._requestAiCommitMessage()", source)
+        accepted_handler = source.split("onAccepted:", 1)[1].split("onRejected:", 1)[0]
+        self.assertIn("root._submitAiCommit(planTitle, planBody)", accepted_handler)
+        self.assertIn("GitBridge.commit(message)", source)
+        self.assertIn("GitBridge.push()", source)
+        self.assertIn("root._quickCommitPush(message)", source)
+
+        self.assertIn("Fluent.DialogBoxCore {", result_source)
+        self.assertEqual(
+            result_source.count("style: Fluent.Enums.button.style_filled"), 2
+        )
+        self.assertIn("level: Fluent.Enums.statusLevel.error", result_source)
+        self.assertIn("level: Fluent.Enums.statusLevel.success", result_source)
+        self.assertIn('text: "不采用"', result_source)
+        self.assertIn('text: "采用并提交推送"', result_source)
+
+    def test_commit_composer_keeps_only_title_and_submit_split_button(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "components" / "CommitComposer.qml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("Fluent.LineEdit {\n                id: commitTitleInput", source)
-        self.assertIn("Fluent.TextEdit {\n        id: commitBodyInput", source)
+        self.assertIn("Fluent.LineEdit {\n            id: commitTitleInput", source)
         self.assertIn('placeholderText: "提交标题"', source)
-        self.assertIn('placeholderText: "提交正文（可选）"', source)
-        self.assertIn('objectName: "aiGenerateButton"', source)
-        self.assertIn('text: root.aiBusy ? "生成中…" : "AI 生成"', source)
-        self.assertIn(
-            "feature: root.aiBusy\n"
-            "                    ? Fluent.Enums.button.feature_indeterminate_ring\n"
-            "                    : Fluent.Enums.button.feature_none",
-            source,
-        )
-        self.assertIn('toolTipText: root.aiBusy ? "取消生成" : ""', source)
-        self.assertIn("onClicked: root.aiRequested()", source)
-        self.assertIn('? "编辑正文" : "添加正文"', source)
-        self.assertIn("visible: root.bodyExpanded", source)
-        self.assertIn("root.bodyExpanded = commitBodyInput.text.trim().length > 0", source)
-        self.assertIn('return title + (body.length > 0 ? "\\n\\n" + body : "")', source)
+        self.assertIn("signal aiCommitRequested()", source)
+        self.assertIn('"text": "AI 提交"', source)
+        self.assertIn("Fluent.Enums.icon.sparkle", source)
+        self.assertIn("feature: Fluent.Enums.button.feature_split", source)
+        self.assertIn("onAiCommitRequested", (
+            ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
+        ).read_text(encoding="utf-8"))
+        self.assertNotIn("Fluent.TextEdit", source)
+        self.assertNotIn("添加正文", source)
+        self.assertNotIn("收起正文", source)
+        self.assertNotIn("AI 生成", source)
+        self.assertNotIn("规划提交", source)
+        self.assertNotIn("signal aiRequested()", source)
+        self.assertNotIn("signal planRequested()", source)
 
     def test_repo_view_clears_ai_request_and_locks_index_operations(self) -> None:
         source = (
@@ -98,14 +112,10 @@ class AiCommitQmlContractTest(unittest.TestCase):
         )[0]
         error_handler = source.split("function onErrorOccurred", 1)[1].split("}", 1)[0]
         self.assertIn('root._aiPreparedRequestId = ""', repo_change_handler)
-        self.assertIn("remoteAiConfirm.reject()", repo_change_handler)
+        self.assertIn("aiCommitProgress.close()", repo_change_handler)
+        self.assertIn("aiCommitResultDialog.reject()", repo_change_handler)
         self.assertIn('root._aiPreparedRequestId = ""', error_handler)
-        self.assertIn("readonly property bool _aiPlanLocksIndex", source)
-        self.assertGreaterEqual(source.count("enabled: !root._aiPlanLocksIndex"), 3)
-        self.assertIn("&& !root._aiPlanLocksIndex", source)
-        self.assertIn(
-            "&& (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)", source
-        )
+        self.assertNotIn("readonly property bool _aiPlanLocksIndex", source)
 
     def test_ai_bridge_errors_have_single_global_notification_owner(self) -> None:
         repo_source = (
@@ -139,8 +149,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn("仅保留到退出", source)
         self.assertIn("提交规划：仅已暂存差异", source)
         self.assertIn("提交规划：全部工作区改动", source)
-        self.assertIn("仅本机回环 Ollama 直接发送", source)
-        self.assertIn("非本机 Ollama 与远程 API 每次发送前都会确认", source)
+        self.assertIn("点击“AI 提交”即按上方范围发送", source)
+        self.assertIn("仅本机回环 Ollama 保证源码不离开本机", source)
         self.assertNotIn("api_key\"", source)
 
     def test_settings_card_groups_connection_and_generation_rules(self) -> None:

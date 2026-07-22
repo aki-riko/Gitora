@@ -149,7 +149,7 @@ ColumnLayout {
 
                     Text {
                         Layout.fillWidth: true
-                        text: "仅本机回环 Ollama 直接发送；非本机 Ollama 与远程 API 每次发送前都会确认范围。"
+                        text: "点击“AI 提交”即按上方范围发送；仅本机回环 Ollama 保证源码不离开本机。"
                         textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily

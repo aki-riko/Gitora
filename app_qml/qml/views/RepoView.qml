@@ -23,8 +23,8 @@ Item {
     property string _quickCommitPushMessage: ""
     property string _quickCommitPushRepoPath: ""
     property string _aiPreparedRequestId: ""
-    readonly property bool _aiPlanLocksIndex: AiCommitPlanBridge
-        && (AiCommitPlanBridge.busy || AiCommitPlanBridge.awaitingCommit)
+    property string _aiCommitScope: "staged"
+    property bool _aiResultPending: false
 
     FontMetrics {
         id: repoPathFontMetrics
@@ -74,32 +74,28 @@ Item {
         return commitComposer.message()
     }
 
-    function _setCommitMessage(title, body) {
-        commitComposer.setMessage(title, body)
-    }
-
     function _clearCommitMessage() {
         commitComposer.clear()
     }
 
     function _requestAiCommitMessage() {
-        if (AiCommitBridge.busy) {
-            AiCommitBridge.cancelCurrent()
-            root._aiPreparedRequestId = ""
-            Fluent.NotificationManager.desktop.info("已取消 AI 生成", "现有提交信息保持不变"
-            )
-        } else {
-            AiCommitBridge.prepareCommitMessage()
-        }
+        if (!AiCommitBridge || AiCommitBridge.busy) return
+        var settings = AiCommitBridge.getSettings()
+        root._aiCommitScope = settings.remoteScope || "staged"
+        root._aiPreparedRequestId = ""
+        aiCommitProgress.open()
+        AiCommitBridge.prepareCommitMessage()
     }
 
     function _commitCurrentMessage() {
+        if (!commitComposer.hasTitle) {
+            Fluent.NotificationManager.desktop.warning("无法提交", "请先填写提交标题")
+            return
+        }
         var message = root._commitMessage()
         var res = GitBridge.commit(message)
         if (res[0]) {
             root._clearCommitMessage()
-            if (AiCommitPlanBridge)
-                AiCommitPlanBridge.notifyCommitSucceeded()
             Fluent.NotificationManager.desktop.success("提交成功", res[1] || "")
             root.reload()
         } else {
@@ -108,11 +104,6 @@ Item {
     }
 
     function _requestAmend() {
-        if (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit) {
-            Fluent.NotificationManager.desktop.warning("无法修补", "请先用普通提交完成当前计划组"
-            )
-            return
-        }
         if (!commitComposer.hasTitle) {
             Fluent.NotificationManager.desktop.warning("无法修补", "请先填写修补后的提交标题"
             )
@@ -124,11 +115,29 @@ Item {
             root.doAmend()
     }
 
-    function _quickCommitPushCurrentMessage() {
+    function _quickCommitPush(message) {
         root._quickCommitPushPending = true
-        root._quickCommitPushMessage = root._commitMessage()
+        root._quickCommitPushMessage = message
         root._quickCommitPushRepoPath = GitBridge.repoPath
-        GitBridge.quickCommitPush(root._quickCommitPushMessage)
+        GitBridge.quickCommitPush(message)
+    }
+
+    function _submitAiCommit(title, body) {
+        var cleanTitle = (title || "").trim()
+        var cleanBody = (body || "").trim()
+        var message = cleanTitle + (cleanBody.length > 0 ? "\n\n" + cleanBody : "")
+        if (root._aiCommitScope === "all") {
+            root._quickCommitPush(message)
+            return
+        }
+        var res = GitBridge.commit(message)
+        if (!res[0]) {
+            Fluent.NotificationManager.desktop.error("AI 提交失败", res[1] || "")
+            return
+        }
+        Fluent.NotificationManager.desktop.success("AI 提交成功", "正在推送到远程仓库")
+        GitBridge.push()
+        root.reload()
     }
 
     // 修补上次提交:用标题和可选正文重写 HEAD 的提交消息(git commit --amend)
@@ -179,10 +188,23 @@ Item {
 
     Connections {
         target: GitBridge
-        function onStatusChanged() { root.reload() }
-        function onRepoPathChanged(path) {
-            remoteAiConfirm.reject()
+        function onStatusChanged() {
+            aiCommitProgress.close()
             root._aiPreparedRequestId = ""
+            if (root._aiResultPending) {
+                root._aiResultPending = false
+                aiCommitResultDialog.reject()
+                Fluent.NotificationManager.desktop.warning(
+                    "AI 提交方案已失效", "工作区发生变化，请重新生成")
+            }
+            root.reload()
+        }
+        function onRepoPathChanged(path) {
+            aiCommitProgress.close()
+            aiCommitResultDialog.reject()
+            root._aiPreparedRequestId = ""
+            root._aiCommitScope = "staged"
+            root._aiResultPending = false
             root._statusRequesting = false
             root._reloadPending = false
             root._statusRequestRepoPath = ""
@@ -238,28 +260,23 @@ Item {
         target: AiCommitBridge
         function onContextPrepared(requestId, isRemote, fileCount, characterCount, summary) {
             root._aiPreparedRequestId = requestId
-            if (isRemote) {
-                remoteAiConfirm.content = summary + "\n将发送 " + fileCount
-                    + " 个变更，约 " + characterCount + " 个字符。\n"
-                    + "确认后才会向远程模型发送源码差异。"
-                remoteAiConfirm.open()
-            } else {
-                AiCommitBridge.generatePrepared(requestId, false)
-            }
+            AiCommitBridge.generatePrepared(requestId, isRemote)
         }
         function onCommitMessageReady(repoPath, requestId, ok, title, body, message) {
             if (!GitBridge || repoPath !== GitBridge.repoPath
                     || requestId !== root._aiPreparedRequestId) return
             root._aiPreparedRequestId = ""
+            aiCommitProgress.close()
             if (ok) {
-                root._setCommitMessage(title, body)
-                Fluent.NotificationManager.desktop.success("提交信息已生成", message || "可继续编辑后提交")
+                root._aiResultPending = true
+                aiCommitResultDialog.openPlan(title, body, message)
             } else {
                 Fluent.NotificationManager.desktop.error("生成失败", message || "")
             }
         }
         function onErrorOccurred(message) {
             root._aiPreparedRequestId = ""
+            aiCommitProgress.close()
         }
     }
 
@@ -405,24 +422,16 @@ Item {
         CommitComposer {
             id: commitComposer
             Layout.fillWidth: true
-            aiBusy: Boolean(AiCommitBridge && AiCommitBridge.busy)
-            aiActionEnabled: Boolean(AiCommitBridge && GitBridge
+            aiCommitActionEnabled: Boolean(AiCommitBridge && GitBridge
                 && GitBridge.repoPath.length > 0
                 && !root._quickCommitPushPending
-                && (AiCommitBridge.busy || root._aiPreparedRequestId.length === 0))
-            planActionEnabled: Boolean(AiCommitPlanBridge && GitBridge
-                && GitBridge.repoPath.length > 0
-                && !root._quickCommitPushPending)
+                && !AiCommitBridge.busy
+                && root._aiPreparedRequestId.length === 0)
             commitActionEnabled: hasTitle && !root._quickCommitPushPending
-                && (!AiCommitPlanBridge || !AiCommitPlanBridge.busy)
-            quickPushActionEnabled: hasTitle && !root._quickCommitPushPending
-                && !root._aiPlanLocksIndex
 
-            onAiRequested: root._requestAiCommitMessage()
-            onPlanRequested: aiCommitPlanDialog.openPlanner()
+            onAiCommitRequested: root._requestAiCommitMessage()
             onCommitRequested: root._commitCurrentMessage()
             onAmendRequested: root._requestAmend()
-            onQuickPushRequested: root._quickCommitPushCurrentMessage()
         }
 
         // ---------- 主体分栏 ----------
@@ -473,13 +482,11 @@ Item {
                                 Fluent.Button {
                                     text: "全部暂存"
                                     style: Fluent.Enums.button.style_transparent
-                                    enabled: !root._aiPlanLocksIndex
                                     onClicked: GitBridge.stageAll()
                                 }
                                 Fluent.Button {
                                     text: "全部取消"
                                     style: Fluent.Enums.button.style_transparent
-                                    enabled: !root._aiPlanLocksIndex
                                     onClicked: GitBridge.unstageAll()
                                 }
                             }
@@ -565,7 +572,6 @@ Item {
                                                         preferredWidth: Fluent.Enums.controlSize.inputHeight
                                                         text: model.staged ? "取消" : "暂存"
                                                         style: Fluent.Enums.button.style_transparent
-                                                        enabled: !root._aiPlanLocksIndex
                                                         onClicked: {
                                                             if (model.staged) GitBridge.unstageFile(model.path)
                                                             else GitBridge.stageFile(model.path)
@@ -840,24 +846,20 @@ Item {
         }
     }
 
-    Fluent.MessageBox {
-        id: remoteAiConfirm
-        title: "确认发送差异到远程模型"
-        confirmText: "确认发送"
-        cancelText: "取消"
-        onAccepted: AiCommitBridge.generatePrepared(root._aiPreparedRequestId, true)
-        onRejected: {
-            AiCommitBridge.cancelPrepared(root._aiPreparedRequestId)
-            root._aiPreparedRequestId = ""
-        }
+    Fluent.ProgressDialog {
+        id: aiCommitProgress
+        title: "AI 正在规划提交"
+        content: "正在分析改动并生成提交信息…"
+        progress: -1
     }
 
-    AiCommitPlanDialog {
-        id: aiCommitPlanDialog
-        onGroupApplied: function(title, body) {
-            root._setCommitMessage(title, body)
-            root.reload()
+    AiCommitResultDialog {
+        id: aiCommitResultDialog
+        onAccepted: {
+            root._aiResultPending = false
+            root._submitAiCommit(planTitle, planBody)
         }
+        onRejected: root._aiResultPending = false
     }
 
     // 危险操作:丢弃工作区改动二次确认(不可恢复)
