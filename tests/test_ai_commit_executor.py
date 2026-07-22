@@ -189,6 +189,43 @@ class FilePlanExecutorTest(unittest.TestCase):
                 str(self.repo), snapshot, plan, validation, False, self.settings.limits
             )
 
+    def test_staged_only_plan_rejects_unstaged_layer_on_same_path(self) -> None:
+        write_file(self.repo, "a.txt", "staged a\n")
+        run_git(self.repo, "add", "a.txt")
+        write_file(self.repo, "a.txt", "staged a\nunstaged a\n")
+        snapshot = ChangeContextCollector(
+            self.service, self.settings.limits
+        ).collect(str(self.repo), include_unstaged=False)
+        change_id = snapshot.changes[0].change_id
+        plan = CommitPlan.from_mapping({
+            "schema_version": "1",
+            "snapshot_id": snapshot.snapshot_id,
+            "level": "file",
+            "summary": "只规划暂存层",
+            "groups": [{
+                "group_id": "only",
+                "title": "feat: 更新 a",
+                "body": "",
+                "change_ids": [change_id],
+                "depends_on": [],
+                "rationale": "不得吸收同路径未暂存层",
+                "warnings": [],
+            }],
+            "unassigned_change_ids": [],
+            "warnings": [],
+        })
+        validation = CommitPlanValidator().validate(plan, snapshot, "file")
+        before_cached = run_git(self.repo, "diff", "--cached").stdout
+        before_unstaged = run_git(self.repo, "diff").stdout
+
+        with self.assertRaisesRegex(PlanExecutionError, "未纳入计划"):
+            FilePlanExecutor(self.service).apply_next(
+                str(self.repo), snapshot, plan, validation, False, self.settings.limits
+            )
+
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, before_cached)
+        self.assertEqual(run_git(self.repo, "diff").stdout, before_unstaged)
+
     def test_restore_refuses_to_overwrite_index_after_head_changes(self) -> None:
         write_file(self.repo, "a.txt", "changed a\n")
         write_file(self.repo, "b.txt", "changed b\n")

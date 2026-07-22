@@ -67,9 +67,11 @@ class FilePlanExecutor:
             if current_fingerprint != snapshot.workspace_fingerprint:
                 raise PlanExecutionError("工作区已变化，请重新规划")
 
-            snapshot_paths = {change.path for change in snapshot.changes}
-            current_paths = {change.path for change in self._git.get_status_at(repo_path)}
-            if not snapshot.include_unstaged and current_paths - snapshot_paths:
+            current_changes = self._git.get_status_at(repo_path)
+            if (
+                not snapshot.include_unstaged
+                and any(not change.staged for change in current_changes)
+            ):
                 raise PlanExecutionError(
                     "暂存区外还有未纳入计划的改动，请改用全部工作区规划"
                 )
