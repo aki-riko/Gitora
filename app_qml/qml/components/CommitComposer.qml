@@ -63,7 +63,12 @@ ColumnLayout {
             Item { Layout.fillWidth: true }
 
             Fluent.Button {
-                text: root.aiBusy ? "取消生成" : "AI 生成"
+                objectName: "aiGenerateButton"
+                text: root.aiBusy ? "生成中…" : "AI 生成"
+                feature: root.aiBusy
+                    ? Fluent.Enums.button.feature_indeterminate_ring
+                    : Fluent.Enums.button.feature_none
+                toolTipText: root.aiBusy ? "取消生成" : ""
                 enabled: root.aiActionEnabled
                 onClicked: root.aiRequested()
             }

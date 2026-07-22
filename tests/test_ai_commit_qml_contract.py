@@ -74,6 +74,16 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("Fluent.TextEdit {\n        id: commitBodyInput", source)
         self.assertIn('placeholderText: "提交标题"', source)
         self.assertIn('placeholderText: "提交正文（可选）"', source)
+        self.assertIn('objectName: "aiGenerateButton"', source)
+        self.assertIn('text: root.aiBusy ? "生成中…" : "AI 生成"', source)
+        self.assertIn(
+            "feature: root.aiBusy\n"
+            "                    ? Fluent.Enums.button.feature_indeterminate_ring\n"
+            "                    : Fluent.Enums.button.feature_none",
+            source,
+        )
+        self.assertIn('toolTipText: root.aiBusy ? "取消生成" : ""', source)
+        self.assertIn("onClicked: root.aiRequested()", source)
         self.assertIn('? "编辑正文" : "添加正文"', source)
         self.assertIn("visible: root.bodyExpanded", source)
         self.assertIn("root.bodyExpanded = commitBodyInput.text.trim().length > 0", source)
