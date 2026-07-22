@@ -163,7 +163,7 @@ class AiCommitBridge(QObject):
 
     def create_provider_for(self, settings: AiCommitSettings) -> ModelProvider:
         """复用同一提供方工厂和会话密钥，不把密钥暴露给 QML。"""
-        return self._provider_factory(settings, self._resolve_api_key())
+        return self._provider_factory(settings, self._resolve_api_key(settings))
 
     @Slot()
     def prepareCommitMessage(self) -> None:
@@ -175,7 +175,9 @@ class AiCommitBridge(QObject):
             self.errorOccurred.emit("请先打开一个 Git 仓库")
             return
         try:
-            self._provider_factory(self._settings, self._resolve_api_key())
+            self._provider_factory(
+                self._settings, self._resolve_api_key(self._settings)
+            )
         except (HttpProviderError, AiCommitSettingsError) as exc:
             self.errorOccurred.emit(str(exc))
             return
@@ -202,10 +204,10 @@ class AiCommitBridge(QObject):
                     request_id, repo, snapshot, request, settings,
                     settings.provider == "openai_responses",
                 )
-                if not self._is_current(serial, repo, cancel_event):
+                if not self._store_prepared_if_current(
+                    serial, repo, cancel_event, prepared
+                ):
                     return
-                with self._state_lock:
-                    self._prepared = prepared
                 character_count = len(build_user_input(request))
                 self.contextPrepared.emit(
                     request_id,
@@ -248,7 +250,7 @@ class AiCommitBridge(QObject):
                 if collector.workspace_fingerprint(prepared.repo_path) != prepared.snapshot.workspace_fingerprint:
                     raise SnapshotCollectionError("工作区已变化，请重新生成")
                 provider = self._provider_factory(
-                    prepared.settings, self._resolve_api_key()
+                    prepared.settings, self._resolve_api_key(prepared.settings)
                 )
                 raw_plan = provider.generate_plan(prepared.request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
@@ -311,7 +313,9 @@ class AiCommitBridge(QObject):
 
         def work() -> None:
             try:
-                provider = self._provider_factory(settings, self._resolve_api_key())
+                provider = self._provider_factory(
+                    settings, self._resolve_api_key(settings)
+                )
                 if isinstance(provider, OllamaProvider):
                     models = provider.list_models()
                     if settings.local_model and settings.local_model not in models:
@@ -385,6 +389,23 @@ class AiCommitBridge(QObject):
             return False
         return not check_repo or repo == (self._git.repo_path or "")
 
+    def _store_prepared_if_current(
+        self,
+        serial: int,
+        repo: str,
+        event: threading.Event,
+        prepared: _PreparedRequest,
+    ) -> bool:
+        with self._state_lock:
+            if (
+                serial != self._serial
+                or event.is_set()
+                or repo != (self._git.repo_path or "")
+            ):
+                return False
+            self._prepared = prepared
+            return True
+
     def _emit_error_if_current(self, serial: int, message: str) -> None:
         with self._state_lock:
             current = serial == self._serial and not self._cancel_event.is_set()
@@ -399,10 +420,12 @@ class AiCommitBridge(QObject):
         if current:
             self.commitMessageReady.emit(repo, request_id, False, "", "", message)
 
-    def _resolve_api_key(self) -> str:
+    def _resolve_api_key(
+        self, settings: AiCommitSettings | None = None
+    ) -> str:
         if self._session_api_key:
             return self._session_api_key
-        name = self._settings.api_key_env
+        name = (settings or self._settings).api_key_env
         return os.environ.get(name, "") if name else ""
 
     @staticmethod

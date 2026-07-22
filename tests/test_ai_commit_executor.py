@@ -189,6 +189,23 @@ class FilePlanExecutorTest(unittest.TestCase):
                 str(self.repo), snapshot, plan, validation, False, self.settings.limits
             )
 
+    def test_restore_refuses_to_overwrite_index_after_head_changes(self) -> None:
+        write_file(self.repo, "a.txt", "changed a\n")
+        write_file(self.repo, "b.txt", "changed b\n")
+        snapshot, plan, validation = self.make_snapshot_and_plan()
+        executor = FilePlanExecutor(self.service)
+        applied = executor.apply_next(
+            str(self.repo), snapshot, plan, validation, False, self.settings.limits
+        )
+        committed, message = self.service.commit(applied.group.title)
+        self.assertTrue(committed, message)
+
+        restored, restore_message = executor.restore_uncommitted_group(applied)
+
+        self.assertFalse(restored)
+        self.assertIn("HEAD 已变化", restore_message)
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, "")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -143,6 +143,34 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertIn("未获得发送确认", errors[-1])
         self.assertEqual(self.provider.requests, [])
 
+    def test_repo_switch_before_plan_store_discards_old_context(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        other_repo = init_repo(Path(self.temp_dir.name) / "other-repo")
+        write_file(other_repo, "other.txt", "other\n")
+        commit_all(other_repo, "chore: other")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        original_store = bridge._store_prepared_if_current
+        switched = False
+
+        def switch_before_store(serial, repo, event, request):
+            nonlocal switched
+            if not switched:
+                switched = True
+                self.service.set_repo_path(str(other_repo), emit_status=False)
+                bridge.invalidateRepo(str(other_repo))
+            return original_store(serial, repo, event, request)
+
+        bridge._store_prepared_if_current = switch_before_store
+        bridge.preparePlan()
+
+        self.assertTrue(self.wait_until(lambda: not bridge.busy))
+        self.app.processEvents()
+        self.assertEqual(prepared, [])
+        self.assertIsNone(bridge._prepared)
+        self.assertEqual(self.provider.requests, [])
+
     def test_workspace_invalidation_keeps_plan_visible_but_stale(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")
         bridge = self.make_bridge()
@@ -322,6 +350,47 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertTrue(self.wait_until(lambda: bool(errors)))
         self.assertIn("仍有新改动", errors[-1])
         self.assertTrue(bridge.planModel.stale)
+
+    def test_repo_switch_after_apply_restores_old_index_and_guard(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        other_repo = init_repo(Path(self.temp_dir.name) / "other-repo")
+        write_file(other_repo, "other.txt", "other\n")
+        commit_all(other_repo, "chore: other")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+        bridge.errorOccurred.connect(errors.append)
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        before_tree = run_git(self.repo, "write-tree").stdout.strip()
+        original_current = bridge._is_current
+        switched = False
+
+        def switch_after_apply(serial, repo, event):
+            nonlocal switched
+            current = original_current(serial, repo, event)
+            if current and not switched:
+                switched = True
+                self.service.set_repo_path(str(other_repo), emit_status=False)
+                bridge.invalidateRepo(str(other_repo))
+                return False
+            return current
+
+        bridge._is_current = switch_after_apply
+        bridge.applyNextGroup()
+
+        self.assertTrue(self.wait_until(
+            lambda: not bridge.busy and not bridge._execution_guard
+        ))
+        self.assertEqual(run_git(self.repo, "write-tree").stdout.strip(), before_tree)
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, "")
+        self.assertTrue(any("已恢复" in message for message in errors))
 
     def wait_until(self, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout

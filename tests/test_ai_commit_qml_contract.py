@@ -18,6 +18,10 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("AiCommitPlanBridge(", source)
         self.assertIn('setContextProperty("AiCommitPlanBridge", ai_commit_plan_bridge)', source)
         self.assertIn("statusChanged.connect(ai_commit_plan_bridge.invalidateWorkspace)", source)
+        self.assertIn(
+            "settingsChanged.connect(ai_commit_plan_bridge.invalidateSettings)",
+            source,
+        )
         self.assertIn("GITESS_AI_CONNECTION_SELFTEST", source)
         self.assertIn("ai_commit_bridge.testConnection", source)
 

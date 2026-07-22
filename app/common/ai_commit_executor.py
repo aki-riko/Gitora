@@ -153,6 +153,24 @@ class FilePlanExecutor:
                 return False, "实际提交内容超出已应用组，后续计划已失效"
             return True, current_head
 
+    def restore_uncommitted_group(
+        self, applied: AppliedFileGroup
+    ) -> tuple[bool, str]:
+        """只在首组目标仍原样留在索引中时恢复，避免覆盖并发 Git 操作。"""
+        with self._lock:
+            if self._git.get_head_at(applied.repo_path) != applied.head_before:
+                return False, "仓库 HEAD 已变化，为避免覆盖外部操作未自动恢复暂存区"
+            try:
+                current_tree = self._write_tree(applied.repo_path)
+            except PlanExecutionError as exc:
+                return False, str(exc)
+            if current_tree != applied.expected_commit_tree:
+                return False, "暂存区已被其他操作修改，为避免覆盖未自动恢复"
+            if not self._restore_tree(applied.repo_path, applied.index_tree_before):
+                return False, "无法恢复应用计划前的暂存区，请立即检查 git status"
+            self._git.statusChanged.emit()
+            return True, "仓库已切换，原暂存区已恢复"
+
     def _reset_paths(self, repo_path: str, head: str, paths: list[str]) -> None:
         if head:
             self._run_required(

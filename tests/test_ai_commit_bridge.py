@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 import json
+import os
 import tempfile
 import threading
 import time
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication
 
@@ -176,6 +178,45 @@ class AiCommitBridgeTest(unittest.TestCase):
         bridge.clearSessionApiKey()
         self.assertFalse(bridge.hasSessionApiKey)
 
+    def test_prepared_request_resolves_its_own_environment_key_name(self) -> None:
+        self.stage_change()
+        settings = self.store.load().with_user_values({
+            "enabled": True,
+            "provider": "openai_responses",
+            "remote_endpoint": "https://example.invalid/v1/responses",
+            "remote_model": "test-remote",
+            "api_key_env": "GITORA_OLD_TEST_KEY",
+        })
+        self.store.save(settings)
+        captured_keys: list[str] = []
+        bridge = AiCommitBridge(
+            self.service,
+            self.store,
+            provider_factory=lambda _settings, key: (
+                captured_keys.append(key) or self.provider
+            ),
+        )
+        self.addCleanup(bridge.deleteLater)
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.commitMessageReady.connect(lambda *args: ready.append(args))
+
+        with patch.dict(os.environ, {
+            "GITORA_OLD_TEST_KEY": "old-key",
+            "GITORA_NEW_TEST_KEY": "new-key",
+        }):
+            bridge.prepareCommitMessage()
+            self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+            captured_keys.clear()
+            bridge._settings = settings.with_user_values({
+                "api_key_env": "GITORA_NEW_TEST_KEY"
+            })
+            bridge.generatePrepared(prepared[0][0], True)
+            self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+
+        self.assertEqual(captured_keys, ["old-key"])
+
     def test_cancelled_generation_discards_late_result_and_keeps_git_state(self) -> None:
         self.stage_change()
         before_status = run_git(self.repo, "status", "--porcelain=v1").stdout
@@ -204,6 +245,34 @@ class AiCommitBridgeTest(unittest.TestCase):
         bridge.prepareCommitMessage()
         self.assertTrue(self.wait_until(lambda: bool(errors)))
         self.assertIn("暂存区为空", errors[-1])
+
+    def test_repo_switch_before_prepared_store_discards_old_context(self) -> None:
+        self.stage_change()
+        other_repo = init_repo(Path(self.temp_dir.name) / "other-repo")
+        write_file(other_repo, "other.txt", "other\n")
+        commit_all(other_repo, "chore: other")
+        bridge = self.make_bridge("openai_responses")
+        prepared: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        original_store = bridge._store_prepared_if_current
+        switched = False
+
+        def switch_before_store(serial, repo, event, request):
+            nonlocal switched
+            if not switched:
+                switched = True
+                self.service.set_repo_path(str(other_repo), emit_status=False)
+                bridge.invalidateRepo(str(other_repo))
+            return original_store(serial, repo, event, request)
+
+        bridge._store_prepared_if_current = switch_before_store
+        bridge.prepareCommitMessage()
+
+        self.assertTrue(self.wait_until(lambda: not bridge.busy))
+        self.app.processEvents()
+        self.assertEqual(prepared, [])
+        self.assertIsNone(bridge._prepared)
+        self.assertEqual(self.provider.requests, [])
 
     def wait_until(self, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout

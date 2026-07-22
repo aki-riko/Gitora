@@ -162,6 +162,7 @@ def main() -> int:
     git_bridge.statusChanged.connect(ai_commit_bridge.invalidateWorkspace)
     git_bridge.repoPathChanged.connect(ai_commit_plan_bridge.invalidateRepo)
     git_bridge.statusChanged.connect(ai_commit_plan_bridge.invalidateWorkspace)
+    ai_commit_bridge.settingsChanged.connect(ai_commit_plan_bridge.invalidateSettings)
     # 启动后台扫描(延迟启动,不阻塞窗口显示)
     from PySide6.QtCore import QTimer as _QTimer
     _QTimer.singleShot(1500, repo_scanner.start)

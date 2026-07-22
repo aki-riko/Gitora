@@ -109,6 +109,9 @@ class AiCommitPlanBridge(QObject):
         self._prepare_plan("hunk")
 
     def _prepare_plan(self, level: str) -> None:
+        if self._execution_guard:
+            self.errorOccurred.emit("上一暂存执行仍在收尾，请稍候")
+            return
         if self._awaiting_commit:
             self.errorOccurred.emit("请先提交已应用的计划组")
             return
@@ -147,10 +150,10 @@ class AiCommitPlanBridge(QObject):
                     settings,
                     settings.provider == "openai_responses",
                 )
-                if not self._is_current(serial, repo, cancel_event):
+                if not self._store_prepared_if_current(
+                    serial, repo, cancel_event, prepared
+                ):
                     return
-                with self._state_lock:
-                    self._prepared = prepared
                 scope_summary = (
                     "分析已暂存、未暂存和未跟踪改动"
                     if include_unstaged else "仅分析已暂存差异"
@@ -244,6 +247,12 @@ class AiCommitPlanBridge(QObject):
         self._cancel_request()
 
     @Slot()
+    def invalidateSettings(self) -> None:
+        """配置或会话密钥变化时取消尚未执行的模型请求，保留已校验计划。"""
+        if not self._execution_guard:
+            self._cancel_request()
+
+    @Slot()
     def invalidateWorkspace(self) -> None:
         if self._execution_guard or self._awaiting_commit:
             return
@@ -291,6 +300,9 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def applyNextGroup(self) -> None:
+        if self._execution_guard:
+            self.errorOccurred.emit("上一暂存执行仍在收尾，请稍候")
+            return
         if self._busy:
             self.errorOccurred.emit("已有 AI 规划操作正在进行")
             return
@@ -332,6 +344,8 @@ class AiCommitPlanBridge(QObject):
                     )
                 if self._is_current(serial, repo, cancel_event):
                     self._applyFinished.emit(serial, applied)
+                else:
+                    self._restore_discarded_apply(applied)
             except PlanExecutionError as exc:
                 logger.warning(f"应用文件级计划失败: {type(exc).__name__}")
                 self._execution_guard = False
@@ -402,7 +416,12 @@ class AiCommitPlanBridge(QObject):
     def _apply_finished(self, serial: int, applied: AppliedFileGroup) -> None:
         with self._state_lock:
             current = serial == self._serial and not self._cancel_event.is_set()
-        if not current:
+        if not current or applied.repo_path != (self._git.repo_path or ""):
+            threading.Thread(
+                target=self._restore_discarded_apply,
+                args=(applied,),
+                daemon=True,
+            ).start()
             return
         self._execution_guard = False
         self._applied = applied
@@ -510,6 +529,38 @@ class AiCommitPlanBridge(QObject):
         with self._state_lock:
             current = serial == self._serial and not event.is_set()
         return current and repo == (self._git.repo_path or "")
+
+    def _store_prepared_if_current(
+        self,
+        serial: int,
+        repo: str,
+        event: threading.Event,
+        prepared: _PreparedPlanRequest,
+    ) -> bool:
+        with self._state_lock:
+            if (
+                serial != self._serial
+                or event.is_set()
+                or repo != (self._git.repo_path or "")
+            ):
+                return False
+            self._prepared = prepared
+            return True
+
+    def _restore_discarded_apply(self, applied: AppliedFileGroup) -> None:
+        try:
+            ok, message = self._executor.restore_uncommitted_group(applied)
+        except Exception as exc:  # noqa: BLE001
+            logger.exception(f"恢复被丢弃的 AI 暂存结果异常: {type(exc).__name__}")
+            ok = False
+            message = "恢复暂存区时发生异常，请立即检查 git status"
+        finally:
+            self._execution_guard = False
+        if ok:
+            logger.warning("已恢复切仓库前的 AI 计划暂存区")
+        else:
+            logger.error("无法安全恢复被丢弃的 AI 计划暂存结果")
+        self.errorOccurred.emit(message)
 
     def _emit_error_if_current(self, serial: int, message: str) -> None:
         with self._state_lock:
