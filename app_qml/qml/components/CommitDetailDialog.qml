@@ -8,6 +8,17 @@ import PrismQML as Fluent
 Fluent.DialogBoxCore {
     id: dlg
 
+    readonly property real viewportRatio: 0.92
+    readonly property int _targetDialogWidth: Math.max(
+        Fluent.Enums.dialog.minWidth - Fluent.Enums.dialog.contentPadding,
+        Math.floor(dlg.width * dlg.viewportRatio) - Fluent.Enums.dialog.contentPadding)
+    readonly property int _targetContentHeight: Math.max(
+        1,
+        Math.floor(dlg.height * dlg.viewportRatio)
+            - Fluent.Enums.dialog.actionsRowHeight
+            - Fluent.Enums.dialog.contentPadding)
+    contentWidth: dlg._targetDialogWidth
+
     property string commitHash: ""
     property string _requestRepoPath: ""
     property string _author: ""
@@ -78,12 +89,17 @@ Fluent.DialogBoxCore {
 
     // ==================== 内容 ====================
     ColumnLayout {
-        width: 580
+        width: dlg.contentWidth
+        height: dlg._targetContentHeight
         spacing: Fluent.Enums.spacing.l
 
         // ── 头部:头像 + 消息标题 + 元信息 ──
         RowLayout {
+            id: headerLayout
             Layout.fillWidth: true
+            Layout.fillHeight: false
+            Layout.preferredHeight: implicitHeight
+            Layout.maximumHeight: implicitHeight
             spacing: Fluent.Enums.spacing.m
 
             Fluent.Avatar {
@@ -99,7 +115,9 @@ Fluent.DialogBoxCore {
                 // 提交消息标题(限高,过长可滚动;ScrollArea 自带平滑滚动条)
                 Fluent.ScrollArea {
                     Layout.fillWidth: true
+                    Layout.fillHeight: false
                     Layout.preferredHeight: Math.min(msgLabel.implicitHeight, 96)
+                    Layout.maximumHeight: Math.min(msgLabel.implicitHeight, 96)
                     padding: 0
                     Text {
                         id: msgLabel
@@ -144,7 +162,9 @@ Fluent.DialogBoxCore {
         Fluent.ScrollArea {
             id: filesScrollArea
             Layout.fillWidth: true
+            Layout.fillHeight: false
             Layout.preferredHeight: Math.min(filesModel.count * 24 + 4, 110)
+            Layout.maximumHeight: Math.min(filesModel.count * 24 + 4, 110)
             padding: 0
             Column {
                 // 绑 ScrollArea 自身宽度而非 parent:content 被塞进内部 Loader,
@@ -201,7 +221,7 @@ Fluent.DialogBoxCore {
         // ── diff ──(ScrollArea 自带平滑滚动条,外层 Rectangle 提供边框)
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 260
+            Layout.fillHeight: true
             radius: Fluent.Enums.radius.medium
             color: Fluent.Enums.cardColor
             border.width: Fluent.Enums.border.normal

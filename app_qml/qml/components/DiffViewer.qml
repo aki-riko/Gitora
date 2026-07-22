@@ -131,11 +131,10 @@ Item {
             + root._textCell(text, color, "transparent") + "</tr>"
     }
 
-    function _splitMetaRow(text, color, lineColor, normalColor) {
-        return "<tr>" + root._numCell("", lineColor)
-            + root._textCell(text, color, "transparent")
-            + root._numCell("", lineColor)
-            + root._textCell("", normalColor, "transparent") + "</tr>"
+    // 分栏元信息不参与四列正文的宽度计算，否则长文件路径会把两侧代码推得很远。
+    function _splitMetaRow(text, color) {
+        return '</table><div style="color:' + color + ';white-space:pre;padding:0 8px">'
+            + root._escape(text) + '</div>' + root._tableStart()
     }
 
     function _unifiedHtml(raw) {
@@ -182,9 +181,9 @@ Item {
             if (match) {
                 oldNo = parseInt(match[1])
                 newNo = parseInt(match[2])
-                html.push(root._splitMetaRow(ln, c.hunk, c.lineNo, c.normal))
+                html.push(root._splitMetaRow(ln, c.hunk))
             } else if (root._isFileMeta(ln)) {
-                html.push(root._splitMetaRow(ln, c.meta, c.lineNo, c.normal))
+                html.push(root._splitMetaRow(ln, c.meta))
             } else if (ln.charAt(0) === "-") {
                 var deleted = []
                 var added = []
@@ -214,7 +213,7 @@ Item {
                 html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._textCell(text, c.normal, "transparent")
                     + root._numCell(newNo++, c.lineNo) + root._textCell(text, c.normal, "transparent") + "</tr>")
             } else if (ln !== "") {
-                html.push(root._splitMetaRow(ln, c.meta, c.lineNo, c.normal))
+                html.push(root._splitMetaRow(ln, c.meta))
             }
         }
         html.push("</table>")
