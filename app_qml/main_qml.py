@@ -151,20 +151,29 @@ def _credential_selftest_failure(exc: Exception) -> tuple[bool, str]:
     return False, message
 
 
+def _credential_selftest_step(step: str) -> None:
+    print(f"[SELFTEST] 系统凭据库验证阶段: {step}")
+
+
 def _run_system_credential_selftest() -> tuple[bool, str]:
     """在唯一临时条目上验证当前用户的原生凭据库写、读、删。"""
     store = None
     account = ""
     stored = False
     try:
+        _credential_selftest_step("初始化原生后端")
         store, account, secret = _create_credential_selftest_context()
+        _credential_selftest_step("写入临时凭据")
         store.set(account, secret)
         stored = True
+        _credential_selftest_step("读取临时凭据")
         if store.get(account) != secret:
             return False, "系统凭据读取值不一致"
+        _credential_selftest_step("删除临时凭据")
         if not store.delete(account):
             return False, "系统凭据删除未生效"
         stored = False
+        _credential_selftest_step("确认临时凭据已删除")
         if store.get(account):
             return False, "系统凭据删除后仍可读取"
     except Exception as exc:  # noqa: BLE001
