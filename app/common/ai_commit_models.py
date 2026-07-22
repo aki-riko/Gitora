@@ -439,7 +439,28 @@ class CommitPlanValidator:
                     "同一文件同时有已暂存和未暂存改动，文件级计划只能查看",
                     "warning",
                 ))
+            if plan.groups:
+                first_group_ids = set(plan.groups[0].change_ids)
+                index_sensitive_ids = {
+                    change.change_id for change in snapshot.changes
+                    if self._is_index_sensitive(change)
+                }
+                if index_sensitive_ids - first_group_ids:
+                    executable = False
+                    issues.append(ValidationIssue(
+                        "index_sensitive_order",
+                        "已暂存的新增、重命名、复制或模式变更必须集中在第一提交组",
+                        "warning",
+                    ))
         return PlanValidationResult(valid, executable, tuple(ordered), tuple(issues))
+
+    @staticmethod
+    def _is_index_sensitive(change: FileChangeSnapshot) -> bool:
+        if not change.staged:
+            return False
+        if change.status in {"A", "R", "C"}:
+            return True
+        return "\nold mode " in change.patch and "\nnew mode " in change.patch
 
     @staticmethod
     def _duplicates(values: Sequence[str]) -> set[str]:

@@ -29,7 +29,7 @@ class AiCommitProtocolTest(unittest.TestCase):
             False, False, "", 1, 1, "diff for a", (hunk,),
         )
         second = FileChangeSnapshot(
-            "file_2", "tests/test_a.py", "", "tests/test_a.py", "A", True,
+            "file_2", "tests/test_a.py", "", "tests/test_a.py", "A", False,
             False, False, "", 2, 0, "diff for test", (),
         )
         return ChangeSnapshot(
@@ -225,6 +225,7 @@ class AiCommitProtocolTest(unittest.TestCase):
                     path=snapshot.changes[0].path,
                     old_path=snapshot.changes[0].path,
                     new_path=snapshot.changes[0].path,
+                    staged=True,
                 ),
             ),
         )
@@ -236,6 +237,57 @@ class AiCommitProtocolTest(unittest.TestCase):
         self.assertIn(
             "partially_staged_path", {issue.code for issue in result.issues}
         )
+
+    def test_file_plan_requires_index_sensitive_changes_in_first_group(self) -> None:
+        snapshot = self.make_snapshot()
+        sensitive_cases = (
+            replace(snapshot.changes[1], staged=True, status="A"),
+            replace(
+                snapshot.changes[1],
+                staged=True,
+                status="R",
+                old_path="tests/old_test_a.py",
+            ),
+            replace(
+                snapshot.changes[1],
+                staged=True,
+                status="C",
+                old_path="tests/old_test_a.py",
+            ),
+            replace(
+                snapshot.changes[1],
+                staged=True,
+                status="M",
+                old_path="tests/test_a.py",
+                patch=(
+                    "diff --git a/tests/test_a.py b/tests/test_a.py\n"
+                    "old mode 100644\nnew mode 100755\n"
+                ),
+            ),
+        )
+        for sensitive in sensitive_cases:
+            with self.subTest(status=sensitive.status, patch=sensitive.patch):
+                current = replace(
+                    snapshot,
+                    changes=(snapshot.changes[0], sensitive),
+                )
+                later_result = CommitPlanValidator().validate(
+                    CommitPlan.from_mapping(self.valid_mapping()), current
+                )
+                reordered = self.valid_mapping()
+                reordered["groups"][0]["change_ids"] = ["file_2"]
+                reordered["groups"][1]["change_ids"] = ["file_1"]
+                first_result = CommitPlanValidator().validate(
+                    CommitPlan.from_mapping(reordered), current
+                )
+
+                self.assertTrue(later_result.valid)
+                self.assertFalse(later_result.executable)
+                self.assertIn(
+                    "index_sensitive_order",
+                    {issue.code for issue in later_result.issues},
+                )
+                self.assertTrue(first_result.executable)
 
     def test_static_provider_records_request_and_honours_cancellation(self) -> None:
         request = PlannerRequest(self.make_snapshot(), "plan", "file")

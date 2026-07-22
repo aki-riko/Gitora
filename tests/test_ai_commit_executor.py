@@ -301,6 +301,59 @@ class FilePlanExecutorTest(unittest.TestCase):
             run_git(self.repo, "ls-files", "-s", "new.sh").stdout.startswith("100755 ")
         )
 
+    def test_index_sensitive_later_group_is_rejected_without_writes(self) -> None:
+        run_git(self.repo, "update-index", "--chmod=+x", "a.txt")
+        write_file(self.repo, "b.txt", "changed b\n")
+        snapshot = ChangeContextCollector(
+            self.service, self.settings.limits
+        ).collect(str(self.repo), include_unstaged=True)
+        by_path = {change.path: change.change_id for change in snapshot.changes}
+        plan = CommitPlan.from_mapping({
+            "schema_version": "1",
+            "snapshot_id": snapshot.snapshot_id,
+            "level": "file",
+            "summary": "索引敏感改动顺序",
+            "groups": [
+                {
+                    "group_id": "content",
+                    "title": "feat: 更新内容",
+                    "body": "",
+                    "change_ids": [by_path["b.txt"]],
+                    "depends_on": [],
+                    "rationale": "普通内容",
+                    "warnings": [],
+                },
+                {
+                    "group_id": "mode",
+                    "title": "chore: 更新模式",
+                    "body": "",
+                    "change_ids": [by_path["a.txt"]],
+                    "depends_on": ["content"],
+                    "rationale": "索引模式",
+                    "warnings": [],
+                },
+            ],
+            "unassigned_change_ids": [],
+            "warnings": [],
+        })
+        validation = CommitPlanValidator().validate(plan, snapshot, "file")
+        before_tree = run_git(self.repo, "write-tree").stdout.strip()
+        before_cached = run_git(self.repo, "diff", "--cached").stdout
+        before_unstaged = run_git(self.repo, "diff").stdout
+
+        with self.assertRaisesRegex(PlanExecutionError, "未通过"):
+            FilePlanExecutor(self.service).apply_next(
+                str(self.repo), snapshot, plan, validation, False,
+                self.settings.limits,
+            )
+
+        self.assertIn(
+            "index_sensitive_order", {issue.code for issue in validation.issues}
+        )
+        self.assertEqual(run_git(self.repo, "write-tree").stdout.strip(), before_tree)
+        self.assertEqual(run_git(self.repo, "diff", "--cached").stdout, before_cached)
+        self.assertEqual(run_git(self.repo, "diff").stdout, before_unstaged)
+
     def test_restore_refuses_to_overwrite_index_after_head_changes(self) -> None:
         write_file(self.repo, "a.txt", "changed a\n")
         write_file(self.repo, "b.txt", "changed b\n")
