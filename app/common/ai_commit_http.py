@@ -2,6 +2,7 @@
 """基于已核对官方接口的远程 Responses 与本地 Ollama 提供方。"""
 from __future__ import annotations
 
+import ipaddress
 import json
 import urllib.error
 import urllib.request
@@ -26,6 +27,23 @@ class HttpProviderConfig:
     api_key: str
     timeout_seconds: int
     max_response_chars: int
+
+
+def endpoint_requires_remote_consent(endpoint: str) -> bool:
+    """仅把明确的本机回环地址视为无需远程发送确认。"""
+    try:
+        hostname = urlsplit(endpoint.strip()).hostname
+    except ValueError:
+        return True
+    if not hostname:
+        return True
+    normalized = hostname.rstrip(".").casefold()
+    if normalized == "localhost":
+        return False
+    try:
+        return not ipaddress.ip_address(normalized).is_loopback
+    except ValueError:
+        return True
 
 
 class _NoRedirectHandler(urllib.request.HTTPRedirectHandler):

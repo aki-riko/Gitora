@@ -60,7 +60,7 @@ Fluent.SettingsCardGroup {
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: "Ollama 模式仅发送到你配置的服务地址；远程模式每次发送前都会确认范围。"
+                        text: "仅本机回环 Ollama 直接发送；非本机 Ollama 与远程 API 每次发送前都会确认范围。"
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.caption

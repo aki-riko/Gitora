@@ -9,6 +9,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock
 
 from app.common.ai_commit_http import (
+    endpoint_requires_remote_consent,
     HttpJsonClient,
     HttpProviderConfig,
     HttpProviderError,
@@ -97,6 +98,24 @@ class _FakeResponse:
 
 
 class AiCommitHttpTest(unittest.TestCase):
+    def test_endpoint_remote_consent_classification_is_loopback_only(self) -> None:
+        cases = {
+            "http://localhost:11434": False,
+            "http://LOCALHOST.:11434": False,
+            "http://127.0.0.1:11434": False,
+            "http://127.42.0.9:11434": False,
+            "http://[::1]:11434": False,
+            "http://192.168.1.20:11434": True,
+            "https://ollama.example.com": True,
+            "http://[2001:db8::1]:11434": True,
+            "not-a-url": True,
+        }
+        for endpoint, expected in cases.items():
+            with self.subTest(endpoint=endpoint):
+                self.assertEqual(
+                    endpoint_requires_remote_consent(endpoint), expected
+                )
+
     def test_ollama_uses_verified_chat_schema_and_model_list_endpoints(self) -> None:
         _OllamaHandler.requests = []
         server = ThreadingHTTPServer(("127.0.0.1", 0), _OllamaHandler)

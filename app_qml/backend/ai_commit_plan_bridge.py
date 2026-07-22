@@ -14,6 +14,7 @@ from app.common.ai_commit_executor import (
     HunkPlanExecutor,
     PlanExecutionError,
 )
+from app.common.ai_commit_http import endpoint_requires_remote_consent
 from app.common.ai_commit_models import (
     ChangeSnapshot, CommitPlan, CommitPlanValidator, PlanProtocolError,
     PlannerRequest,
@@ -136,7 +137,8 @@ class AiCommitPlanBridge(QObject):
                     snapshot,
                     request,
                     settings,
-                    settings.provider == "openai_responses",
+                    settings.provider == "openai_responses"
+                    or endpoint_requires_remote_consent(settings.local_endpoint),
                 )
                 if not self._request_state.store_prepared_if_current(
                     serial, repo, cancel_event, prepared

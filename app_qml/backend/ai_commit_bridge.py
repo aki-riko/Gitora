@@ -15,6 +15,7 @@ from app.common.ai_commit_context import (
     SnapshotCollectionError,
 )
 from app.common.ai_commit_http import (
+    endpoint_requires_remote_consent,
     HttpProviderConfig,
     HttpProviderError,
     OllamaProvider,
@@ -204,7 +205,8 @@ class AiCommitBridge(QObject):
                 request_id = f"{serial}-{snapshot.snapshot_id[:16]}"
                 prepared = _PreparedRequest(
                     request_id, repo, snapshot, request, settings,
-                    settings.provider == "openai_responses",
+                    settings.provider == "openai_responses"
+                    or endpoint_requires_remote_consent(settings.local_endpoint),
                 )
                 if not self._store_prepared_if_current(
                     serial, repo, cancel_event, prepared

@@ -72,7 +72,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("仅保留到退出", source)
         self.assertIn("提交规划：仅已暂存差异", source)
         self.assertIn("提交规划：全部工作区改动", source)
-        self.assertIn("仅发送到你配置的服务地址", source)
+        self.assertIn("仅本机回环 Ollama 直接发送", source)
+        self.assertIn("非本机 Ollama 与远程 API 每次发送前都会确认", source)
         self.assertNotIn("api_key\"", source)
 
     def test_plan_dialog_allows_editing_without_git_execution(self) -> None:

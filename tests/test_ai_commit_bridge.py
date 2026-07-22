@@ -83,11 +83,15 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.store = AiCommitSettingsStore(DEFAULTS, self.config_path)
         self.provider = _EchoProvider()
 
-    def make_bridge(self, provider: str = "ollama") -> AiCommitBridge:
+    def make_bridge(
+        self,
+        provider: str = "ollama",
+        local_endpoint: str = "http://127.0.0.1:11434",
+    ) -> AiCommitBridge:
         settings = self.store.load().with_user_values({
             "enabled": True,
             "provider": provider,
-            "local_endpoint": "http://127.0.0.1:11434",
+            "local_endpoint": local_endpoint,
             "local_model": "test-local",
             "remote_endpoint": "https://example.invalid/v1/responses",
             "remote_model": "test-remote",
@@ -136,6 +140,23 @@ class AiCommitBridgeTest(unittest.TestCase):
     def test_remote_generation_requires_explicit_consent(self) -> None:
         self.stage_change()
         bridge = self.make_bridge("openai_responses")
+        prepared: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.errorOccurred.connect(errors.append)
+
+        bridge.prepareCommitMessage()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        self.assertTrue(prepared[0][1])
+        bridge.generatePrepared(prepared[0][0], False)
+
+        self.assertTrue(self.wait_until(lambda: bool(errors)))
+        self.assertIn("未获得发送确认", errors[-1])
+        self.assertEqual(self.provider.requests, [])
+
+    def test_non_loopback_ollama_requires_explicit_consent(self) -> None:
+        self.stage_change()
+        bridge = self.make_bridge(local_endpoint="http://192.168.1.20:11434")
         prepared: list[tuple] = []
         errors: list[str] = []
         bridge.contextPrepared.connect(lambda *args: prepared.append(args))
