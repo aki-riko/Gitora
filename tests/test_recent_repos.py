@@ -1,6 +1,8 @@
 # coding: utf-8
 from __future__ import annotations
 
+import json
+import os
 import tempfile
 import unittest
 from pathlib import Path
@@ -23,11 +25,34 @@ class RecentReposTest(unittest.TestCase):
         self._tmp.cleanup()
 
     def make_manager(self, filename: str) -> RecentReposManager:
-        manager = RecentReposManager.__new__(RecentReposManager)
-        manager.file_path = self.root / filename
-        manager._repos = []
-        manager._save()
-        return manager
+        return RecentReposManager(self.root / filename)
+
+    def test_manager_normalizes_and_migrates_equivalent_paths(self) -> None:
+        repo_path = self.root / "repo"
+        repo_path.mkdir()
+        native_path = str(repo_path)
+        alternate_path = (
+            repo_path.as_posix()
+            if os.name == "nt"
+            else f"{repo_path.parent}{os.sep}.{os.sep}{repo_path.name}"
+        )
+        config_path = self.root / "recent_repos.json"
+        config_path.write_text(
+            json.dumps({"repos": [native_path, alternate_path]}),
+            encoding="utf-8",
+        )
+
+        manager = RecentReposManager(config_path)
+        expected_path = os.path.normpath(native_path)
+
+        self.assertEqual(manager.get_all(), [expected_path])
+        saved_repos = json.loads(config_path.read_text(encoding="utf-8"))["repos"]
+        self.assertEqual(saved_repos, [expected_path])
+
+        manager.add(alternate_path)
+        self.assertEqual(manager.get_all(), [expected_path])
+        manager.remove(alternate_path)
+        self.assertEqual(manager.get_all(), [])
 
     def test_manager_deduplicates_limits_and_prunes_missing_paths(self) -> None:
         manager = self.make_manager("recent_repos.json")
