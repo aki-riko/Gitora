@@ -3,8 +3,7 @@
 from __future__ import annotations
 
 import threading
-from dataclasses import dataclass
-from typing import Optional, Protocol
+from typing import Optional
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
 
@@ -19,31 +18,21 @@ from app.common.ai_commit_models import (
     ChangeSnapshot, CommitPlan, CommitPlanValidator, PlanProtocolError,
     PlannerRequest,
 )
-from app.common.ai_commit_provider import ModelProvider, ProviderCancelledError
+from app.common.ai_commit_provider import ProviderCancelledError
 from app.common.ai_commit_schema import build_user_input
 from app.common.ai_commit_settings import AiCommitSettings, AiCommitSettingsError
 from app.common.git_service import GitService
 from app.common.logger import get_logger
 from app_qml.backend.ai_commit_plan_model import AiCommitPlanModel
+from app_qml.backend.ai_commit_plan_request_state import (
+    PlannerRuntime,
+    PlanRequestState,
+    PreparedPlanRequest,
+    ensure_plan_fingerprint,
+)
 
 
 logger = get_logger("AiCommitPlanBridge")
-
-
-class _PlannerRuntime(Protocol):
-    def planning_settings(self) -> AiCommitSettings: ...
-
-    def create_provider_for(self, settings: AiCommitSettings) -> ModelProvider: ...
-
-
-@dataclass(frozen=True)
-class _PreparedPlanRequest:
-    request_id: str
-    repo_path: str
-    snapshot: ChangeSnapshot
-    request: PlannerRequest
-    settings: AiCommitSettings
-    is_remote: bool
 
 
 class AiCommitPlanBridge(QObject):
@@ -64,7 +53,7 @@ class AiCommitPlanBridge(QObject):
     def __init__(
         self,
         git_service: GitService,
-        runtime: _PlannerRuntime,
+        runtime: PlannerRuntime,
         plan_model: AiCommitPlanModel | None = None,
         parent: Optional[QObject] = None,
     ):
@@ -75,14 +64,13 @@ class AiCommitPlanBridge(QObject):
         self._validator = CommitPlanValidator()
         self._executor = FilePlanExecutor(git_service)
         self._hunk_executor = HunkPlanExecutor(git_service)
-        self._busy = False
         self._awaiting_commit = False
         self._execution_guard = False
         self._applied: AppliedFileGroup | None = None
-        self._serial = 0
-        self._prepared: _PreparedPlanRequest | None = None
-        self._cancel_event = threading.Event()
-        self._state_lock = threading.Lock()
+        self._request_state = PlanRequestState(
+            lambda: self._git.repo_path or "",
+            self.busyChanged.emit,
+        )
         self._resolved.connect(self._apply_resolved)
         self._applyFinished.connect(self._apply_finished)
         self._commitChecked.connect(self._commit_checked)
@@ -90,7 +78,7 @@ class AiCommitPlanBridge(QObject):
 
     @Property(bool, notify=busyChanged)
     def busy(self) -> bool:
-        return self._busy
+        return self._request_state.busy
 
     @Property(bool, notify=awaitingCommitChanged)
     def awaitingCommit(self) -> bool:
@@ -142,7 +130,7 @@ class AiCommitPlanBridge(QObject):
                     raise SnapshotCollectionError(f"{scope}没有可规划的改动")
                 request = PlannerRequest(snapshot, "plan", level, settings.generate_body)
                 request_id = f"plan-{level}-{serial}-{snapshot.snapshot_id[:16]}"
-                prepared = _PreparedPlanRequest(
+                prepared = PreparedPlanRequest(
                     request_id,
                     repo,
                     snapshot,
@@ -150,7 +138,7 @@ class AiCommitPlanBridge(QObject):
                     settings,
                     settings.provider == "openai_responses",
                 )
-                if not self._store_prepared_if_current(
+                if not self._request_state.store_prepared_if_current(
                     serial, repo, cancel_event, prepared
                 ):
                     return
@@ -178,12 +166,7 @@ class AiCommitPlanBridge(QObject):
 
     @Slot(str, bool)
     def generatePrepared(self, request_id: str, remote_consent: bool) -> None:
-        with self._state_lock:
-            prepared = self._prepared
-            if prepared is None or prepared.request_id != request_id:
-                prepared = None
-            else:
-                self._prepared = None
+        prepared = self._request_state.take_prepared(request_id)
         if prepared is None:
             self.errorOccurred.emit("规划请求已过期，请重新生成")
             return
@@ -196,7 +179,7 @@ class AiCommitPlanBridge(QObject):
         def work() -> None:
             try:
                 collector = ChangeContextCollector(self._git, prepared.settings.limits)
-                self._ensure_fingerprint(collector, prepared)
+                ensure_plan_fingerprint(collector, prepared)
                 provider = self._runtime.create_provider_for(prepared.settings)
                 raw_plan = provider.generate_plan(prepared.request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
@@ -208,7 +191,7 @@ class AiCommitPlanBridge(QObject):
                 if not result.valid:
                     details = "；".join(issue.message for issue in result.issues)
                     raise PlanProtocolError(details or "模型计划校验失败")
-                self._ensure_fingerprint(collector, prepared)
+                ensure_plan_fingerprint(collector, prepared)
                 if not self._is_current(serial, prepared.repo_path, cancel_event):
                     return
                 self._resolved.emit(
@@ -235,9 +218,7 @@ class AiCommitPlanBridge(QObject):
 
     @Slot(str)
     def cancelPrepared(self, request_id: str) -> None:
-        with self._state_lock:
-            if self._prepared and self._prepared.request_id == request_id:
-                self._prepared = None
+        self._request_state.cancel_prepared(request_id)
 
     @Slot()
     def cancelCurrent(self) -> None:
@@ -256,15 +237,13 @@ class AiCommitPlanBridge(QObject):
     def invalidateWorkspace(self) -> None:
         if self._execution_guard or self._awaiting_commit:
             return
-        if self._busy:
+        if self.busy:
             self._cancel_request()
             self._model.markStale()
             return
         snapshot = self._model.snapshot()
         if snapshot is None:
-            with self._state_lock:
-                has_prepared = self._prepared is not None
-            if has_prepared:
+            if self._request_state.has_prepared:
                 self._cancel_request()
             return
         settings = self._runtime.planning_settings()
@@ -303,7 +282,7 @@ class AiCommitPlanBridge(QObject):
         if self._execution_guard:
             self.errorOccurred.emit("上一暂存执行仍在收尾，请稍候")
             return
-        if self._busy:
+        if self.busy:
             self.errorOccurred.emit("已有 AI 规划操作正在进行")
             return
         if self._awaiting_commit:
@@ -364,7 +343,7 @@ class AiCommitPlanBridge(QObject):
         applied = self._applied
         if applied is None or not self._awaiting_commit:
             return
-        if self._busy:
+        if self.busy:
             return
         serial, cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
@@ -404,9 +383,10 @@ class AiCommitPlanBridge(QObject):
         plan: CommitPlan,
         snapshot: ChangeSnapshot,
     ) -> None:
-        with self._state_lock:
-            current = serial == self._serial and not self._cancel_event.is_set()
-        if not current or repo != (self._git.repo_path or ""):
+        if (
+            not self._request_state.is_serial_current(serial)
+            or repo != (self._git.repo_path or "")
+        ):
             return
         self._model.load(plan, snapshot)
         level_name = "代码块级" if plan.level == "hunk" else "文件级"
@@ -414,9 +394,10 @@ class AiCommitPlanBridge(QObject):
 
     @Slot(int, object)
     def _apply_finished(self, serial: int, applied: AppliedFileGroup) -> None:
-        with self._state_lock:
-            current = serial == self._serial and not self._cancel_event.is_set()
-        if not current or applied.repo_path != (self._git.repo_path or ""):
+        if (
+            not self._request_state.is_serial_current(serial)
+            or applied.repo_path != (self._git.repo_path or "")
+        ):
             threading.Thread(
                 target=self._restore_discarded_apply,
                 args=(applied,),
@@ -442,9 +423,7 @@ class AiCommitPlanBridge(QObject):
         message: str,
         fresh_snapshot: ChangeSnapshot | None,
     ) -> None:
-        with self._state_lock:
-            current = serial == self._serial and not self._cancel_event.is_set()
-        if not current:
+        if not self._request_state.is_serial_current(serial):
             return
         self._execution_guard = False
         applied = self._applied
@@ -477,38 +456,11 @@ class AiCommitPlanBridge(QObject):
         if not current_fingerprint or current_fingerprint != expected_fingerprint:
             self._model.markStale()
 
-    @staticmethod
-    def _ensure_fingerprint(
-        collector: ChangeContextCollector,
-        prepared: _PreparedPlanRequest,
-    ) -> None:
-        current = collector.workspace_fingerprint(prepared.repo_path)
-        if current != prepared.snapshot.workspace_fingerprint:
-            raise SnapshotCollectionError("工作区已变化，请重新规划")
-
     def _start_request(self, clear_prepared: bool) -> tuple[int, threading.Event]:
-        with self._state_lock:
-            self._serial += 1
-            self._cancel_event.set()
-            self._cancel_event = threading.Event()
-            if clear_prepared:
-                self._prepared = None
-            self._busy = True
-            serial = self._serial
-            event = self._cancel_event
-        self.busyChanged.emit()
-        return serial, event
+        return self._request_state.start(clear_prepared)
 
     def _cancel_request(self) -> None:
-        with self._state_lock:
-            self._serial += 1
-            self._cancel_event.set()
-            self._cancel_event = threading.Event()
-            self._prepared = None
-            was_busy = self._busy
-            self._busy = False
-        if was_busy:
-            self.busyChanged.emit()
+        self._request_state.cancel()
 
     def _set_awaiting_commit(self, value: bool) -> None:
         if self._awaiting_commit == value:
@@ -517,35 +469,12 @@ class AiCommitPlanBridge(QObject):
         self.awaitingCommitChanged.emit()
 
     def _set_busy_if_current(self, serial: int, value: bool) -> None:
-        with self._state_lock:
-            if serial != self._serial or self._busy == value:
-                return
-            self._busy = value
-        self.busyChanged.emit()
+        self._request_state.set_busy_if_current(serial, value)
 
     def _is_current(
         self, serial: int, repo: str, event: threading.Event
     ) -> bool:
-        with self._state_lock:
-            current = serial == self._serial and not event.is_set()
-        return current and repo == (self._git.repo_path or "")
-
-    def _store_prepared_if_current(
-        self,
-        serial: int,
-        repo: str,
-        event: threading.Event,
-        prepared: _PreparedPlanRequest,
-    ) -> bool:
-        with self._state_lock:
-            if (
-                serial != self._serial
-                or event.is_set()
-                or repo != (self._git.repo_path or "")
-            ):
-                return False
-            self._prepared = prepared
-            return True
+        return self._request_state.is_current(serial, repo, event)
 
     def _restore_discarded_apply(self, applied: AppliedFileGroup) -> None:
         try:
@@ -563,7 +492,5 @@ class AiCommitPlanBridge(QObject):
         self.errorOccurred.emit(message)
 
     def _emit_error_if_current(self, serial: int, message: str) -> None:
-        with self._state_lock:
-            current = serial == self._serial and not self._cancel_event.is_set()
-        if current:
+        if self._request_state.is_serial_current(serial):
             self.errorOccurred.emit(message)

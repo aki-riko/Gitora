@@ -151,7 +151,7 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         bridge = self.make_bridge()
         prepared: list[tuple] = []
         bridge.contextPrepared.connect(lambda *args: prepared.append(args))
-        original_store = bridge._store_prepared_if_current
+        original_store = bridge._request_state.store_prepared_if_current
         switched = False
 
         def switch_before_store(serial, repo, event, request):
@@ -162,13 +162,13 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
                 bridge.invalidateRepo(str(other_repo))
             return original_store(serial, repo, event, request)
 
-        bridge._store_prepared_if_current = switch_before_store
+        bridge._request_state.store_prepared_if_current = switch_before_store
         bridge.preparePlan()
 
         self.assertTrue(self.wait_until(lambda: not bridge.busy))
         self.app.processEvents()
         self.assertEqual(prepared, [])
-        self.assertIsNone(bridge._prepared)
+        self.assertIsNone(bridge._request_state.prepared)
         self.assertEqual(self.provider.requests, [])
 
     def test_workspace_invalidation_keeps_plan_visible_but_stale(self) -> None:
