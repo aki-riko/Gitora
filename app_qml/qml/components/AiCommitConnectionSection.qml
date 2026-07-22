@@ -26,6 +26,8 @@ ColumnLayout {
     readonly property bool isRemote: providerCombo.currentIndex === 1
     readonly property string activeEndpoint: root.isRemote
         ? remoteEndpointInput.text : localEndpointInput.text
+    readonly property bool hasAvailableModels: root.isRemote
+        ? root.remoteModels.length > 0 : root.localModels.length > 0
 
     signal deleteCredentialRequested()
     signal fetchModelsRequested()
@@ -49,7 +51,7 @@ ColumnLayout {
 
     Text {
         Layout.fillWidth: true
-        text: "选择模型来源，并配置连接所需的信息。"
+        text: "选择来源并填写服务地址，然后获取模型列表。"
         textFormat: Text.PlainText
         color: Fluent.Enums.textColor.tertiary
         font.family: Fluent.Enums.fontFamily
@@ -60,7 +62,7 @@ ColumnLayout {
     GridLayout {
         id: connectionFields
         Layout.fillWidth: true
-        columns: root.compact ? 1 : 3
+        columns: root.compact ? 1 : 2
         columnSpacing: Fluent.Enums.spacing.m
         rowSpacing: Fluent.Enums.spacing.s
 
@@ -90,6 +92,35 @@ ColumnLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
             Layout.preferredWidth: 1
+            spacing: Fluent.Enums.spacing.xxs
+
+            Text {
+                text: "服务地址"
+                textFormat: Text.PlainText
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.caption
+            }
+
+            Fluent.LineEdit {
+                id: localEndpointInput
+                Layout.fillWidth: true
+                visible: !root.isRemote
+                placeholderText: "输入 Ollama 服务地址"
+            }
+
+            Fluent.LineEdit {
+                id: remoteEndpointInput
+                Layout.fillWidth: true
+                visible: root.isRemote
+                placeholderText: "输入 Responses API 的完整 HTTPS 地址"
+            }
+        }
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            Layout.columnSpan: connectionFields.columns
+            Layout.minimumWidth: 0
             spacing: Fluent.Enums.spacing.xxs
 
             Text {
@@ -132,7 +163,8 @@ ColumnLayout {
 
                 Fluent.Button {
                     objectName: "fetchModelsButton"
-                    text: root.modelsLoading ? "获取中…" : "获取"
+                    text: root.modelsLoading ? "正在获取…"
+                        : (root.hasAvailableModels ? "刷新模型" : "获取模型")
                     enabled: root.modelFetchEnabled && !root.modelsLoading
                         && root.activeEndpoint.trim().length > 0
                     onClicked: root.fetchModelsRequested()
@@ -142,38 +174,9 @@ ColumnLayout {
 
         ColumnLayout {
             Layout.fillWidth: true
+            Layout.columnSpan: 1
             Layout.minimumWidth: 0
             Layout.preferredWidth: 1
-            spacing: Fluent.Enums.spacing.xxs
-
-            Text {
-                text: "服务地址"
-                textFormat: Text.PlainText
-                color: Fluent.Enums.textColor.secondary
-                font.family: Fluent.Enums.fontFamily
-                font.pixelSize: Fluent.Enums.typography.caption
-            }
-
-            Fluent.LineEdit {
-                id: localEndpointInput
-                Layout.fillWidth: true
-                visible: !root.isRemote
-                placeholderText: "输入 Ollama 服务地址"
-            }
-
-            Fluent.LineEdit {
-                id: remoteEndpointInput
-                Layout.fillWidth: true
-                visible: root.isRemote
-                placeholderText: "输入 Responses API 的完整 HTTPS 地址"
-            }
-        }
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.columnSpan: connectionFields.columns === 1 ? 1 : 2
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: connectionFields.columns === 1 ? 1 : 2
             visible: root.isRemote
             spacing: Fluent.Enums.spacing.xxs
 

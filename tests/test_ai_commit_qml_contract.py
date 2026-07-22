@@ -123,8 +123,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("Fluent.ToggleSwitch", source)
         self.assertIn("AiCommitConnectionSection", source)
         self.assertIn("AiCommitRulesSection", source)
-        self.assertIn("columns: root.compact ? 1 : 3", source)
-        self.assertIn("columns: root.compact ? 1 : 2", source)
+        self.assertEqual(source.count("columns: root.compact ? 1 : 2"), 2)
         self.assertIn("root.width < 760", source)
         self.assertNotIn("connectionPanel", source)
         self.assertNotIn("rulesPanel", source)
@@ -147,9 +146,22 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertEqual(connection_source.count("Fluent.ComboBox {"), 3)
         self.assertIn("signal fetchModelsRequested()", connection_source)
         self.assertIn("function setAvailableModels(provider, models)", connection_source)
-        self.assertIn('text: root.modelsLoading ? "获取中…" : "获取"', connection_source)
+        self.assertIn('text: root.modelsLoading ? "正在获取…"', connection_source)
+        self.assertIn('? "刷新模型" : "获取模型"', connection_source)
         self.assertIn('objectName: "localModelCombo"', connection_source)
         self.assertIn('objectName: "fetchModelsButton"', connection_source)
+        self.assertIn("Layout.columnSpan: connectionFields.columns", connection_source)
+        self.assertNotIn(
+            "connectionFields.columns === 1 ? 1 : 2", connection_source
+        )
+        self.assertLess(
+            connection_source.index('text: "模型来源"'),
+            connection_source.index('text: "服务地址"'),
+        )
+        self.assertLess(
+            connection_source.index('text: "服务地址"'),
+            connection_source.index('text: "模型名称"'),
+        )
         self.assertNotIn("id: localModelInput", connection_source)
         self.assertNotIn("id: remoteModelInput", connection_source)
 
