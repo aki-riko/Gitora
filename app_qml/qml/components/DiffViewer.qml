@@ -24,13 +24,21 @@ Item {
         root.filterPath = ""
         root.loading = false
         fileModel.clear()
-        diffArea.text = ""
+        root._setHtml("")
     }
 
     function setLoading(text) {
         root.loadingText = text || "加载中..."
         root.loading = true
-        diffArea.text = root._stateHtml(root.loadingText)
+        root._setHtml(root._stateHtml(root.loadingText))
+    }
+
+    function _setHtml(html) {
+        diffArea.text = html || ""
+        // Qt 会按 HTML 源码长度把 TextEdit 切到大文本视口剔除；表格行在
+        // Flickable 滚动后可能不再补画。赋值会重置该标志，因此每次都关闭。
+        if (typeof QmlRenderBridge !== "undefined" && QmlRenderBridge)
+            QmlRenderBridge.disableTextViewportCulling(diffArea)
     }
 
     function _setFilter(path) {
@@ -59,15 +67,15 @@ Item {
 
     function _rebuild() {
         if (root.loading) {
-            diffArea.text = root._stateHtml(root.loadingText)
+            root._setHtml(root._stateHtml(root.loadingText))
             return
         }
         var diff = root._activeDiff()
         if (!diff) {
-            diffArea.text = root._stateHtml(root.emptyText)
+            root._setHtml(root._stateHtml(root.emptyText))
             return
         }
-        diffArea.text = root.displayMode === "split" ? root._sideBySideHtml(diff) : root._unifiedHtml(diff)
+        root._setHtml(root.displayMode === "split" ? root._sideBySideHtml(diff) : root._unifiedHtml(diff))
     }
 
     function _summaryText() {

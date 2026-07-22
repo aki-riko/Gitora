@@ -123,6 +123,19 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertEqual(source.count("+ root.contentHorizontalPadding +"), 2)
         self.assertNotIn("padding:0 8px", source)
 
+    def test_rich_text_diff_disables_broken_viewport_culling_after_assignment(self) -> None:
+        source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
+            encoding="utf-8"
+        )
+        set_html = source.split("function _setHtml", 1)[1].split("\n    }", 1)[0]
+
+        self.assertIn('diffArea.text = html || ""', set_html)
+        self.assertIn(
+            "QmlRenderBridge.disableTextViewportCulling(diffArea)", set_html
+        )
+        self.assertEqual(source.count("diffArea.text ="), 1)
+        self.assertNotIn("smoothScroll: false", source)
+
 
 if __name__ == "__main__":
     unittest.main()

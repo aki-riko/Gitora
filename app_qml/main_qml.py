@@ -278,6 +278,7 @@ from prismqml.python.providers import get_clipboard_helper  # noqa: E402
 from app_qml.backend.git_bridge import GitBridge  # noqa: E402
 from app_qml.backend.ai_commit_bridge import AiCommitBridge  # noqa: E402
 from app_qml.backend.ai_commit_plan_bridge import AiCommitPlanBridge  # noqa: E402
+from app_qml.backend.qml_render_bridge import QmlRenderBridge  # noqa: E402
 from app_qml.backend.window_icon_bridge import WindowIconBridge  # noqa: E402
 
 
@@ -317,6 +318,7 @@ def main() -> int:
     config_manager = getConfigManager()
     from app_qml.backend.repo_scanner import RepoScanner
     repo_scanner = RepoScanner()
+    qml_render_bridge = QmlRenderBridge()
     window_icon_bridge = WindowIconBridge()
     ctx = engine.rootContext()
     ctx.setContextProperty("GitBridge", git_bridge)
@@ -325,7 +327,9 @@ def main() -> int:
     ctx.setContextProperty("ConfigManager", config_manager)
     ctx.setContextProperty("ClipboardHelper", get_clipboard_helper())
     ctx.setContextProperty("RepoScanner", repo_scanner)
+    ctx.setContextProperty("QmlRenderBridge", qml_render_bridge)
     ctx.setContextProperty("WindowIconBridge", window_icon_bridge)
+    app._qml_render_bridge = qml_render_bridge
     app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive
     app._ai_commit_bridge = ai_commit_bridge
     app._ai_commit_plan_bridge = ai_commit_plan_bridge
