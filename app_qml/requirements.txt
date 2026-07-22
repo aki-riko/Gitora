@@ -11,3 +11,6 @@ PySide6>=6.5.0
 #   + Toast 确定/不确定进度环。均自原 fqml 0.2.9~0.2.13 演进,PrismQML 首发版 0.2.14 起继承。
 # 0.3.1.32: 修复 QML 运行时按序释放；Windows 与 macOS 发版必须使用同一版本
 prismqml==0.3.1.32
+
+# 系统凭据库：Windows Credential Manager / macOS Keychain
+keyring==25.7.0

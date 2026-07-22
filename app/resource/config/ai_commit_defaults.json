@@ -6,6 +6,7 @@
   "remote_endpoint": "",
   "remote_model": "",
   "api_key_env": "OPENAI_API_KEY",
+  "credential_service": "Gitora.AiCommit",
   "generate_body": true,
   "remote_scope": "staged",
   "limits": {

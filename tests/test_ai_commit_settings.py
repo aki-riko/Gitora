@@ -26,6 +26,7 @@ class AiCommitSettingsTest(unittest.TestCase):
         self.assertEqual(settings.provider, "ollama")
         self.assertEqual(settings.local_endpoint, "")
         self.assertEqual(settings.remote_endpoint, "")
+        self.assertEqual(settings.credential_service, "Gitora.AiCommit")
         self.assertGreater(settings.limits.max_total_chars, 0)
 
     def test_user_settings_round_trip_without_secret_field(self) -> None:
@@ -44,6 +45,7 @@ class AiCommitSettingsTest(unittest.TestCase):
 
             self.assertEqual(reloaded, changed)
             payload = json.loads(config.read_text(encoding="utf-8"))
+            self.assertEqual(payload["credential_service"], "Gitora.AiCommit")
             self.assertNotIn("api_key", payload)
             self.assertNotIn("secret", json.dumps(payload).lower())
 

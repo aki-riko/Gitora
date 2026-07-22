@@ -31,6 +31,7 @@ class AiCommitSettings:
     remote_endpoint: str
     remote_model: str
     api_key_env: str
+    credential_service: str
     generate_body: bool
     remote_scope: str
     limits: SnapshotLimits
@@ -50,6 +51,7 @@ class AiCommitSettings:
                 remote_endpoint=cls._string(data, "remote_endpoint"),
                 remote_model=cls._string(data, "remote_model"),
                 api_key_env=cls._string(data, "api_key_env"),
+                credential_service=cls._string(data, "credential_service"),
                 generate_body=cls._bool(data, "generate_body"),
                 remote_scope=cls._string(data, "remote_scope"),
                 limits=SnapshotLimits(
@@ -74,6 +76,8 @@ class AiCommitSettings:
             r"[A-Za-z_][A-Za-z0-9_]*", settings.api_key_env
         ):
             raise AiCommitSettingsError("密钥环境变量名不合法")
+        if not settings.credential_service:
+            raise AiCommitSettingsError("系统凭据服务名不能为空")
         return settings
 
     def to_mapping(self) -> dict[str, Any]:
@@ -85,6 +89,7 @@ class AiCommitSettings:
             "remote_endpoint": self.remote_endpoint,
             "remote_model": self.remote_model,
             "api_key_env": self.api_key_env,
+            "credential_service": self.credential_service,
             "generate_body": self.generate_body,
             "remote_scope": self.remote_scope,
             "limits": asdict(self.limits),
