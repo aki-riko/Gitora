@@ -183,8 +183,21 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
 
-                    Fluent.Timeline {
+                    Rectangle {
+                        id: timelineSurface
+
+                        objectName: "historyTimelineSurface"
                         anchors.fill: parent
+                        radius: Fluent.Enums.radius.large
+                        color: Fluent.Enums.surfaceColor
+                        border.width: Fluent.Enums.border.thin
+                        border.color: Fluent.Enums.stateColor.borderLight
+                    }
+
+                    Fluent.Timeline {
+                        objectName: "historyTimeline"
+                        anchors.fill: parent
+                        anchors.margins: Fluent.Enums.spacing.m
                         type: Fluent.Enums.timeline.type_graph
                         virtualized: true
                         graphLaneCount: root.graphLaneCount

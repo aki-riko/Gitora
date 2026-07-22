@@ -35,6 +35,18 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("root.resetAndLoad()", status_handler)
         self.assertNotIn("root.resetAndLoad()", operation_handler)
 
+    def test_history_timeline_uses_fluent_layered_surface(self) -> None:
+        source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('objectName: "historyTimelineSurface"', source)
+        self.assertIn('objectName: "historyTimeline"', source)
+        self.assertIn("color: Fluent.Enums.surfaceColor", source)
+        self.assertIn("radius: Fluent.Enums.radius.large", source)
+        self.assertIn("border.width: Fluent.Enums.border.thin", source)
+        self.assertIn("anchors.margins: Fluent.Enums.spacing.m", source)
+
     def test_diff_tables_do_not_use_full_span_rows_that_distort_columns(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
