@@ -13,6 +13,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QObject, Signal, QThread, QMutex, QMutexLocker
 
+from .git_push_progress import GitPushWorker, run_git_push_with_progress
 from .logger import get_logger
 
 logger = get_logger("GitService")
@@ -395,6 +396,40 @@ class GitService(QObject):
         """清理完成的worker"""
         if worker in self._workers:
             self._workers.remove(worker)
+
+    def _run_git_push_async(
+        self,
+        args: list[str],
+        callback: Callable[[bool, str, str], None],
+        timeout: int = 60,
+    ) -> None:
+        if not self._repo_path:
+            callback(False, "", "未设置仓库路径")
+            return
+        command = ['git', '-c', 'core.quotepath=false'] + args
+        worker = GitPushWorker(command, self._repo_path, timeout, self)
+        worker.progress.connect(self.progressUpdated)
+        worker.finished.connect(callback)
+        worker.finished.connect(lambda: self._cleanup_worker(worker))
+        self._workers.append(worker)
+        worker.start()
+
+    def _run_git_push_sync(
+        self,
+        args: list[str],
+        timeout: int,
+        on_progress: Callable[[int, str], None] = None,
+    ) -> tuple[bool, str, str]:
+        if not self._repo_path:
+            return False, "", "未设置仓库路径"
+        command = ['git', '-c', 'core.quotepath=false'] + args
+        result = run_git_push_with_progress(
+            command,
+            self._repo_path,
+            timeout,
+            on_progress or self.progressUpdated.emit,
+        )
+        return result.success, result.stdout, result.stderr
 
     # ==================== 状态查询 ====================
 
@@ -1120,7 +1155,7 @@ class GitService(QObject):
             return
 
         # 始终使用 -u 设置上游分支（对新分支和已有分支都安全）
-        args = ['push', '-u']
+        args = ['push', '--progress', '-u']
         if force:
             # --force-with-lease:仅当远端分支仍是本地已知的位置时才覆盖。
             # 若远端有本地未见的新提交(他人推送)会被拒绝,避免误覆盖他人工作,
@@ -1131,13 +1166,15 @@ class GitService(QObject):
 
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
+                self.progressUpdated.emit(100, "推送完成")
                 self.statusChanged.emit()
             msg = "推送成功" if success else (stderr or "推送失败")
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
 
-        self._run_git_async(args, on_finished)
+        self.progressUpdated.emit(0, "正在准备推送")
+        self._run_git_push_async(args, on_finished)
 
     def push_with_upstream(self, remote: str = "origin", branch: str = "", callback: Callable[[bool, str], None] = None):
         """推送并设置上游分支（异步）"""
@@ -1146,17 +1183,19 @@ class GitService(QObject):
         if not branch:
             branch = self.get_current_branch()
 
-        args = ['push', '-u', remote, branch]
+        args = ['push', '--progress', '-u', remote, branch]
 
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
+                self.progressUpdated.emit(100, "推送完成")
                 self.statusChanged.emit()
             msg = "推送成功" if success else (stderr or "推送失败")
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
 
-        self._run_git_async(args, on_finished)
+        self.progressUpdated.emit(0, "正在准备推送")
+        self._run_git_push_async(args, on_finished)
     
     def set_upstream(self, local_branch: str, remote: str, remote_branch: str) -> tuple[bool, str]:
         """设置分支的上游跟踪关系（同步）
@@ -1549,7 +1588,6 @@ class GitService(QObject):
             has_committed = False
             
             # 步骤1：检查是否有变更需要暂存
-            self.progressUpdated.emit(0, "检查变更...")
             changes = self.get_status()
             has_unstaged = any(not c.staged for c in changes)
             has_staged = any(c.staged for c in changes)
@@ -1581,8 +1619,15 @@ class GitService(QObject):
             # 步骤5：推送（同步执行）
             self.progressUpdated.emit(66, "推送到远程...")
             current_branch = self.get_current_branch()
-            args = ['push', '-u', 'origin', current_branch]
-            success, stdout, stderr = self._run_git_sync(args, timeout=60)
+            args = ['push', '--progress', '-u', 'origin', current_branch]
+
+            def emit_push_progress(percent: int, detail: str) -> None:
+                overall = 66 + round(percent * 0.33)
+                self.progressUpdated.emit(overall, detail)
+
+            success, stdout, stderr = self._run_git_push_sync(
+                args, timeout=60, on_progress=emit_push_progress
+            )
             
             if success:
                 self.progressUpdated.emit(100, "完成")
@@ -1622,6 +1667,7 @@ class GitService(QObject):
         
         # 在worker开始时发送operationStarted信号
         self.operationStarted.emit("正在执行一键提交推送...")
+        self.progressUpdated.emit(0, "正在检查变更")
         
         worker.finished.connect(on_worker_finished)
         worker.finished.connect(lambda: self._cleanup_worker(worker))
@@ -2066,8 +2112,11 @@ class GitService(QObject):
             return False, "非法的标签名"
         if remote not in self.get_remotes():
             return False, f"未配置远程 '{remote}',请先添加远程仓库"
-        success, _, stderr = self._run_git_sync(['push', remote, name], timeout=120)
+        success, _, stderr = self._run_git_push_sync(
+            ['push', '--progress', remote, name], timeout=120
+        )
         if success:
+            self.progressUpdated.emit(100, "推送标签完成")
             return True, f"已推送Tag: {name}"
         return False, stderr or "推送Tag失败"
 
@@ -2075,8 +2124,11 @@ class GitService(QObject):
         """推送所有Tag到远程"""
         if remote not in self.get_remotes():
             return False, f"未配置远程 '{remote}',请先添加远程仓库"
-        success, _, stderr = self._run_git_sync(['push', remote, '--tags'], timeout=120)
+        success, _, stderr = self._run_git_push_sync(
+            ['push', '--progress', remote, '--tags'], timeout=120
+        )
         if success:
+            self.progressUpdated.emit(100, "推送标签完成")
             return True, "已推送所有Tag"
         return False, stderr or "推送Tag失败"
 

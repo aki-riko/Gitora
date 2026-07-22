@@ -256,6 +256,32 @@ class GitServiceCoreTest(unittest.TestCase):
             clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
         self.assertEqual(upstream, "upstream/feature")
 
+    def test_push_emits_real_monotonic_git_progress(self) -> None:
+        remote = init_bare_repo(self.root / "progress-remote.git")
+        repo = init_repo(self.root / "progress-repo")
+        for index in range(8):
+            write_file(repo, f"payload-{index}.txt", (f"line-{index}\n" * 2048))
+        commit_all(repo, "progress payload")
+        run_git(repo, "remote", "add", "origin", str(remote))
+        service = self.service_for(repo)
+        updates: list[tuple[int, str]] = []
+        service.progressUpdated.connect(
+            lambda percent, message: updates.append((percent, message))
+        )
+
+        ok, msg = self.wait_operation(
+            service, lambda: service.push("origin", "master")
+        )
+
+        self.assertTrue(ok, msg)
+        percents = [percent for percent, _ in updates]
+        messages = [message for _, message in updates]
+        self.assertEqual(percents, sorted(percents))
+        self.assertEqual(percents[0], 0)
+        self.assertEqual(percents[-1], 100)
+        self.assertTrue(any("正在计数对象" in item for item in messages))
+        self.assertTrue(any("正在写入对象" in item for item in messages))
+
     def test_unmerged_branch_requires_force_delete(self) -> None:
         repo = init_repo(self.root / "repo")
         write_file(repo, "base.txt", "base\n")

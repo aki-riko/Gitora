@@ -898,6 +898,7 @@ class GitBridge(QObject):
         """后台推送标签到远程(网络操作);结果经 operationStarted/Finished 回传。"""
         import threading
         self.operationStarted.emit(f"正在推送标签 {name}...")
+        self.progressUpdated.emit(0, "正在准备推送标签")
         def work():
             try:
                 ok, msg = self._svc.push_tag(name)
@@ -911,6 +912,7 @@ class GitBridge(QObject):
         """后台推送所有标签(网络操作);结果经 operationStarted/Finished 回传。"""
         import threading
         self.operationStarted.emit("正在推送所有标签...")
+        self.progressUpdated.emit(0, "正在准备推送标签")
         def work():
             try:
                 ok, msg = self._svc.push_all_tags()
