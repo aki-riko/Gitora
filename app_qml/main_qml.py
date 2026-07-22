@@ -115,50 +115,137 @@ def _start_settings_navigation_selftest(engine, finish) -> None:
     QTimer.singleShot(0, poll)
 
 
+def _cleanup_credential_selftest(store, account: str) -> None:
+    try:
+        store.delete(account)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[SELFTEST] 系统凭据清理失败: {type(exc).__name__}")
+
+
+def _create_credential_selftest_context():
+    import uuid
+
+    from app.common.ai_commit_credentials import SystemCredentialStore
+    from app.common.ai_commit_settings import AiCommitSettingsStore
+
+    service = (
+        f"{AiCommitSettingsStore().load().credential_service}"
+        f".Selftest.{uuid.uuid4().hex}"
+    )
+    return (
+        SystemCredentialStore(service),
+        "packaged-selftest",
+        f"gitora-selftest-{uuid.uuid4().hex}",
+    )
+
+
+def _credential_selftest_failure(exc: Exception) -> tuple[bool, str]:
+    from app.common.ai_commit_credentials import CredentialStoreError
+
+    message = (
+        str(exc)
+        if isinstance(exc, CredentialStoreError)
+        else f"系统凭据验证异常: {type(exc).__name__}"
+    )
+    print(f"[SELFTEST] 系统凭据库验证失败: {message}")
+    return False, message
+
+
+def _run_system_credential_selftest() -> tuple[bool, str]:
+    """在唯一临时条目上验证当前用户的原生凭据库写、读、删。"""
+    store = None
+    account = ""
+    stored = False
+    try:
+        store, account, secret = _create_credential_selftest_context()
+        store.set(account, secret)
+        stored = True
+        if store.get(account) != secret:
+            return False, "系统凭据读取值不一致"
+        if not store.delete(account):
+            return False, "系统凭据删除未生效"
+        stored = False
+        if store.get(account):
+            return False, "系统凭据删除后仍可读取"
+    except Exception as exc:  # noqa: BLE001
+        return _credential_selftest_failure(exc)
+    finally:
+        if stored and store is not None:
+            _cleanup_credential_selftest(store, account)
+    return True, "原生系统凭据写入、读取和删除均通过"
+
+
+class _SelftestCoordinator:
+    def __init__(self, app, timer, pending: int):
+        self._app = app
+        self._timer = timer
+        self._pending = pending
+        self._finished = False
+
+    def finish(self, label: str, ok: bool, message: str) -> None:
+        if self._finished:
+            return
+        result = "成功" if ok else "失败"
+        print(f"[SELFTEST] {label}{result}: {message}")
+        if not ok:
+            self._finished = True
+            self._timer.singleShot(0, lambda: self._app.exit(2))
+            return
+        self._pending -= 1
+        if self._pending == 0:
+            self._finished = True
+            self._timer.singleShot(0, lambda: self._app.exit(0))
+
+
+def _start_requested_selftests(
+    timer, engine, ai_commit_bridge, coordinator, requested
+) -> None:
+    needs_ai, needs_settings, needs_credentials = requested
+    if needs_settings:
+        timer.singleShot(
+            0,
+            lambda: _start_settings_navigation_selftest(
+                engine,
+                lambda ok, message: coordinator.finish(
+                    "设置页导航", ok, message
+                ),
+            ),
+        )
+    if needs_ai:
+        ai_commit_bridge.connectionTestFinished.connect(
+            lambda ok, message: coordinator.finish("AI 连接检测", ok, message)
+        )
+        timer.singleShot(0, ai_commit_bridge.testConnection)
+        timer.singleShot(
+            15000,
+            lambda: coordinator.finish("AI 连接检测", False, "连接检测超时"),
+        )
+    if needs_credentials:
+        timer.singleShot(
+            0,
+            lambda: coordinator.finish(
+                "系统凭据库验证", *_run_system_credential_selftest()
+            ),
+        )
+
+
 def _schedule_selftest(app, engine, ai_commit_bridge) -> None:
     """验证 QML 启动；可选验证设置导航与打包态 AI 连接。"""
     from PySide6.QtCore import QTimer
 
     print("[SELFTEST] QML 加载成功,rootObjects =", len(engine.rootObjects()))
-    needs_ai = bool(os.environ.get("GITESS_AI_CONNECTION_SELFTEST"))
-    needs_settings = bool(os.environ.get("GITESS_SETTINGS_NAV_SELFTEST"))
-    if not needs_ai and not needs_settings:
+    requested = (
+        bool(os.environ.get("GITESS_AI_CONNECTION_SELFTEST")),
+        bool(os.environ.get("GITESS_SETTINGS_NAV_SELFTEST")),
+        bool(os.environ.get("GITESS_CREDENTIAL_SELFTEST")),
+    )
+    if not any(requested):
         QTimer.singleShot(1500, app.quit)
         return
-
-    state = {"finished": False, "pending": int(needs_ai) + int(needs_settings)}
-
-    def finish_check(label: str, ok: bool, message: str) -> None:
-        if state["finished"]:
-            return
-        result = "成功" if ok else "失败"
-        print(f"[SELFTEST] {label}{result}: {message}")
-        if not ok:
-            state["finished"] = True
-            QTimer.singleShot(0, lambda: app.exit(2))
-            return
-        state["pending"] -= 1
-        if state["pending"] == 0:
-            state["finished"] = True
-            QTimer.singleShot(0, lambda: app.exit(0))
-
-    if needs_settings:
-        QTimer.singleShot(
-            0,
-            lambda: _start_settings_navigation_selftest(
-                engine,
-                lambda ok, message: finish_check("设置页导航", ok, message),
-            ),
-        )
-    if needs_ai:
-        ai_commit_bridge.connectionTestFinished.connect(
-            lambda ok, message: finish_check("AI 连接检测", ok, message)
-        )
-        QTimer.singleShot(0, ai_commit_bridge.testConnection)
-        QTimer.singleShot(
-            15000,
-            lambda: finish_check("AI 连接检测", False, "连接检测超时"),
-        )
+    coordinator = _SelftestCoordinator(app, QTimer, sum(map(int, requested)))
+    _start_requested_selftests(
+        QTimer, engine, ai_commit_bridge, coordinator, requested
+    )
 
 # PRISMQML_PKG_DIR = .../prismqml 包目录(其下含 PrismQML/qmldir 与 python/)
 PRISMQML_PKG_DIR = _resolve_prismqml_dir()

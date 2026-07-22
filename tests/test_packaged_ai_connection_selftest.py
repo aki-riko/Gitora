@@ -11,6 +11,7 @@ from pathlib import Path
 
 from tools.packaged_ai_connection_selftest import (
     CONNECTION_MARKER,
+    CREDENTIAL_MARKER,
     MODEL_NAME,
     QML_MARKER,
     SETTINGS_MARKER,
@@ -44,10 +45,13 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
             models=models,
         )
         return subprocess.CompletedProcess(
-            args, 0,
+            args,
+            0,
             f"[SELFTEST] QML 加载成功,{QML_MARKER} 1\n"
             f"[SELFTEST] {SETTINGS_MARKER}: SettingsView 已加载\n"
-            f"[SELFTEST] {CONNECTION_MARKER}: 检测到 1 个本地模型\n",
+            f"[SELFTEST] {CONNECTION_MARKER}: 检测到 1 个本地模型\n"
+            f"[SELFTEST] {CREDENTIAL_MARKER}: "
+            "原生系统凭据写入、读取和删除均通过\n",
             "",
         )
 
@@ -67,6 +71,9 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
         )
         self.assertEqual(
             self.captured["environment"]["GITESS_SETTINGS_NAV_SELFTEST"], "1"
+        )
+        self.assertEqual(
+            self.captured["environment"]["GITESS_CREDENTIAL_SELFTEST"], "1"
         )
         self.assertEqual(self.captured["environment"]["PYTHONUTF8"], "1")
         self.assertEqual(
@@ -111,6 +118,13 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
                 runner=self._connected_runner_without_settings_marker,
             )
 
+    def test_rejects_successful_process_without_credential_marker(self) -> None:
+        with self.assertRaisesRegex(PackagedSelftestError, CREDENTIAL_MARKER):
+            run_connection_selftest(
+                Path(sys.executable), timeout_seconds=5,
+                runner=self._connected_runner_without_credential_marker,
+            )
+
     def _connected_runner_without_marker(self, args, **kwargs):
         completed = self._connected_runner(args, **kwargs)
         completed.stdout = QML_MARKER
@@ -119,6 +133,11 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
     def _connected_runner_without_settings_marker(self, args, **kwargs):
         completed = self._connected_runner(args, **kwargs)
         completed.stdout = f"{QML_MARKER}\n{CONNECTION_MARKER}"
+        return completed
+
+    def _connected_runner_without_credential_marker(self, args, **kwargs):
+        completed = self._connected_runner(args, **kwargs)
+        completed.stdout = completed.stdout.replace(CREDENTIAL_MARKER, "")
         return completed
 
 

@@ -68,6 +68,7 @@ jobs:
           python tools/packaged_ai_connection_selftest.py --executable "$APP_BIN" 2>&1 | tee selftest.log
           if grep -qE "rootObjects = [1-9]" selftest.log \
               && grep -q "设置页导航成功" selftest.log \
+              && grep -q "系统凭据库验证成功" selftest.log \
               && grep -q "AI 连接检测成功" selftest.log; then
             echo "SELFTEST passed"
           else

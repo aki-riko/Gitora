@@ -86,6 +86,19 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("非本机 Ollama 与远程 API 每次发送前都会确认", source)
         self.assertNotIn("api_key\"", source)
 
+    def test_builds_include_native_keyring_dependencies_without_alt(self) -> None:
+        windows = (ROOT / "build_nuitka.py").read_text(encoding="utf-8")
+        macos = (ROOT / "build_nuitka_mac.py").read_text(encoding="utf-8")
+        requirements = (
+            ROOT / "app_qml" / "requirements.txt"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"--include-package=keyring"', windows)
+        self.assertIn('"--include-package=win32ctypes"', windows)
+        self.assertIn('"--include-package=keyring"', macos)
+        self.assertIn("keyring==25.7.0", requirements)
+        self.assertNotIn("keyrings.alt", windows + macos + requirements)
+
     def test_plan_dialog_allows_editing_without_git_execution(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "components" / "AiCommitPlanDialog.qml"

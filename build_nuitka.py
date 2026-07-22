@@ -43,6 +43,9 @@ args = [
     # 后端包
     "--include-package=app",
     "--include-package=app_qml",
+    # 打入 keyring 与 Windows Credential Manager 所需的 ctypes 绑定
+    "--include-package=keyring",
+    "--include-package=win32ctypes",
     # 界面 QML + 资源,解到 exe 同级(对应 frozen 路径)
     f"--include-data-dir={os.path.join(ROOT, 'app_qml', 'qml')}=app_qml/qml",
     f"--include-data-dir={os.path.join(ROOT, 'app', 'resource')}=app/resource",

@@ -18,6 +18,7 @@ MODEL_NAME = "gitora-packaged-selftest"
 QML_MARKER = "rootObjects ="
 CONNECTION_MARKER = "AI 连接检测成功"
 SETTINGS_MARKER = "设置页导航成功"
+CREDENTIAL_MARKER = "系统凭据库验证成功"
 
 
 class PackagedSelftestError(RuntimeError):
@@ -77,6 +78,7 @@ def _build_environment(root: Path, endpoint: str) -> dict[str, str]:
             "GITESS_QML_SELFTEST": "1",
             "GITESS_AI_CONNECTION_SELFTEST": "1",
             "GITESS_SETTINGS_NAV_SELFTEST": "1",
+            "GITESS_CREDENTIAL_SELFTEST": "1",
             "QT_QPA_PLATFORM": "offscreen",
             "PYTHONUTF8": "1",
             "PYTHONIOENCODING": "utf-8",
@@ -115,7 +117,9 @@ def _validated_output(
         raise PackagedSelftestError("打包程序未访问回环模型列表端点")
     missing = [
         marker
-        for marker in (QML_MARKER, SETTINGS_MARKER, CONNECTION_MARKER)
+        for marker in (
+            QML_MARKER, SETTINGS_MARKER, CONNECTION_MARKER, CREDENTIAL_MARKER
+        )
         if marker not in output
     ]
     if missing:

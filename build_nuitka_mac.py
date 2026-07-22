@@ -62,6 +62,8 @@ args = [
     # 后端包
     "--include-package=app",
     "--include-package=app_qml",
+    # 打入 macOS Keychain 原生后端；运行时不使用自动后端选择
+    "--include-package=keyring",
     # 界面 QML + 资源,解到 bundle 资源目录(对应 frozen 路径解析)
     f"--include-data-dir={os.path.join(ROOT, 'app_qml', 'qml')}=app_qml/qml",
     f"--include-data-dir={os.path.join(ROOT, 'app', 'resource')}=app/resource",
