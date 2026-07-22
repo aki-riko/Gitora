@@ -442,35 +442,11 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.rightMargin: Fluent.Enums.spacing.m
-                    spacing: Fluent.Enums.spacing.s
+                    spacing: 0
 
-                    // 文件列表工具条
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Text {
-                            text: "变更 (" + root.changeCount + ")"
-                            color: Fluent.Enums.textColor.primary
-                            font.family: Fluent.Enums.fontFamily
-                            font.pixelSize: Fluent.Enums.typography.bodyLarge
-                            font.bold: true
-                        }
-                        Item { Layout.fillWidth: true }
-                        Fluent.Button {
-                            text: "全部暂存"
-                            style: Fluent.Enums.button.style_transparent
-                            enabled: !root._aiPlanLocksIndex
-                            onClicked: GitBridge.stageAll()
-                        }
-                        Fluent.Button {
-                            text: "全部取消"
-                            style: Fluent.Enums.button.style_transparent
-                            enabled: !root._aiPlanLocksIndex
-                            onClicked: GitBridge.unstageAll()
-                        }
-                    }
-
-                    // 变更文件列表(卡片容器 + 空状态)
+                    // 变更卡片(头部操作 + 文件列表/空状态)
                     Rectangle {
+                        id: changeCard
                         Layout.fillWidth: true
                         Layout.fillHeight: true
                         radius: Fluent.Enums.radius.large
@@ -478,94 +454,147 @@ Item {
                         border.width: Fluent.Enums.border.normal
                         border.color: Fluent.Enums.stateColor.border
 
-                        // 空状态:工作区干净
-                        Fluent.EmptyState {
-                            anchors.centerIn: parent
-                            visible: root.changeCount === 0
-                            icon: Fluent.Enums.icon.checkmark_circle
-                            title: "工作区干净"
-                            description: "没有未提交的变更"
-                        }
-
-                        Loader {
-                            id: changeListLoader
+                        ColumnLayout {
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.xs
-                            active: root._changeListActive && root.changeCount > 0
-                            visible: active
-                            sourceComponent: changeListComponent
-                        }
+                            spacing: 0
 
-                        Component {
-                            id: changeListComponent
+                            RowLayout {
+                                id: changeCardHeader
+                                Layout.fillWidth: true
+                                Layout.leftMargin: Fluent.Enums.spacing.m
+                                Layout.rightMargin: Fluent.Enums.spacing.xs
+                                Layout.topMargin: Fluent.Enums.spacing.xs
+                                Layout.bottomMargin: Fluent.Enums.spacing.xs
 
-                            Fluent.ScrollArea {
-                                id: changeScrollArea
-                                type: Fluent.Enums.scroll.type_list
-                                model: changeModel
-                                itemHeight: 40
-                                listSpacing: 2
-                                listCacheBuffer: 0
-                                reuseItems: true
-                                bounceEnabled: false
-                                padding: 0
+                                Text {
+                                    text: "变更 (" + root.changeCount + ")"
+                                    color: Fluent.Enums.textColor.primary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.bodyLarge
+                                    font.bold: true
+                                }
+                                Item { Layout.fillWidth: true }
+                                Fluent.Button {
+                                    text: "全部暂存"
+                                    style: Fluent.Enums.button.style_transparent
+                                    enabled: !root._aiPlanLocksIndex
+                                    onClicked: GitBridge.stageAll()
+                                }
+                                Fluent.Button {
+                                    text: "全部取消"
+                                    style: Fluent.Enums.button.style_transparent
+                                    enabled: !root._aiPlanLocksIndex
+                                    onClicked: GitBridge.unstageAll()
+                                }
+                            }
 
-                                delegate: Rectangle {
-                                    width: ListView.view ? ListView.view.width : 0
-                                    height: 40
-                                    radius: Fluent.Enums.radius.small
-                                    color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
+                            Fluent.Separator {
+                                id: changeCardHeaderSeparator
+                                Layout.fillWidth: true
+                            }
 
-                                    HoverHandler { id: hover }
-                                    TapHandler { onTapped: root.showDiff(model.path, model.staged) }
+                            Item {
+                                id: changeCardBody
+                                Layout.fillWidth: true
+                                Layout.fillHeight: true
 
-                                    RowLayout {
-                                        anchors.fill: parent
-                                        anchors.leftMargin: Fluent.Enums.spacing.m
-                                        anchors.rightMargin: Fluent.Enums.spacing.s
-                                        spacing: Fluent.Enums.spacing.m
+                                // 空状态:工作区干净
+                                Fluent.EmptyState {
+                                    anchors.centerIn: parent
+                                    visible: root.changeCount === 0
+                                    icon: Fluent.Enums.icon.checkmark_circle
+                                    title: "工作区干净"
+                                    description: "没有未提交的变更"
+                                }
 
-                                        Text {
-                                            text: model.statusText
-                                            Layout.preferredWidth: 50
-                                            color: model.staged ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.tertiary
-                                            font.family: Fluent.Enums.fontFamily
-                                            font.pixelSize: Fluent.Enums.typography.caption
-                                        }
-                                        Text {
-                                            Layout.fillWidth: true
-                                            text: model.path
-                                            color: Fluent.Enums.textColor.primary
-                                            font.family: Fluent.Enums.fontFamily
-                                            font.pixelSize: Fluent.Enums.typography.body
-                                            elide: Text.ElideMiddle
-                                        }
-                                        Fluent.Button {
-                                            text: model.staged ? "取消" : "暂存"
-                                            style: Fluent.Enums.button.style_transparent
-                                            enabled: !root._aiPlanLocksIndex
-                                            visible: hover.hovered
-                                            onClicked: {
-                                                if (model.staged) GitBridge.unstageFile(model.path)
-                                                else GitBridge.stageFile(model.path)
+                                Loader {
+                                    id: changeListLoader
+                                    anchors.fill: parent
+                                    anchors.margins: Fluent.Enums.spacing.xs
+                                    active: root._changeListActive && root.changeCount > 0
+                                    visible: active
+                                    sourceComponent: changeListComponent
+                                }
+
+                                Component {
+                                    id: changeListComponent
+
+                                    Fluent.ScrollArea {
+                                        id: changeScrollArea
+                                        type: Fluent.Enums.scroll.type_list
+                                        model: changeModel
+                                        itemHeight: 40
+                                        listSpacing: 2
+                                        listCacheBuffer: 0
+                                        reuseItems: true
+                                        bounceEnabled: false
+                                        padding: 0
+
+                                        delegate: Rectangle {
+                                            width: ListView.view ? ListView.view.width : 0
+                                            height: 40
+                                            radius: Fluent.Enums.radius.small
+                                            color: hover.hovered ? Fluent.Enums.stateColor.hover : "transparent"
+
+                                            HoverHandler { id: hover }
+                                            TapHandler { onTapped: root.showDiff(model.path, model.staged) }
+
+                                            RowLayout {
+                                                anchors.fill: parent
+                                                anchors.leftMargin: Fluent.Enums.spacing.m
+                                                anchors.rightMargin: Fluent.Enums.spacing.s
+                                                spacing: Fluent.Enums.spacing.m
+
+                                                Text {
+                                                    text: model.statusText
+                                                    Layout.preferredWidth: 50
+                                                    color: model.staged ? Fluent.Enums.statusLevel.successColor : Fluent.Enums.textColor.tertiary
+                                                    font.family: Fluent.Enums.fontFamily
+                                                    font.pixelSize: Fluent.Enums.typography.caption
+                                                }
+                                                Text {
+                                                    Layout.fillWidth: true
+                                                    text: model.path
+                                                    color: Fluent.Enums.textColor.primary
+                                                    font.family: Fluent.Enums.fontFamily
+                                                    font.pixelSize: Fluent.Enums.typography.body
+                                                    elide: Text.ElideMiddle
+                                                }
+                                                RowLayout {
+                                                    id: changeActions
+                                                    visible: hover.hovered
+                                                    spacing: Fluent.Enums.spacing.xxs
+
+                                                    Fluent.Button {
+                                                        preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                        text: model.staged ? "取消" : "暂存"
+                                                        style: Fluent.Enums.button.style_transparent
+                                                        enabled: !root._aiPlanLocksIndex
+                                                        onClicked: {
+                                                            if (model.staged) GitBridge.unstageFile(model.path)
+                                                            else GitBridge.stageFile(model.path)
+                                                        }
+                                                    }
+                                                    Fluent.Button {
+                                                        preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                        text: "丢弃"
+                                                        style: Fluent.Enums.button.style_transparent
+                                                        visible: !model.staged
+                                                        onClicked: {
+                                                            discardDanger.content = "将丢弃 " + model.path
+                                                                + " 的工作区改动。\n此操作不可恢复。"
+                                                            discardDanger._path = model.path
+                                                            discardDanger.start()
+                                                        }
+                                                    }
+                                                    Fluent.Button {
+                                                        preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                        text: "历史"
+                                                        style: Fluent.Enums.button.style_transparent
+                                                        onClicked: fileHistoryDialog.openFor(model.path)
+                                                    }
+                                                }
                                             }
-                                        }
-                                        Fluent.Button {
-                                            text: "丢弃"
-                                            style: Fluent.Enums.button.style_transparent
-                                            visible: hover.hovered && !model.staged
-                                            onClicked: {
-                                                discardDanger.content = "将丢弃 " + model.path
-                                                    + " 的工作区改动。\n此操作不可恢复。"
-                                                discardDanger._path = model.path
-                                                discardDanger.start()
-                                            }
-                                        }
-                                        Fluent.Button {
-                                            text: "历史"
-                                            style: Fluent.Enums.button.style_transparent
-                                            visible: hover.hovered
-                                            onClicked: fileHistoryDialog.openFor(model.path)
                                         }
                                     }
                                 }

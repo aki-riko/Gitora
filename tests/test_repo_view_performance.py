@@ -23,6 +23,28 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertNotIn("ListModel { id: changeModel }", source)
         self.assertNotIn("changeModel.append", source)
 
+    def test_change_list_actions_use_compact_button_group(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("id: changeActions", source)
+        self.assertIn("spacing: Fluent.Enums.spacing.xxs", source)
+        self.assertEqual(
+            source.count("preferredWidth: Fluent.Enums.controlSize.inputHeight"),
+            3,
+        )
+
+    def test_change_summary_actions_live_inside_card_above_separator(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        card_index = source.index("id: changeCard")
+        header_index = source.index("id: changeCardHeader")
+        separator_index = source.index("id: changeCardHeaderSeparator")
+        body_index = source.index("id: changeCardBody")
+
+        self.assertLess(card_index, header_index)
+        self.assertLess(header_index, separator_index)
+        self.assertLess(separator_index, body_index)
+
     def test_repository_dropdown_limits_display_width_but_opens_original_path(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 
