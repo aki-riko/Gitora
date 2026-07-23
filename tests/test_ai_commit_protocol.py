@@ -17,7 +17,9 @@ from app.common.ai_commit_models import (
 )
 from app.common.ai_commit_provider import ProviderCancelledError, StaticModelProvider
 from app.common.ai_commit_schema import (
+    build_plan_schema,
     build_system_instructions,
+    build_user_input,
     normalize_output_language,
 )
 
@@ -199,6 +201,18 @@ class AiCommitProtocolTest(unittest.TestCase):
         instructions = build_system_instructions(request)
         self.assertIn("繁體中文（zh_TW）", instructions)
         self.assertIn("UI 语言要求优先于历史提交语言", instructions)
+
+    def test_multi_commit_planning_requires_multiple_groups(self) -> None:
+        request = PlannerRequest(self.make_snapshot(), "plan", "file")
+        schema = build_plan_schema(request)
+        self.assertEqual(schema["properties"]["groups"]["minItems"], 2)
+        self.assertIn("至少两个提交组", build_system_instructions(request))
+        self.assertIn("禁止把全部改动放进单一组", build_user_input(request))
+
+        message_request = PlannerRequest(self.make_snapshot(), "message", "file")
+        message_schema = build_plan_schema(message_request)
+        self.assertEqual(message_schema["properties"]["groups"]["minItems"], 1)
+        self.assertEqual(message_schema["properties"]["groups"]["maxItems"], 1)
 
     def test_history_style_extraction_handles_mixed_repository_history(self) -> None:
         profile = CommitStyleProfile.from_titles((

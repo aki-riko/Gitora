@@ -23,8 +23,9 @@ DEFAULTS = ROOT / "app" / "resource" / "config" / "ai_commit_defaults.json"
 
 
 class _PlanProvider(ModelProvider):
-    def __init__(self):
+    def __init__(self, single_first: bool = False):
         self.requests: list[PlannerRequest] = []
+        self.single_first = single_first
 
     @property
     def provider_id(self) -> str:
@@ -33,17 +34,28 @@ class _PlanProvider(ModelProvider):
     def generate_plan(self, request: PlannerRequest, cancel_event=None):
         self.requests.append(request)
         ids = list(request.snapshot.expected_ids(request.level))
-        groups = []
-        for index, change_id in enumerate(ids):
-            groups.append({
-                "group_id": f"group-{index + 1}",
-                "title": f"feat: 规划改动 {index + 1}",
+        if self.single_first and len(self.requests) == 1 and len(ids) > 1:
+            groups = [{
+                "group_id": "group-1",
+                "title": "feat: 合并改动",
                 "body": "",
-                "change_ids": [change_id],
+                "change_ids": ids,
                 "depends_on": [],
-                "rationale": f"按 {request.level} 拆分",
+                "rationale": "故意模拟模型首次未拆分",
                 "warnings": [],
-            })
+            }]
+        else:
+            groups = []
+            for index, change_id in enumerate(ids):
+                groups.append({
+                    "group_id": f"group-{index + 1}",
+                    "title": f"feat: 规划改动 {index + 1}",
+                    "body": "",
+                    "change_ids": [change_id],
+                    "depends_on": [],
+                    "rationale": f"按 {request.level} 拆分",
+                    "warnings": [],
+                })
         return {
             "schema_version": "1",
             "snapshot_id": request.snapshot.snapshot_id,
@@ -141,6 +153,25 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
         self.assertEqual(prepared[0][2], 2)
         self.assertIn("未暂存和未跟踪", prepared[0][4])
+
+    def test_single_group_model_response_is_retried_as_multi_commit_plan(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        self.provider = _PlanProvider(single_first=True)
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        self.assertEqual(len(self.provider.requests), 2)
+        self.assertEqual(self.provider.requests[1].mode, "plan_retry")
+        self.assertEqual(len(bridge.planModel.groups), 2)
 
     def test_plan_generation_uses_requested_ui_language(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")

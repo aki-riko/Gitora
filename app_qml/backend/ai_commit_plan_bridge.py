@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+from dataclasses import replace
 from typing import Optional
 
 from PySide6.QtCore import QObject, Property, Signal, Slot
@@ -20,7 +21,11 @@ from app.common.ai_commit_models import (
     PlannerRequest,
 )
 from app.common.ai_commit_provider import ProviderCancelledError
-from app.common.ai_commit_schema import build_user_input, normalize_output_language
+from app.common.ai_commit_schema import (
+    build_user_input,
+    normalize_output_language,
+    requires_multiple_groups,
+)
 from app.common.ai_commit_settings import AiCommitSettings, AiCommitSettingsError
 from app.common.git_service import GitService
 from app.common.logger import get_logger
@@ -206,6 +211,14 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                 provider = self._runtime.create_provider_for(prepared.settings)
                 raw_plan = provider.generate_plan(prepared.request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
+                if requires_multiple_groups(prepared.request) and len(plan.groups) < 2:
+                    logger.warning("模型返回单一提交组，发起强制拆分重试")
+                    ensure_plan_fingerprint(collector, prepared)
+                    retry_request = replace(prepared.request, mode="plan_retry")
+                    raw_plan = provider.generate_plan(retry_request, cancel_event)
+                    plan = CommitPlan.from_mapping(raw_plan)
+                if requires_multiple_groups(prepared.request) and len(plan.groups) < 2:
+                    raise PlanProtocolError("模型未按多提交要求拆分改动，请重新生成")
                 result = self._validator.validate(
                     plan,
                     prepared.snapshot,
