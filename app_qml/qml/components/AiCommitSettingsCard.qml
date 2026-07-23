@@ -21,27 +21,29 @@ Fluent.SettingsCardGroup {
 
     Connections {
         target: AiCommitBridge
-        function onSettingsChanged() { root.loadSettings() }
+        function onSettingsChanged() {
+            root.loadSettings();
+        }
         function onModelListFinished(provider, ok, models, message) {
-            if (provider !== root._modelFetchProvider) return
-            var matchesCurrentConnection = provider === root._providerValues[
-                connectionSection.providerIndex
-            ] && connectionSection.activeEndpoint.trim() === root._modelFetchEndpoint
-            root.clearModelFetchState()
-            if (!matchesCurrentConnection) return
+            if (provider !== root._modelFetchProvider)
+                return;
+            var matchesCurrentConnection = provider === root._providerValues[connectionSection.providerIndex] && connectionSection.activeEndpoint.trim() === root._modelFetchEndpoint;
+            root.clearModelFetchState();
+            if (!matchesCurrentConnection)
+                return;
             if (ok) {
-                connectionSection.setAvailableModels(provider, models)
+                connectionSection.setAvailableModels(provider, models);
             }
         }
         function onBusyChanged() {
             if (!AiCommitBridge.busy && root._modelFetchProvider.length > 0)
-                root.clearModelFetchState()
+                root.clearModelFetchState();
         }
     }
 
     Rectangle {
         width: parent ? parent.width : 0
-        height: aiLayout.implicitHeight + Fluent.Enums.spacing.l * 2
+        height: aiLayout.implicitHeight + Fluent.Enums.spacing.m * 2
         radius: Fluent.Enums.radius.medium
         color: Fluent.Enums.stateColor.settingCardBg
         border.color: Fluent.Enums.stateColor.settingCardBorder
@@ -50,8 +52,8 @@ Fluent.SettingsCardGroup {
         ColumnLayout {
             id: aiLayout
             anchors.fill: parent
-            anchors.margins: Fluent.Enums.spacing.l
-            spacing: Fluent.Enums.spacing.m
+            anchors.margins: Fluent.Enums.spacing.m
+            spacing: Fluent.Enums.spacing.s
 
             RowLayout {
                 id: aiHeader
@@ -59,8 +61,8 @@ Fluent.SettingsCardGroup {
                 spacing: Fluent.Enums.spacing.m
 
                 Rectangle {
-                    width: 42
-                    height: 42
+                    width: 30
+                    height: 30
                     radius: Fluent.Enums.radius.small
                     color: Fluent.Enums.stateColor.actionsRowBg
                     border.color: Fluent.Enums.stateColor.settingCardBorder
@@ -70,7 +72,7 @@ Fluent.SettingsCardGroup {
                     Fluent.Icon {
                         anchors.centerIn: parent
                         icon: Fluent.Enums.icon.code
-                        size: 22
+                        size: 18
                         color: Fluent.Enums.textColor.secondary
                     }
                 }
@@ -85,7 +87,7 @@ Fluent.SettingsCardGroup {
                         textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.titleLarge
+                        font.pixelSize: Fluent.Enums.typography.bodyLarge
                         font.bold: true
                     }
 
@@ -103,69 +105,55 @@ Fluent.SettingsCardGroup {
                 Fluent.ToggleSwitch {
                     id: enabledSwitch
                     text: "启用 AI 提交"
-                    Layout.alignment: Qt.AlignTop
-                }
-            }
-
-            RowLayout {
-                id: settingsActions
-                objectName: "aiSettingsActions"
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.s
-
-                Item { Layout.preferredWidth: 42 }
-
-                Text {
-                    Layout.fillWidth: true
-                    text: enabledSwitch.checked
-                        ? "保存后可在提交下拉菜单使用 AI 提交"
-                        : "AI 提交当前未启用"
-                    textFormat: Text.PlainText
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    elide: Text.ElideRight
+                    Layout.alignment: Qt.AlignVCenter
                 }
 
-                Fluent.Button {
-                    objectName: "aiConnectionTestButton"
-                    text: AiCommitBridge && AiCommitBridge.busy ? "检测中…" : "检测连接"
-                    enabled: AiCommitBridge && !AiCommitBridge.busy
-                    onClicked: {
-                        if (root.saveSettings(false)) AiCommitBridge.testConnection()
+                RowLayout {
+                    id: settingsActions
+                    objectName: "aiSettingsActions"
+                    spacing: Fluent.Enums.spacing.xs
+
+                    Fluent.Button {
+                        objectName: "aiConnectionTestButton"
+                        text: AiCommitBridge && AiCommitBridge.busy ? "检测中…" : "检测连接"
+                        enabled: AiCommitBridge && !AiCommitBridge.busy
+                        onClicked: {
+                            if (root.saveSettings(false))
+                                AiCommitBridge.testConnection();
+                        }
+                    }
+
+                    Fluent.Button {
+                        objectName: "aiSettingsSaveButton"
+                        text: "保存设置"
+                        icon: Fluent.Enums.icon.save
+                        style: Fluent.Enums.button.style_primary
+                        onClicked: root.saveSettings(true)
                     }
                 }
-
-                Fluent.Button {
-                    objectName: "aiSettingsSaveButton"
-                    text: "保存设置"
-                    icon: Fluent.Enums.icon.save
-                    style: Fluent.Enums.button.style_primary
-                    onClicked: root.saveSettings(true)
-                }
             }
 
-            Fluent.Separator { Layout.fillWidth: true }
+            Fluent.Separator {
+                Layout.fillWidth: true
+            }
 
             AiCommitConnectionSection {
                 id: connectionSection
                 objectName: "aiConnectionSection"
                 Layout.fillWidth: true
                 compact: root._compactFields
-                hasStoredApiKey: Boolean(
-                    AiCommitBridge && AiCommitBridge.hasStoredApiKey
-                )
+                hasStoredApiKey: Boolean(AiCommitBridge && AiCommitBridge.hasStoredApiKey)
                 credentialStatusText: root.credentialStatusText()
                 credentialStatusColor: root.credentialStatusColor()
                 modelsLoading: root._modelFetchProvider.length > 0
-                modelFetchEnabled: Boolean(
-                    AiCommitBridge && !AiCommitBridge.busy
-                )
+                modelFetchEnabled: Boolean(AiCommitBridge && !AiCommitBridge.busy)
                 onDeleteCredentialRequested: root.deleteStoredCredential()
                 onFetchModelsRequested: root.fetchModels()
             }
 
-            Fluent.Separator { Layout.fillWidth: true }
+            Fluent.Separator {
+                Layout.fillWidth: true
+            }
 
             AiCommitRulesSection {
                 id: rulesSection
@@ -176,98 +164,96 @@ Fluent.SettingsCardGroup {
     }
 
     function credentialStatusText() {
-        if (!AiCommitBridge) return ""
-        if (AiCommitBridge.hasStoredApiKey) return "已安全保存到系统凭据库"
-        if (root._hasEnvironmentApiKey) return "将使用环境变量中的密钥"
+        if (!AiCommitBridge)
+            return "";
+        if (AiCommitBridge.hasStoredApiKey)
+            return "已安全保存到系统凭据库";
+        if (root._hasEnvironmentApiKey)
+            return "将使用环境变量中的密钥";
         if (!root._credentialStoreAvailable)
-            return root._credentialStoreError || "系统凭据库不可用"
-        return "尚未保存 API 密钥"
+            return root._credentialStoreError || "系统凭据库不可用";
+        return "尚未保存 API 密钥";
     }
 
     function credentialStatusColor() {
         if (AiCommitBridge && AiCommitBridge.hasStoredApiKey)
-            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.successStr)
+            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.successStr);
         if (!root._credentialStoreAvailable)
-            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.errorStr)
+            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.errorStr);
         if (root._hasEnvironmentApiKey)
-            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.infoStr)
-        return Fluent.Enums.textColor.tertiary
+            return Fluent.Enums.statusLevel.getColor(Fluent.Enums.statusLevel.infoStr);
+        return Fluent.Enums.textColor.tertiary;
     }
 
     function deleteStoredCredential() {
-        var result = AiCommitBridge.deleteStoredApiKey()
+        var result = AiCommitBridge.deleteStoredApiKey();
         if (result[0])
-            Fluent.NotificationManager.desktop.success("系统凭据", result[1] || "密钥已删除")
+            Fluent.NotificationManager.desktop.success("系统凭据", result[1] || "密钥已删除");
         else
-            Fluent.NotificationManager.desktop.error("删除失败", result[1] || "无法删除系统凭据")
+            Fluent.NotificationManager.desktop.error("删除失败", result[1] || "无法删除系统凭据");
     }
 
     function fetchModels() {
-        if (!AiCommitBridge || !root.saveSettings(false)) return
-        root._modelFetchProvider = root._providerValues[connectionSection.providerIndex]
-        root._modelFetchEndpoint = connectionSection.activeEndpoint.trim()
-        AiCommitBridge.fetchModels()
+        if (!AiCommitBridge || !root.saveSettings(false))
+            return;
+        root._modelFetchProvider = root._providerValues[connectionSection.providerIndex];
+        root._modelFetchEndpoint = connectionSection.activeEndpoint.trim();
+        AiCommitBridge.fetchModels();
     }
 
     function clearModelFetchState() {
-        root._modelFetchProvider = ""
-        root._modelFetchEndpoint = ""
+        root._modelFetchProvider = "";
+        root._modelFetchEndpoint = "";
     }
 
     function loadSettings() {
-        if (!AiCommitBridge || root._loading) return
-        root._loading = true
-        var settings = AiCommitBridge.getSettings()
-        enabledSwitch.checked = settings.enabled
-        var providerIndex = root._providerValues.indexOf(settings.provider)
-        connectionSection.providerIndex = providerIndex >= 0 ? providerIndex : 0
-        connectionSection.localEndpoint = settings.localEndpoint || ""
-        connectionSection.localModel = settings.localModel || ""
-        connectionSection.remoteEndpoint = settings.remoteEndpoint || ""
-        connectionSection.remoteModel = settings.remoteModel || ""
-        connectionSection.apiKeyEnvironment = settings.apiKeyEnv || ""
-        rulesSection.generateBody = settings.generateBody
-        root._hasEnvironmentApiKey = settings.hasEnvironmentApiKey || false
-        root._credentialStoreAvailable = settings.credentialStoreAvailable !== false
-        root._credentialStoreError = settings.credentialStoreError || ""
-        root._loading = false
+        if (!AiCommitBridge || root._loading)
+            return;
+        root._loading = true;
+        var settings = AiCommitBridge.getSettings();
+        enabledSwitch.checked = settings.enabled;
+        var providerIndex = root._providerValues.indexOf(settings.provider);
+        connectionSection.providerIndex = providerIndex >= 0 ? providerIndex : 0;
+        connectionSection.localEndpoint = settings.localEndpoint || "";
+        connectionSection.localModel = settings.localModel || "";
+        connectionSection.remoteEndpoint = settings.remoteEndpoint || "";
+        connectionSection.remoteModel = settings.remoteModel || "";
+        connectionSection.apiKeyEnvironment = settings.apiKeyEnv || "";
+        rulesSection.generateBody = settings.generateBody;
+        root._hasEnvironmentApiKey = settings.hasEnvironmentApiKey || false;
+        root._credentialStoreAvailable = settings.credentialStoreAvailable !== false;
+        root._credentialStoreError = settings.credentialStoreError || "";
+        root._loading = false;
     }
 
     function saveSettings(showToast) {
-        if (!AiCommitBridge) return false
-        var currentSettings = AiCommitBridge.getSettings()
-        var result = AiCommitBridge.saveSettings(
-            enabledSwitch.checked,
-            root._providerValues[connectionSection.providerIndex],
-            connectionSection.localEndpoint.trim(),
-            connectionSection.localModel.trim(),
-            connectionSection.remoteEndpoint.trim(),
-            connectionSection.remoteModel.trim(),
-            connectionSection.apiKeyEnvironment.trim(),
-            rulesSection.generateBody,
-            currentSettings.remoteScope
-        )
+        if (!AiCommitBridge)
+            return false;
+        var currentSettings = AiCommitBridge.getSettings();
+        var result = AiCommitBridge.saveSettings(enabledSwitch.checked, root._providerValues[connectionSection.providerIndex], connectionSection.localEndpoint.trim(), connectionSection.localModel.trim(), connectionSection.remoteEndpoint.trim(), connectionSection.remoteModel.trim(), connectionSection.apiKeyEnvironment.trim(), rulesSection.generateBody, currentSettings.remoteScope);
         if (!result[0]) {
-            Fluent.NotificationManager.desktop.error("保存失败", result[1] || "")
-            return false
+            Fluent.NotificationManager.desktop.error("保存失败", result[1] || "");
+            return false;
         }
-        var successMessage = result[1] || "AI 提交规划设置已保存"
-        var credentialResult = root.saveCredentialInput()
+        var successMessage = result[1] || "AI 提交规划设置已保存";
+        var credentialResult = root.saveCredentialInput();
         if (!credentialResult[0]) {
-            Fluent.NotificationManager.desktop.error("密钥保存失败", credentialResult[1] || "")
-            return false
+            Fluent.NotificationManager.desktop.error("密钥保存失败", credentialResult[1] || "");
+            return false;
         }
         if (credentialResult[1])
-            successMessage = credentialResult[1]
+            successMessage = credentialResult[1];
         if (showToast)
-            Fluent.NotificationManager.desktop.success("设置已保存", successMessage)
-        return true
+            Fluent.NotificationManager.desktop.success("设置已保存", successMessage);
+        return true;
     }
 
     function saveCredentialInput() {
-        if (connectionSection.credentialInput.length === 0) return [true, ""]
-        var result = AiCommitBridge.storeApiKey(connectionSection.credentialInput)
-        if (result[0]) connectionSection.credentialInput = ""
-        return result
+        if (connectionSection.credentialInput.length === 0)
+            return [true, ""];
+        var result = AiCommitBridge.storeApiKey(connectionSection.credentialInput);
+        if (result[0])
+            connectionSection.credentialInput = "";
+        return result;
     }
 }
