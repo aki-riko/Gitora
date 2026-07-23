@@ -188,8 +188,8 @@ ColumnLayout {
             spacing: Fluent.Enums.spacing.s
 
             Text {
-                Layout.preferredWidth: 104
-                Layout.minimumWidth: 104
+                Layout.preferredWidth: 72
+                Layout.minimumWidth: 72
                 text: "系统凭据"
                 textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.secondary
@@ -212,15 +212,27 @@ ColumnLayout {
             visible: root.isRemote
             spacing: Fluent.Enums.spacing.s
 
-            Text {
-                Layout.preferredWidth: 104
-                Layout.minimumWidth: 104
-                text: "环境变量回退（可选）"
-                textFormat: Text.PlainText
-                color: Fluent.Enums.textColor.secondary
-                font.family: Fluent.Enums.fontFamily
-                font.pixelSize: Fluent.Enums.typography.caption
-                elide: Text.ElideRight
+            RowLayout {
+                Layout.preferredWidth: 72
+                Layout.minimumWidth: 72
+                spacing: Fluent.Enums.spacing.xxs
+
+                Text {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    text: "环境变量"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.secondary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    elide: Text.ElideRight
+                }
+
+                Fluent.HintIcon {
+                    iconSize: 14
+                    toolTipText: "可选：系统凭据中没有密钥时，从该环境变量读取 API 密钥。"
+                    Layout.alignment: Qt.AlignVCenter
+                }
             }
 
             Fluent.LineEdit {

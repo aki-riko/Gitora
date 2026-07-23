@@ -201,7 +201,14 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn('text: "模型来源"', source)
         self.assertIn('text: "服务地址"', source)
         self.assertIn('text: "系统凭据"', source)
-        self.assertIn('text: "环境变量回退（可选）"', source)
+        self.assertIn('text: "环境变量"', source)
+        self.assertIn("Fluent.HintIcon", source)
+        self.assertIn(
+            'toolTipText: "可选：系统凭据中没有密钥时，从该环境变量读取 API 密钥。"',
+            source,
+        )
+        self.assertNotIn('text: "环境变量回退（可选）"', source)
+        self.assertNotIn("Layout.preferredWidth: 104", source)
         self.assertIn("Fluent.ToggleSwitch", source)
         self.assertIn("AiCommitConnectionSection", source)
         self.assertIn("AiCommitRulesSection", source)
