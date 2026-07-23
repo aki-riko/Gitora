@@ -69,18 +69,20 @@ ColumnLayout {
         columnSpacing: Fluent.Enums.spacing.m
         rowSpacing: Fluent.Enums.spacing.s
 
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            spacing: Fluent.Enums.spacing.xxs
+            spacing: Fluent.Enums.spacing.s
 
             Text {
+                Layout.preferredWidth: 72
+                Layout.minimumWidth: 72
                 text: "模型来源"
                 textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
             }
 
             Fluent.ComboBox {
@@ -91,18 +93,20 @@ ColumnLayout {
             }
         }
 
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            spacing: Fluent.Enums.spacing.xxs
+            spacing: Fluent.Enums.spacing.s
 
             Text {
+                Layout.preferredWidth: 72
+                Layout.minimumWidth: 72
                 text: "服务地址"
                 textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
             }
 
             Fluent.LineEdit {
@@ -120,18 +124,21 @@ ColumnLayout {
             }
         }
 
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.columnSpan: connectionFields.columns
             Layout.minimumWidth: 0
-            spacing: Fluent.Enums.spacing.xxs
+            spacing: Fluent.Enums.spacing.s
 
             Text {
+                Layout.preferredWidth: 72
+                Layout.minimumWidth: 72
                 text: "模型名称"
                 textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
             }
 
             RowLayout {
@@ -173,20 +180,22 @@ ColumnLayout {
             }
         }
 
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.columnSpan: 1
             Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
             visible: root.isRemote
-            spacing: Fluent.Enums.spacing.xxs
+            spacing: Fluent.Enums.spacing.s
 
             Text {
+                Layout.preferredWidth: 104
+                Layout.minimumWidth: 104
                 text: "系统凭据"
                 textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
             }
 
             Fluent.LineEdit {
@@ -197,19 +206,21 @@ ColumnLayout {
             }
         }
 
-        ColumnLayout {
+        RowLayout {
             Layout.fillWidth: true
             Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
             visible: root.isRemote
-            spacing: Fluent.Enums.spacing.xxs
+            spacing: Fluent.Enums.spacing.s
 
             Text {
+                Layout.preferredWidth: 104
+                Layout.minimumWidth: 104
                 text: "环境变量回退（可选）"
                 textFormat: Text.PlainText
                 color: Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
+                elide: Text.ElideRight
             }
 
             Fluent.LineEdit {
