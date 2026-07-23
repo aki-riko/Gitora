@@ -23,8 +23,8 @@ from app.common.ai_commit_models import (
 from app.common.ai_commit_provider import ProviderCancelledError
 from app.common.ai_commit_schema import (
     build_user_input,
+    granularity_issues,
     normalize_output_language,
-    requires_multiple_groups,
 )
 from app.common.ai_commit_settings import AiCommitSettings, AiCommitSettingsError
 from app.common.git_service import GitService
@@ -211,14 +211,27 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                 provider = self._runtime.create_provider_for(prepared.settings)
                 raw_plan = provider.generate_plan(prepared.request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
-                if requires_multiple_groups(prepared.request) and len(plan.groups) < 2:
-                    logger.warning("模型返回单一提交组，发起强制拆分重试")
+                issues = granularity_issues(
+                    prepared.request,
+                    [len(group.change_ids) for group in plan.groups],
+                )
+                if issues:
+                    logger.warning(
+                        "模型计划违反固定拆分粒度，发起重试: %s",
+                        "；".join(issues),
+                    )
                     ensure_plan_fingerprint(collector, prepared)
                     retry_request = replace(prepared.request, mode="plan_retry")
                     raw_plan = provider.generate_plan(retry_request, cancel_event)
                     plan = CommitPlan.from_mapping(raw_plan)
-                if requires_multiple_groups(prepared.request) and len(plan.groups) < 2:
-                    raise PlanProtocolError("模型未按多提交要求拆分改动，请重新生成")
+                    issues = granularity_issues(
+                        prepared.request,
+                        [len(group.change_ids) for group in plan.groups],
+                    )
+                if issues:
+                    raise PlanProtocolError(
+                        f"模型未按固定拆分粒度规划，请重新生成：{'；'.join(issues)}"
+                    )
                 result = self._validator.validate(
                     plan,
                     prepared.snapshot,

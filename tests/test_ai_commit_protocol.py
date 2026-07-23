@@ -20,6 +20,7 @@ from app.common.ai_commit_schema import (
     build_plan_schema,
     build_system_instructions,
     build_user_input,
+    granularity_issues,
     normalize_output_language,
 )
 
@@ -208,6 +209,9 @@ class AiCommitProtocolTest(unittest.TestCase):
         self.assertEqual(schema["properties"]["groups"]["minItems"], 2)
         self.assertIn("至少两个提交组", build_system_instructions(request))
         self.assertIn("禁止把全部改动放进单一组", build_user_input(request))
+        self.assertIn("每组不得超过 5 个改动项", build_system_instructions(request))
+        self.assertEqual(granularity_issues(request, [1, 1]), ())
+        self.assertIn("不能超过 5", granularity_issues(request, [1, 6])[0])
 
         message_request = PlannerRequest(self.make_snapshot(), "message", "file")
         message_schema = build_plan_schema(message_request)

@@ -23,9 +23,12 @@ DEFAULTS = ROOT / "app" / "resource" / "config" / "ai_commit_defaults.json"
 
 
 class _PlanProvider(ModelProvider):
-    def __init__(self, single_first: bool = False):
+    def __init__(
+        self, single_first: bool = False, oversized_first: bool = False
+    ):
         self.requests: list[PlannerRequest] = []
         self.single_first = single_first
+        self.oversized_first = oversized_first
 
     @property
     def provider_id(self) -> str:
@@ -42,6 +45,24 @@ class _PlanProvider(ModelProvider):
                 "change_ids": ids,
                 "depends_on": [],
                 "rationale": "故意模拟模型首次未拆分",
+                "warnings": [],
+            }]
+        elif self.oversized_first and len(self.requests) == 1 and len(ids) > 5:
+            groups = [{
+                "group_id": "group-1",
+                "title": "feat: 核心改动",
+                "body": "",
+                "change_ids": ids[:1],
+                "depends_on": [],
+                "rationale": "故意模拟过大的提交组",
+                "warnings": [],
+            }, {
+                "group_id": "group-2",
+                "title": "feat: 其余改动",
+                "body": "",
+                "change_ids": ids[1:],
+                "depends_on": [],
+                "rationale": "故意模拟混合目的",
                 "warnings": [],
             }]
         else:
@@ -172,6 +193,26 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertEqual(len(self.provider.requests), 2)
         self.assertEqual(self.provider.requests[1].mode, "plan_retry")
         self.assertEqual(len(bridge.planModel.groups), 2)
+
+    def test_oversized_model_group_is_retried_with_fixed_granularity(self) -> None:
+        for index in range(7):
+            write_file(self.repo, f"feature_{index}.py", f"value = {index}\n")
+        self.provider = _PlanProvider(oversized_first=True)
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        ready: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planReady.connect(lambda *args: ready.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+
+        self.assertTrue(self.wait_until(lambda: len(ready) == 1))
+        self.assertEqual(len(self.provider.requests), 2)
+        self.assertTrue(all(
+            len(group["changes"]) <= 5 for group in bridge.planModel.groups
+        ))
 
     def test_plan_generation_uses_requested_ui_language(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")
