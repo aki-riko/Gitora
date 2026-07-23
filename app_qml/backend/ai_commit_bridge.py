@@ -378,6 +378,17 @@ class AiCommitBridge(QObject):
         serial, cancel_event = self._start_request(clear_prepared=False)
 
         def work() -> None:
+            def emit_model_list_result(
+                ok: bool, models: list[str], message: str
+            ) -> None:
+                if not self._is_serial_current(serial, cancel_event):
+                    return
+                # 先发布空闲状态，再通知 UI 结果，避免回调读取到过期 busy=True。
+                self._set_busy_if_current(serial, False)
+                self.modelListFinished.emit(
+                    provider_id, ok, models, message
+                )
+
             try:
                 provider = self._provider_factory(
                     settings, self._credentials.resolve_api_key(settings)
@@ -390,20 +401,13 @@ class AiCommitBridge(QObject):
                 if not available:
                     raise HttpProviderError("模型服务未返回可用模型")
                 message = f"已获取 {len(available)} 个可用模型"
-                if self._is_serial_current(serial, cancel_event):
-                    self.modelListFinished.emit(
-                        provider_id, True, available, message
-                    )
+                emit_model_list_result(True, available, message)
             except (HttpProviderError, AiCommitSettingsError) as exc:
                 logger.warning(f"获取 AI 模型列表失败: {type(exc).__name__}")
-                if self._is_serial_current(serial, cancel_event):
-                    self.modelListFinished.emit(provider_id, False, [], str(exc))
+                emit_model_list_result(False, [], str(exc))
             except Exception as exc:  # noqa: BLE001
                 logger.exception(f"获取 AI 模型列表异常: {type(exc).__name__}")
-                if self._is_serial_current(serial, cancel_event):
-                    self.modelListFinished.emit(
-                        provider_id, False, [], "获取模型列表失败"
-                    )
+                emit_model_list_result(False, [], "获取模型列表失败")
             finally:
                 self._set_busy_if_current(serial, False)
 

@@ -54,14 +54,25 @@ Fluent.SettingsCardGroup {
             spacing: Fluent.Enums.spacing.m
 
             RowLayout {
+                id: aiHeader
                 Layout.fillWidth: true
                 spacing: Fluent.Enums.spacing.m
 
-                Fluent.Icon {
-                    icon: Fluent.Enums.icon.code
-                    size: 24
-                    color: Fluent.Enums.textColor.secondary
+                Rectangle {
+                    width: 42
+                    height: 42
+                    radius: Fluent.Enums.radius.small
+                    color: Fluent.Enums.stateColor.actionsRowBg
+                    border.color: Fluent.Enums.stateColor.settingCardBorder
+                    border.width: Fluent.Enums.border.thin
                     Layout.alignment: Qt.AlignTop
+
+                    Fluent.Icon {
+                        anchors.centerIn: parent
+                        icon: Fluent.Enums.icon.code
+                        size: 22
+                        color: Fluent.Enums.textColor.secondary
+                    }
                 }
 
                 ColumnLayout {
@@ -74,7 +85,7 @@ Fluent.SettingsCardGroup {
                         textFormat: Text.PlainText
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.body
+                        font.pixelSize: Fluent.Enums.typography.titleLarge
                         font.bold: true
                     }
 
@@ -101,6 +112,8 @@ Fluent.SettingsCardGroup {
                 objectName: "aiSettingsActions"
                 Layout.fillWidth: true
                 spacing: Fluent.Enums.spacing.s
+
+                Item { Layout.preferredWidth: 42 }
 
                 Text {
                     Layout.fillWidth: true

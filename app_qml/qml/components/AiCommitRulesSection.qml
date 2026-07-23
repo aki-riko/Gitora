@@ -8,8 +8,9 @@ ColumnLayout {
 
     property bool compact: false
     property alias generateBody: bodySwitch.checked
+    readonly property int layoutColumns: root.compact ? 1 : 2
 
-    spacing: Fluent.Enums.spacing.s
+    spacing: Fluent.Enums.spacing.m
 
     Text {
         Layout.fillWidth: true
@@ -31,24 +32,31 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
-    Rectangle {
+    GridLayout {
         Layout.fillWidth: true
-        implicitHeight: bodyOptionLayout.implicitHeight + Fluent.Enums.spacing.s * 2
-        radius: Fluent.Enums.radius.small
-        color: Fluent.Enums.stateColor.actionsRowBg
-        border.color: Fluent.Enums.stateColor.settingCardBorder
-        border.width: Fluent.Enums.border.thin
+        columns: root.layoutColumns
+        columnSpacing: Fluent.Enums.spacing.m
+        rowSpacing: Fluent.Enums.spacing.s
 
-        RowLayout {
-            id: bodyOptionLayout
-            anchors.fill: parent
-            anchors.margins: Fluent.Enums.spacing.s
-            spacing: Fluent.Enums.spacing.m
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            implicitHeight: bodyOptionLayout.implicitHeight + Fluent.Enums.spacing.s * 2
+            radius: Fluent.Enums.radius.small
+            color: Fluent.Enums.stateColor.actionsRowBg
+            border.color: Fluent.Enums.stateColor.settingCardBorder
+            border.width: Fluent.Enums.border.thin
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                Layout.minimumWidth: 0
-                spacing: Fluent.Enums.spacing.xxs
+            RowLayout {
+                id: bodyOptionLayout
+                anchors.fill: parent
+                anchors.margins: Fluent.Enums.spacing.s
+                spacing: Fluent.Enums.spacing.m
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: Fluent.Enums.spacing.xxs
 
                 Text {
                     Layout.fillWidth: true
@@ -68,41 +76,44 @@ ColumnLayout {
                     font.pixelSize: Fluent.Enums.typography.caption
                     wrapMode: Text.WordWrap
                 }
-            }
+                }
 
-            Fluent.ToggleSwitch {
-                id: bodySwitch
-                type: Fluent.Enums.toggle.type_indicator
+                Fluent.ToggleSwitch {
+                    id: bodySwitch
+                    type: Fluent.Enums.toggle.type_indicator
+                }
             }
         }
-    }
 
-    Rectangle {
-        Layout.fillWidth: true
-        implicitHeight: boundaryLayout.implicitHeight + Fluent.Enums.spacing.s * 2
-        radius: Fluent.Enums.radius.small
-        color: Fluent.Enums.stateColor.actionsRowBg
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.minimumWidth: 0
+            implicitHeight: boundaryLayout.implicitHeight + Fluent.Enums.spacing.s * 2
+            radius: Fluent.Enums.radius.small
+            color: Fluent.Enums.stateColor.actionsRowBg
+            border.color: Fluent.Enums.stateColor.settingCardBorder
+            border.width: Fluent.Enums.border.thin
 
-        RowLayout {
-            id: boundaryLayout
-            anchors.fill: parent
-            anchors.margins: Fluent.Enums.spacing.s
-            spacing: Fluent.Enums.spacing.s
+            RowLayout {
+                id: boundaryLayout
+                anchors.fill: parent
+                anchors.margins: Fluent.Enums.spacing.s
+                spacing: Fluent.Enums.spacing.s
 
-            Rectangle {
-                width: 8
-                height: 8
-                radius: 4
-                color: Fluent.Enums.statusLevel.getColor(
-                    Fluent.Enums.statusLevel.infoStr
-                )
-                Layout.alignment: Qt.AlignTop
-                Layout.topMargin: 5
-            }
+                Rectangle {
+                    width: 8
+                    height: 8
+                    radius: 4
+                    color: Fluent.Enums.statusLevel.getColor(
+                        Fluent.Enums.statusLevel.infoStr
+                    )
+                    Layout.alignment: Qt.AlignTop
+                    Layout.topMargin: 5
+                }
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.xxs
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Fluent.Enums.spacing.xxs
 
                 Text {
                     Layout.fillWidth: true
@@ -122,6 +133,7 @@ ColumnLayout {
                     font.family: Fluent.Enums.fontFamily
                     font.pixelSize: Fluent.Enums.typography.caption
                     wrapMode: Text.WordWrap
+                }
                 }
             }
         }

@@ -37,7 +37,7 @@ ColumnLayout {
     onLocalModelChanged: root.ensureConfiguredModel(false)
     onRemoteModelChanged: root.ensureConfiguredModel(true)
 
-    spacing: Fluent.Enums.spacing.s
+    spacing: Fluent.Enums.spacing.m
 
     Text {
         Layout.fillWidth: true
@@ -59,18 +59,27 @@ ColumnLayout {
         wrapMode: Text.WordWrap
     }
 
-    GridLayout {
-        id: connectionFields
+    Rectangle {
         Layout.fillWidth: true
-        columns: root.compact ? 1 : 2
-        columnSpacing: Fluent.Enums.spacing.m
-        rowSpacing: Fluent.Enums.spacing.s
+        implicitHeight: connectionFields.implicitHeight + Fluent.Enums.spacing.s * 2
+        radius: Fluent.Enums.radius.small
+        color: Fluent.Enums.stateColor.actionsRowBg
+        border.color: Fluent.Enums.stateColor.settingCardBorder
+        border.width: Fluent.Enums.border.thin
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            spacing: Fluent.Enums.spacing.xxs
+        GridLayout {
+            id: connectionFields
+            anchors.fill: parent
+            anchors.margins: Fluent.Enums.spacing.s
+            columns: root.compact ? 1 : 2
+            columnSpacing: Fluent.Enums.spacing.m
+            rowSpacing: Fluent.Enums.spacing.s
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
+                spacing: Fluent.Enums.spacing.xxs
 
             Text {
                 text: "模型来源"
@@ -90,13 +99,13 @@ ColumnLayout {
                 ]
                 currentIndex: 0
             }
-        }
+            }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            spacing: Fluent.Enums.spacing.xxs
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
+                spacing: Fluent.Enums.spacing.xxs
 
             Text {
                 text: "服务地址"
@@ -119,13 +128,13 @@ ColumnLayout {
                 visible: root.isRemote
                 placeholderText: "输入 API 基础地址或 Chat/Responses/Messages 完整地址"
             }
-        }
+            }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.columnSpan: connectionFields.columns
-            Layout.minimumWidth: 0
-            spacing: Fluent.Enums.spacing.xxs
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.columnSpan: connectionFields.columns
+                Layout.minimumWidth: 0
+                spacing: Fluent.Enums.spacing.xxs
 
             Text {
                 text: "模型名称"
@@ -174,15 +183,15 @@ ColumnLayout {
                     onClicked: root.fetchModelsRequested()
                 }
             }
-        }
+            }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.columnSpan: 1
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            visible: root.isRemote
-            spacing: Fluent.Enums.spacing.xxs
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.columnSpan: 1
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
+                visible: root.isRemote
+                spacing: Fluent.Enums.spacing.xxs
 
             Text {
                 text: "系统凭据"
@@ -198,14 +207,14 @@ ColumnLayout {
                 inputType: Fluent.Enums.input.type_password
                 placeholderText: "API 密钥（保存到系统凭据库）"
             }
-        }
+            }
 
-        ColumnLayout {
-            Layout.fillWidth: true
-            Layout.minimumWidth: 0
-            Layout.preferredWidth: 1
-            visible: root.isRemote
-            spacing: Fluent.Enums.spacing.xxs
+            ColumnLayout {
+                Layout.fillWidth: true
+                Layout.minimumWidth: 0
+                Layout.preferredWidth: 1
+                visible: root.isRemote
+                spacing: Fluent.Enums.spacing.xxs
 
             Text {
                 text: "环境变量回退（可选）"
@@ -220,13 +229,13 @@ ColumnLayout {
                 Layout.fillWidth: true
                 placeholderText: "环境变量名"
             }
-        }
+            }
 
-        RowLayout {
-            Layout.fillWidth: true
-            Layout.columnSpan: connectionFields.columns
-            visible: root.isRemote
-            spacing: Fluent.Enums.spacing.s
+            RowLayout {
+                Layout.fillWidth: true
+                Layout.columnSpan: connectionFields.columns
+                visible: root.isRemote
+                spacing: Fluent.Enums.spacing.s
 
             Rectangle {
                 width: 8
@@ -251,6 +260,7 @@ ColumnLayout {
                 visible: root.hasStoredApiKey
                 style: Fluent.Enums.button.style_transparent
                 onClicked: root.deleteCredentialRequested()
+            }
             }
         }
     }
