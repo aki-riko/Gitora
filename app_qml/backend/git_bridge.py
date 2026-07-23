@@ -7,6 +7,9 @@ GitBridge - GitService 的 QML 对接壳
 - 负责 dataclass(FileChange/CommitInfo/...) -> QML 可消费的 dict/list 转换。
 - 把同步方法用 @Slot 暴露;阻塞型操作转发已有的 statusChanged/operationFinished 信号。
 """
+import os
+import tempfile
+from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QObject, Slot, Signal, Property, Qt
@@ -145,6 +148,10 @@ def _diff_file_to_dict(d: DiffFile) -> dict:
 
 class GitBridge(QObject):
     """暴露给 QML 的 Git 后端门面"""
+
+    # 规则文件只允许仓库根目录下的这两个固定文件，避免把任意路径写入
+    # 的能力暴露给 QML。
+    _REPO_RULE_FILES = frozenset({".gitignore", ".gitattributes"})
 
     # 透传 GitService 的信号(QML 直接 onXxx 连接)
     statusChanged = Signal()
@@ -1154,3 +1161,68 @@ class GitBridge(QObject):
         except OSError as e:
             logger.warning(f"读取冲突文件失败 {path}: {e}")
             return ""
+
+    def _repo_rule_file_path(self, name: str) -> tuple[Path | None, str]:
+        """解析仓库根目录规则文件，并拒绝越界/未知文件名。"""
+        repo = self._svc.repo_path
+        if not repo:
+            return None, "当前没有打开仓库"
+        if name not in self._REPO_RULE_FILES:
+            return None, "只允许编辑 .gitignore 和 .gitattributes"
+
+        repo_real = Path(os.path.realpath(repo))
+        target = Path(os.path.realpath(os.path.join(repo_real, name)))
+        try:
+            if os.path.commonpath((str(repo_real), str(target))) != str(repo_real):
+                return None, "规则文件必须位于仓库根目录"
+        except ValueError:
+            return None, "规则文件路径无效"
+        return target, ""
+
+    @Slot(str, result=str)
+    def readRepoRuleFile(self, name: str) -> str:
+        """读取仓库根目录的 .gitignore/.gitattributes，不存在时返回空文本。"""
+        path, error = self._repo_rule_file_path(name)
+        if path is None:
+            if error != "当前没有打开仓库":
+                logger.warning(f"读取规则文件被拒绝 {name}: {error}")
+            return ""
+        try:
+            return path.read_text(encoding="utf-8", errors="replace")
+        except FileNotFoundError:
+            return ""
+        except OSError as e:
+            logger.warning(f"读取规则文件失败 {name}: {e}")
+            return ""
+
+    @Slot(str, str, result="QVariantList")
+    def saveRepoRuleFile(self, name: str, content: str) -> list:
+        """原子保存仓库根目录的 .gitignore/.gitattributes。"""
+        path, error = self._repo_rule_file_path(name)
+        if path is None:
+            logger.warning(f"保存规则文件被拒绝 {name}: {error}")
+            return [False, error]
+
+        temp_name = ""
+        try:
+            fd, temp_name = tempfile.mkstemp(
+                prefix=f".{name.lstrip('.')}.", suffix=".tmp", dir=str(path.parent)
+            )
+            with os.fdopen(fd, "w", encoding="utf-8", newline="") as handle:
+                handle.write(content)
+            os.replace(temp_name, path)
+            temp_name = ""
+        except OSError as e:
+            logger.warning(f"保存规则文件失败 {name}: {e}")
+            return [False, f"保存 {name} 失败: {e}"]
+        finally:
+            if temp_name:
+                try:
+                    os.unlink(temp_name)
+                except OSError as e:
+                    logger.warning(f"清理规则文件临时文件失败 {temp_name}: {e}")
+
+        # 规则文件属于工作区变更，立即通知状态页，并让轮询从新基线开始。
+        self._reset_poll_baseline()
+        self.statusChanged.emit()
+        return [True, f"已保存 {name}"]

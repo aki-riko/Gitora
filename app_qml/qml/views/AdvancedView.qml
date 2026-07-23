@@ -1,4 +1,4 @@
-// 高级 Git 操作: worktree / submodule / LFS / bisect
+// 高级 Git 操作: 仓库规则文件 / worktree / submodule / LFS / bisect
 import QtQuick
 import QtQuick.Layouts
 
@@ -20,6 +20,8 @@ Item {
     function clearModels() {
         worktreeModel.clear()
         submoduleModel.clear()
+        gitignoreEditor.loadContent("")
+        gitattributesEditor.loadContent("")
         root._lfsOutput = ""
         root._bisectOutput = ""
         root._advancedRequestRepoPath = ""
@@ -43,7 +45,30 @@ Item {
         root._advancedRequestRepoPath = GitBridge.repoPath
         root._advancedRequesting = true
         root._reloadPending = false
+        root._loadRuleFiles()
         GitBridge.requestAdvancedState()
+    }
+
+    function _loadRuleFiles() {
+        if (!GitBridge || !GitBridge.repoPath) return
+        if (!gitignoreEditor.dirty)
+            gitignoreEditor.loadContent(GitBridge.readRepoRuleFile(".gitignore"))
+        if (!gitattributesEditor.dirty)
+            gitattributesEditor.loadContent(
+                GitBridge.readRepoRuleFile(".gitattributes")
+            )
+    }
+
+    function _saveRuleFile(editor, content) {
+        if (!GitBridge || !GitBridge.repoPath) return
+        var result = GitBridge.saveRepoRuleFile(editor.fileName, content)
+        if (result[0]) {
+            editor.markSaved()
+            Fluent.NotificationManager.desktop.success("成功", result[1])
+            root.reload()
+        } else {
+            Fluent.NotificationManager.desktop.error("失败", result[1] || "保存规则文件失败")
+        }
     }
 
     function _op(res) {
@@ -130,6 +155,29 @@ Item {
                 font.bold: true
                 color: Fluent.Enums.textColor.primary
                 font.family: Fluent.Enums.fontFamily
+            }
+
+            Fluent.SettingsCardGroup {
+                title: "仓库规则文件"
+                width: contentCol.cw
+
+                RepoRuleEditor {
+                    id: gitignoreEditor
+                    width: parent ? parent.width : 0
+                    fileName: ".gitignore"
+                    onSaveRequested: function(content) {
+                        root._saveRuleFile(gitignoreEditor, content)
+                    }
+                }
+
+                RepoRuleEditor {
+                    id: gitattributesEditor
+                    width: parent ? parent.width : 0
+                    fileName: ".gitattributes"
+                    onSaveRequested: function(content) {
+                        root._saveRuleFile(gitattributesEditor, content)
+                    }
+                }
             }
 
             Fluent.SettingsCardGroup {
