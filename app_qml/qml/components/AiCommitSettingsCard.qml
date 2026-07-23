@@ -16,6 +16,7 @@ Fluent.SettingsCardGroup {
     property string _modelFetchEndpoint: ""
     property var _providerValues: ["ollama", "openai_responses", "anthropic"]
     readonly property bool _compactFields: root.width < 760
+    readonly property bool _stackConnectionFields: root.width < 980
 
     Component.onCompleted: root.loadSettings()
 
@@ -133,32 +134,63 @@ Fluent.SettingsCardGroup {
                 }
             }
 
-            Fluent.Separator {
+            RowLayout {
+                id: aiColumns
                 Layout.fillWidth: true
-            }
+                spacing: Fluent.Enums.spacing.m
 
-            AiCommitConnectionSection {
-                id: connectionSection
-                objectName: "aiConnectionSection"
-                Layout.fillWidth: true
-                compact: root._compactFields
-                hasStoredApiKey: Boolean(AiCommitBridge && AiCommitBridge.hasStoredApiKey)
-                credentialStatusText: root.credentialStatusText()
-                credentialStatusColor: root.credentialStatusColor()
-                modelsLoading: root._modelFetchProvider.length > 0
-                modelFetchEnabled: Boolean(AiCommitBridge && !AiCommitBridge.busy)
-                onDeleteCredentialRequested: root.deleteStoredCredential()
-                onFetchModelsRequested: root.fetchModels()
-            }
+                Rectangle {
+                    id: connectionColumn
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: root.width * 0.64
+                    implicitHeight: connectionSection.implicitHeight + Fluent.Enums.spacing.m * 2
+                    radius: Fluent.Enums.radius.small
+                    color: Fluent.Enums.stateColor.actionsRowBg
+                    border.color: Fluent.Enums.stateColor.settingCardBorder
+                    border.width: Fluent.Enums.border.thin
 
-            Fluent.Separator {
-                Layout.fillWidth: true
-            }
+                    AiCommitConnectionSection {
+                        id: connectionSection
+                        objectName: "aiConnectionSection"
+                        anchors.fill: parent
+                        anchors.margins: Fluent.Enums.spacing.m
+                        compact: root._compactFields || root._stackConnectionFields || connectionColumn.width < 620
+                        hasStoredApiKey: Boolean(AiCommitBridge && AiCommitBridge.hasStoredApiKey)
+                        credentialStatusText: root.credentialStatusText()
+                        credentialStatusColor: root.credentialStatusColor()
+                        modelsLoading: root._modelFetchProvider.length > 0
+                        modelFetchEnabled: Boolean(AiCommitBridge && !AiCommitBridge.busy)
+                        onDeleteCredentialRequested: root.deleteStoredCredential()
+                        onFetchModelsRequested: root.fetchModels()
+                    }
+                }
 
-            AiCommitRulesSection {
-                id: rulesSection
-                Layout.fillWidth: true
-                compact: root._compactFields
+                Fluent.Separator {
+                    Layout.fillHeight: true
+                    type: Fluent.Enums.separator.vertical
+                }
+
+                Rectangle {
+                    id: rulesColumn
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    Layout.minimumWidth: 0
+                    Layout.preferredWidth: root.width * 0.36
+                    implicitHeight: rulesSection.implicitHeight + Fluent.Enums.spacing.m * 2
+                    radius: Fluent.Enums.radius.small
+                    color: Fluent.Enums.stateColor.actionsRowBg
+                    border.color: Fluent.Enums.stateColor.settingCardBorder
+                    border.width: Fluent.Enums.border.thin
+
+                    AiCommitRulesSection {
+                        id: rulesSection
+                        anchors.fill: parent
+                        anchors.margins: Fluent.Enums.spacing.m
+                        compact: true
+                    }
+                }
             }
         }
     }
