@@ -70,6 +70,10 @@ QtObject {
 
     property Component windowComponent: Component {
         Fluent.Windows {
+            id: appWindow
+
+            readonly property var autoUpdaterController: autoUpdater
+
             width: root.windowWidth; height: root.windowHeight
             windowTitle: root.windowTitle
             windowIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
@@ -86,6 +90,22 @@ QtObject {
                 root.toastProgressHostInstance = root.toastProgressHostComponent.createObject(this.contentItem)
                 let currentWindow = this
                 Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })
+            }
+
+            Fluent.AutoUpdater {
+                id: autoUpdater
+                updater: appUpdater
+                silentArgs: AppInfo ? AppInfo.installerSilentArgs : ""
+            }
+
+            Timer {
+                interval: Fluent.Enums.duration.toast
+                running: true
+                repeat: false
+                onTriggered: {
+                    autoUpdater.notifyWhenUpToDate = false
+                    autoUpdater.check()
+                }
             }
         }
     }

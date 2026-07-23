@@ -359,12 +359,9 @@ def main() -> int:
         "installerSilentArgs": INSTALLER_SILENT_ARGS,
     })
 
-    # 自动更新组件(PrismQML 引擎级 Updater,基于 GitHub Releases)。
-    # 自检模式不联网。检测/下载/安装结果经信号回传给 QML(见 SettingsView)。
-    from prismqml import Updater
-    updater = Updater(UPDATE_REPO, VERSION, asset_keyword=UPDATE_ASSET_KEYWORD)
-    ctx.setContextProperty("Updater", updater)
-    app._updater = updater  # 防 GC,保持网络管理器存活
+    # 由 PrismQML 注入引擎级更新后端,供 QML AutoUpdater 门面消费。
+    # App 持有实例生命周期;自检进程会在启动检查定时器触发前退出,不会联网。
+    app.enable_auto_update(UPDATE_REPO, VERSION, UPDATE_ASSET_KEYWORD)
 
     # addImportPath 指向 prismqml 包目录(其下 PrismQML/qmldir 提供 QML 模块)
     engine.addImportPath(PRISMQML_PKG_DIR)
@@ -404,9 +401,8 @@ def main() -> int:
 
         app._single_instance.activateRequested.connect(_on_activate)
 
-    # 启动后的静默更新检查由主窗口 ToastProgressHost 在加载完成后发起,
-    # 确保接收 Updater 信号的 Connections 已就绪(放 Python 端 QTimer 会早于 QML 接收方,
-    # 导致 updateAvailable 信号无人接收而静默检查失效)。SELFTEST 1.5s 即退出,早于其 3s 定时器。
+    # 启动检查由主窗口的 PrismQML AutoUpdater 在加载完成后发起。
+    # SELFTEST 1.5s 即退出,早于其 3s 定时器。
 
     # headless 自检:默认验证 QML；构建验收可额外验证打包态 AI 本地连接。
     if os.environ.get("GITESS_QML_SELFTEST"):

@@ -2,6 +2,7 @@
 // 配置后端映射:主题→ThemeManager,Mica/DPI→ConfigManager,语言→Translator,仓库维护→GitBridge
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Window
 
 import PrismQML as Fluent
 import "../components"
@@ -9,12 +10,9 @@ import "../components"
 Item {
     id: root
 
-    // 更新检查:实际流程(弹框/下载/安装)由主窗口 ToastProgressHost 承载;
-    // 本页仅提供手动触发入口 + 短暂的"检查中"按钮态。
-    property bool _checking: false
-    property string _updateStatus: AppInfo ? ("当前版本 " + AppInfo.version) : ""
     property string _gitUserName: ""
     property string _gitUserEmail: ""
+    readonly property var _autoUpdater: Window.window ? Window.window.autoUpdaterController : null
 
     Component.onCompleted: root._loadGitUserInfo()
 
@@ -246,16 +244,15 @@ Item {
                     buttonText: ""
                 }
 
-                // 检查更新:点按钮 → Updater.checkForUpdate();结果(弹框/下载/安装)由主窗口处理
+                // 检查、下载与安装全部交给 PrismQML AutoUpdater。
                 Fluent.SettingsCard {
-                    id: updateCard
                     width: parent ? parent.width : 0
                     title: "检查更新"
-                    content: root._updateStatus
+                    content: AppInfo ? ("当前版本 " + AppInfo.version) : ""
                     icon: Fluent.Enums.icon.arrow_sync
                     type: Fluent.Enums.settingCard.type_push
-                    buttonText: root._checking ? "检查中…" : "检查更新"
-                    enabled: !root._checking
+                    buttonText: "检查更新"
+                    enabled: root._autoUpdater !== null
                     onClicked: root._manualCheck()
                 }
             }
@@ -312,35 +309,13 @@ Item {
         }
     }
 
-    // ==================== 自动更新(仅触发入口)====================
-    // 实际流程(发现新版弹框/下载进度/静默安装)由主窗口 ToastProgressHost 承载。
-    // 本页只负责手动触发检查 + 维护按钮"检查中"态,结果信号同时被这里(复位按钮)
-    // 和主窗口 host(弹框/提示)接收,职责不重叠。
+    // ==================== 自动更新 ====================
     function _manualCheck() {
-        if (!Updater) {
+        if (!root._autoUpdater) {
             Fluent.NotificationManager.desktop.warning("提示", "更新组件不可用")
             return
         }
-        root._checking = true
-        root._updateStatus = "正在检查更新…"
-        Updater.checkForUpdate()  // 主窗口默认非静默,结果会正常提示
-    }
-
-    // 仅复位本页按钮态与状态文字;不弹框、不下载(交给主窗口 host)
-    Connections {
-        target: typeof Updater !== "undefined" ? Updater : null
-        ignoreUnknownSignals: true
-        function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
-            root._checking = false
-            root._updateStatus = "发现新版本 " + version
-        }
-        function onUpToDate(currentVersion) {
-            root._checking = false
-            root._updateStatus = "已是最新版本 " + currentVersion
-        }
-        function onCheckFailed(error) {
-            root._checking = false
-            root._updateStatus = AppInfo ? ("当前版本 " + AppInfo.version) : ""
-        }
+        root._autoUpdater.notifyWhenUpToDate = true
+        root._autoUpdater.check()
     }
 }

@@ -1,4 +1,4 @@
-// 主窗口级耗时操作桌面进度通知承载
+// Main-window Git and AI progress notification host 主窗口 Git 与 AI 进度通知承载
 import QtQuick
 
 import PrismQML as Fluent
@@ -6,13 +6,7 @@ import PrismQML as Fluent
 Item {
     id: root
 
-    anchors.fill: parent
-
     property var _gitToast: null
-    property var _downloadToast: null
-    property bool _updateSilent: false
-    property string _downloadUrl: ""
-    property string _htmlUrl: ""
 
     function _clampProgress(value) {
         return Math.max(0, Math.min(1, value))
@@ -41,15 +35,6 @@ Item {
         toast.duration = 0
         toast.closed.connect(function() {
             if (root._gitToast === toast) root._gitToast = null
-        })
-        return toast
-    }
-
-    function _trackDownloadToast(toast) {
-        if (!toast) return null
-        toast.duration = 0
-        toast.closed.connect(function() {
-            if (root._downloadToast === toast) root._downloadToast = null
         })
         return toast
     }
@@ -84,23 +69,6 @@ Item {
         return toast
     }
 
-    function _ensureDownloadToast(determinate, title, message) {
-        var feature = determinate
-            ? Fluent.Enums.notification.feature_progress_ring
-            : Fluent.Enums.notification.feature_indeterminate_ring
-        var toast = root._downloadToast
-        if (!toast || !toast.visible) {
-            toast = root._createProgressNotification(title, message, feature)
-            root._downloadToast = root._trackDownloadToast(toast)
-        }
-        if (!toast) return null
-        toast.severity = "processing"
-        toast.feature = feature
-        toast.duration = 0
-        _syncToastText(toast, title, message)
-        return toast
-    }
-
     function _showResult(ok, title, message) {
         if (ok)
             Fluent.NotificationManager.desktop.success(title, message || "")
@@ -108,7 +76,7 @@ Item {
             Fluent.NotificationManager.desktop.error(title, message || "")
     }
 
-    function _finishProgressToast(toast, isDownloadToast, ok, title, message) {
+    function _finishGitProgressToast(toast, ok, title, message) {
         if (!toast || !toast.visible) {
             _showResult(ok, title, message)
             return
@@ -120,24 +88,12 @@ Item {
             _syncToastText(toast, title, message)
         } else {
             toast.hide()
-            if (isDownloadToast) root._downloadToast = null
-            else root._gitToast = null
+            root._gitToast = null
             _showResult(false, title, message)
         }
     }
 
-    function checkForUpdate(silent) {
-        if (!Updater) return
-        root._updateSilent = silent === true
-        Updater.checkForUpdate()
-    }
-
-    function _startDownload(url) {
-        if (!Updater) return
-        var toast = _ensureDownloadToast(false, "正在下载更新", "准备中")
-        if (toast) toast.progress = 0
-        Updater.downloadUpdate(url)
-    }
+    anchors.fill: parent
 
     Connections {
         target: AiCommitBridge
@@ -171,12 +127,6 @@ Item {
         }
     }
 
-    function _fmtSize(bytes) {
-        if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
-        if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB"
-        return bytes + " B"
-    }
-
     Connections {
         target: GitBridge
 
@@ -195,88 +145,12 @@ Item {
         }
 
         function onOperationFinished(ok, msg) {
-            root._finishProgressToast(
+            root._finishGitProgressToast(
                 root._gitToast,
-                false,
                 ok,
                 ok ? "操作完成" : "操作失败",
                 msg || (ok ? "操作完成" : "操作失败")
             )
         }
-    }
-
-    Fluent.UpdateDialog {
-        id: updateConfirmDialog
-
-        onConfirmed: {
-            if (root._downloadUrl !== "") {
-                root._startDownload(root._downloadUrl)
-            } else if (root._htmlUrl !== "" && Updater) {
-                Updater.openInBrowser(root._htmlUrl)
-            }
-        }
-    }
-
-    Connections {
-        target: typeof Updater !== "undefined" ? Updater : null
-        ignoreUnknownSignals: true
-
-        function onUpdateAvailable(version, notes, downloadUrl, htmlUrl) {
-            root._downloadUrl = downloadUrl
-            root._htmlUrl = htmlUrl
-            updateConfirmDialog.version = version
-            updateConfirmDialog.currentVersion = AppInfo ? AppInfo.version : ""
-            updateConfirmDialog.notes = notes || ""
-            updateConfirmDialog.open()
-            root._updateSilent = false
-        }
-
-        function onUpToDate(currentVersion) {
-            if (!root._updateSilent)
-                Fluent.NotificationManager.desktop.success("已是最新", "当前已是最新版本 " + currentVersion)
-            root._updateSilent = false
-        }
-
-        function onCheckFailed(error) {
-            if (!root._updateSilent)
-                Fluent.NotificationManager.desktop.error("检查更新失败", error || "网络错误")
-            root._updateSilent = false
-        }
-
-        function onDownloadProgress(received, total) {
-            if (total > 0) {
-                var pct = root._clampProgress(received / total)
-                var toast = root._ensureDownloadToast(
-                    true,
-                    "正在下载更新",
-                    Math.round(pct * 100) + "%  (" + root._fmtSize(received) + " / " + root._fmtSize(total) + ")"
-                )
-                if (toast) toast.progress = pct
-            } else {
-                root._ensureDownloadToast(false, "正在下载更新", root._fmtSize(received) + " 已下载")
-            }
-        }
-
-        function onDownloadFinished(localPath) {
-            root._finishProgressToast(root._downloadToast, true, true, "下载完成", "正在启动安装程序")
-            var args = AppInfo ? AppInfo.installerSilentArgs : ""
-            var ok = Updater.runInstallerAndQuit(localPath, args)
-            if (!ok)
-                Fluent.NotificationManager.desktop.warning("安装未开始", "已取消或需要管理员权限,安装包已下载到临时目录,可手动运行")
-        }
-
-        function onDownloadFailed(error) {
-            var message = (error || "网络错误") + ",可前往项目主页手动下载"
-            root._finishProgressToast(root._downloadToast, true, false, "下载失败", message)
-            if (root._htmlUrl !== "" && Updater)
-                Updater.openInBrowser(root._htmlUrl)
-        }
-    }
-
-    Timer {
-        interval: Fluent.Enums.duration.toast
-        running: true
-        repeat: false
-        onTriggered: root.checkForUpdate(true)
     }
 }
