@@ -8,7 +8,7 @@ PySide6>=6.5.0
 # PrismQML(pip 包名 prismqml,import 名 prismqml,MIT;原 FluentQML/fqml 改名升级而来)
 # 多皮肤 UI 引擎(Fluent + Neobrutalism)。0.3.1.45 起由
 # App.enable_auto_update + AutoUpdater 统一检查、确认、下载与安装流程。
-prismqml==0.3.1.45
+prismqml==0.3.2.1
 
 # 系统凭据库：Windows Credential Manager / macOS Keychain
 keyring==25.7.0
