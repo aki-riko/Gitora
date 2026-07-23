@@ -4,6 +4,7 @@ from __future__ import annotations
 import tempfile
 import time
 import unittest
+from dataclasses import replace
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication
@@ -121,6 +122,24 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertEqual(len(self.provider.requests), 1)
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
         self.assertEqual(run_git(self.repo, "rev-parse", "HEAD").stdout.strip(), before_head)
+
+    def test_plan_generation_includes_workspace_with_legacy_staged_setting(self) -> None:
+        write_file(self.repo, "staged.py", "print('staged')\n")
+        run_git(self.repo, "add", "staged.py")
+        write_file(self.repo, "unstaged.py", "print('unstaged')\n")
+        bridge = AiCommitPlanBridge(
+            self.service,
+            _Runtime(replace(self.settings, remote_scope="staged"), self.provider),
+        )
+        self.addCleanup(bridge.deleteLater)
+        self.addCleanup(self.app.processEvents)
+        prepared: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        self.assertEqual(prepared[0][2], 2)
+        self.assertIn("未暂存和未跟踪", prepared[0][4])
 
     def test_plan_generation_uses_requested_ui_language(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")

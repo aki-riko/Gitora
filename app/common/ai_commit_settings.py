@@ -43,6 +43,7 @@ class AiCommitSettings:
         try:
             limits = data["limits"]
             network = data["network"]
+            raw_remote_scope = cls._string(data, "remote_scope")
             settings = cls(
                 enabled=cls._bool(data, "enabled"),
                 provider=cls._string(data, "provider"),
@@ -53,7 +54,10 @@ class AiCommitSettings:
                 api_key_env=cls._string(data, "api_key_env"),
                 credential_service=cls._string(data, "credential_service"),
                 generate_body=cls._bool(data, "generate_body"),
-                remote_scope=cls._string(data, "remote_scope"),
+                # 兼容旧版配置；AI 提交规划现在固定分析整个工作区。
+                remote_scope=(
+                    "all" if raw_remote_scope == "staged" else raw_remote_scope
+                ),
                 limits=SnapshotLimits(
                     max_total_chars=cls._positive_int(limits, "max_total_chars"),
                     max_file_chars=cls._positive_int(limits, "max_file_chars"),

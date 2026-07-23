@@ -38,7 +38,17 @@ class AiCommitSettingsTest(unittest.TestCase):
         self.assertEqual(settings.local_endpoint, "")
         self.assertEqual(settings.remote_endpoint, "")
         self.assertEqual(settings.credential_service, "Gitora.AiCommit")
+        self.assertEqual(settings.remote_scope, "all")
         self.assertGreater(settings.limits.max_total_chars, 0)
+
+    def test_legacy_staged_scope_migrates_to_all_workspace(self) -> None:
+        with tempfile.TemporaryDirectory() as temp:
+            config = Path(temp) / "ai_commit.json"
+            config.write_text(
+                json.dumps({"remote_scope": "staged"}), encoding="utf-8"
+            )
+            settings = AiCommitSettingsStore(DEFAULTS, config).load()
+            self.assertEqual(settings.remote_scope, "all")
 
     def test_user_settings_round_trip_without_secret_field(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

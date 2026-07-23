@@ -136,7 +136,8 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
             return
 
         serial, cancel_event = self._start_request(clear_prepared=True)
-        include_unstaged = settings.remote_scope == "all"
+        # AI 提交入口固定分析整个工作区，避免旧版 staged 配置漏掉未暂存/未跟踪改动。
+        include_unstaged = True
 
         def work() -> None:
             try:
@@ -167,10 +168,7 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                     serial, repo, cancel_event, prepared
                 ):
                     return
-                scope_summary = (
-                    "分析已暂存、未暂存和未跟踪改动"
-                    if include_unstaged else "仅分析已暂存差异"
-                )
+                scope_summary = "分析已暂存、未暂存和未跟踪改动"
                 self.contextPrepared.emit(
                     request_id,
                     prepared.is_remote,
