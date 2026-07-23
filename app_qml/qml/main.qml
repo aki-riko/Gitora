@@ -73,6 +73,28 @@ QtObject {
             id: appWindow
 
             readonly property var autoUpdaterController: autoUpdater
+            // Windows 的默认属性是页面列表；更新器和 Timer 必须挂在显式属性中，
+            // 否则会被 WindowsBar 当作页面重设 parent，异常会中断启动页关闭流程。
+            property Item autoUpdaterHost: Item {
+                parent: appWindow.contentItem
+                anchors.fill: parent
+
+                Fluent.AutoUpdater {
+                    id: autoUpdater
+                    updater: appUpdater
+                    silentArgs: AppInfo ? AppInfo.installerSilentArgs : ""
+                }
+
+                Timer {
+                    interval: Fluent.Enums.duration.toast
+                    running: !GitoraSelftestMode
+                    repeat: false
+                    onTriggered: {
+                        autoUpdater.notifyWhenUpToDate = false
+                        autoUpdater.check()
+                    }
+                }
+            }
 
             width: root.windowWidth; height: root.windowHeight
             windowTitle: root.windowTitle
@@ -92,21 +114,6 @@ QtObject {
                 Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })
             }
 
-            Fluent.AutoUpdater {
-                id: autoUpdater
-                updater: appUpdater
-                silentArgs: AppInfo ? AppInfo.installerSilentArgs : ""
-            }
-
-            Timer {
-                interval: Fluent.Enums.duration.toast
-                running: true
-                repeat: false
-                onTriggered: {
-                    autoUpdater.notifyWhenUpToDate = false
-                    autoUpdater.check()
-                }
-            }
         }
     }
 

@@ -16,6 +16,7 @@ from tools.packaged_ai_connection_selftest import (
     CREDENTIAL_MARKER,
     MODEL_NAME,
     QML_MARKER,
+    SPLASH_MARKER,
     SETTINGS_MARKER,
     PackagedSelftestError,
     _build_environment,
@@ -69,6 +70,7 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
             args,
             0,
             f"[SELFTEST] QML 加载成功,{QML_MARKER} 1\n"
+            f"[SELFTEST] {SPLASH_MARKER}: 启动页已关闭\n"
             f"[SELFTEST] {SETTINGS_MARKER}: SettingsView 已加载\n"
             f"[SELFTEST] {CONNECTION_MARKER}: 检测到 1 个本地模型\n"
             f"[SELFTEST] {CREDENTIAL_MARKER}: "
@@ -180,6 +182,13 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
                 runner=self._connected_runner_without_marker,
             )
 
+    def test_rejects_successful_process_without_splash_marker(self) -> None:
+        with self.assertRaisesRegex(PackagedSelftestError, SPLASH_MARKER):
+            run_connection_selftest(
+                Path(sys.executable), timeout_seconds=5,
+                runner=self._connected_runner_without_splash_marker,
+            )
+
     def test_rejects_successful_process_without_settings_marker(self) -> None:
         with self.assertRaisesRegex(PackagedSelftestError, SETTINGS_MARKER):
             run_connection_selftest(
@@ -197,6 +206,11 @@ class PackagedAiConnectionSelftestTest(unittest.TestCase):
     def _connected_runner_without_marker(self, args, **kwargs):
         completed = self._connected_runner(args, **kwargs)
         completed.stdout = QML_MARKER
+        return completed
+
+    def _connected_runner_without_splash_marker(self, args, **kwargs):
+        completed = self._connected_runner(args, **kwargs)
+        completed.stdout = completed.stdout.replace(SPLASH_MARKER, "")
         return completed
 
     def _connected_runner_without_settings_marker(self, args, **kwargs):

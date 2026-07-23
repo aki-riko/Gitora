@@ -52,6 +52,9 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertEqual(main_source.count("Fluent.AutoUpdater {"), 1)
+        self.assertIn("property Item autoUpdaterHost: Item {", main_source)
+        self.assertIn("parent: appWindow.contentItem", main_source)
+        self.assertIn("running: !GitoraSelftestMode", main_source)
         self.assertIn("updater: appUpdater", main_source)
         self.assertIn("silentArgs: AppInfo ? AppInfo.installerSilentArgs", main_source)
         self.assertIn("autoUpdater.check()", main_source)

@@ -16,6 +16,7 @@ from typing import Callable, Sequence
 
 MODEL_NAME = "gitora-packaged-selftest"
 QML_MARKER = "rootObjects ="
+SPLASH_MARKER = "启动页关闭成功"
 CONNECTION_MARKER = "AI 连接检测成功"
 SETTINGS_MARKER = "设置页导航成功"
 CREDENTIAL_MARKER = "系统凭据库验证成功"
@@ -133,7 +134,8 @@ def _validated_output(
     missing = [
         marker
         for marker in (
-            QML_MARKER, SETTINGS_MARKER, CONNECTION_MARKER, CREDENTIAL_MARKER
+            QML_MARKER, SPLASH_MARKER, SETTINGS_MARKER,
+            CONNECTION_MARKER, CREDENTIAL_MARKER,
         )
         if marker not in output
     ]

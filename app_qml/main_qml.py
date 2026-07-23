@@ -13,6 +13,8 @@ import time
 
 SETTINGS_NAV_POLL_MS = 50
 SETTINGS_NAV_TIMEOUT_MS = 5000
+SPLASH_POLL_MS = 50
+SPLASH_TIMEOUT_MS = 7000
 
 # ---- 是否为 Nuitka 打包态 ----
 def _is_frozen() -> bool:
@@ -115,6 +117,41 @@ def _start_settings_navigation_selftest(engine, finish) -> None:
     QTimer.singleShot(0, poll)
 
 
+def _start_splash_dismissal_selftest(engine, finish) -> None:
+    """等待真实首屏加载完成并确认启动页已经淡出。"""
+    from PySide6.QtCore import QTimer
+
+    root = engine.rootObjects()[0]
+    window = root.property("windowInstance")
+    deadline = time.monotonic() + SPLASH_TIMEOUT_MS / 1000
+    state = {"finished": False}
+
+    def complete(ok: bool, message: str) -> None:
+        if state["finished"]:
+            return
+        state["finished"] = True
+        finish(ok, message)
+
+    def poll() -> None:
+        if window is None:
+            complete(False, "主窗口不可用")
+            return
+        dismissed = bool(window.property("_splashDismissed"))
+        splash = window.property("_splashInstance")
+        visible = bool(splash.property("visible")) if splash is not None else False
+        if dismissed and not visible:
+            complete(True, "启动页已关闭")
+        elif time.monotonic() >= deadline:
+            complete(
+                False,
+                f"启动页超时未关闭: dismissed={dismissed}, visible={visible}",
+            )
+        else:
+            QTimer.singleShot(SPLASH_POLL_MS, poll)
+
+    QTimer.singleShot(0, poll)
+
+
 def _cleanup_credential_selftest(store, account: str) -> None:
     try:
         store.delete(account)
@@ -209,7 +246,17 @@ class _SelftestCoordinator:
 def _start_requested_selftests(
     timer, engine, ai_commit_bridge, coordinator, requested
 ) -> None:
-    needs_ai, needs_settings, needs_credentials = requested
+    needs_splash, needs_ai, needs_settings, needs_credentials = requested
+    if needs_splash:
+        timer.singleShot(
+            0,
+            lambda: _start_splash_dismissal_selftest(
+                engine,
+                lambda ok, message: coordinator.finish(
+                    "启动页关闭", ok, message
+                ),
+            ),
+        )
     if needs_settings:
         timer.singleShot(
             0,
@@ -244,13 +291,11 @@ def _schedule_selftest(app, engine, ai_commit_bridge) -> None:
 
     print("[SELFTEST] QML 加载成功,rootObjects =", len(engine.rootObjects()))
     requested = (
+        True,
         bool(os.environ.get("GITESS_AI_CONNECTION_SELFTEST")),
         bool(os.environ.get("GITESS_SETTINGS_NAV_SELFTEST")),
         bool(os.environ.get("GITESS_CREDENTIAL_SELFTEST")),
     )
-    if not any(requested):
-        QTimer.singleShot(1500, app.quit)
-        return
     coordinator = _SelftestCoordinator(app, QTimer, sum(map(int, requested)))
     _start_requested_selftests(
         QTimer, engine, ai_commit_bridge, coordinator, requested
@@ -329,6 +374,9 @@ def main() -> int:
     ctx.setContextProperty("RepoScanner", repo_scanner)
     ctx.setContextProperty("QmlRenderBridge", qml_render_bridge)
     ctx.setContextProperty("WindowIconBridge", window_icon_bridge)
+    ctx.setContextProperty(
+        "GitoraSelftestMode", bool(os.environ.get("GITESS_QML_SELFTEST"))
+    )
     app._qml_render_bridge = qml_render_bridge
     app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive
     app._ai_commit_bridge = ai_commit_bridge
