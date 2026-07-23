@@ -69,7 +69,7 @@ args = [
     f"--include-data-dir={os.path.join(ROOT, 'app', 'resource')}=app/resource",
     # 产品元信息(流入 .app bundle 的 Info.plist)
     "--product-name=Gitora",
-    "--product-version=1.3.1",
+    "--product-version=1.3.0",
     "--file-description=Gitora - Git GUI",
     "--copyright=aki-riko",
     f"--output-dir={OUT}",
