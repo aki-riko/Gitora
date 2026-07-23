@@ -32,7 +32,7 @@ from app.common.ai_commit_models import (
     PlannerRequest,
 )
 from app.common.ai_commit_provider import ModelProvider, ProviderCancelledError
-from app.common.ai_commit_schema import build_user_input
+from app.common.ai_commit_schema import build_user_input, normalize_output_language
 from app.common.ai_commit_settings import (
     AiCommitSettings,
     AiCommitSettingsError,
@@ -186,8 +186,8 @@ class AiCommitBridge(QObject):
             settings, self._credentials.resolve_api_key(settings)
         )
 
-    @Slot()
-    def prepareCommitMessage(self) -> None:
+    @Slot(str)
+    def prepareCommitMessage(self, ui_language: str = "") -> None:
         if not self._settings.enabled:
             self.errorOccurred.emit("请先在设置中启用 AI 提交规划")
             return
@@ -205,6 +205,7 @@ class AiCommitBridge(QObject):
 
         serial, cancel_event = self._start_request(clear_prepared=True)
         settings = self._settings
+        output_language = normalize_output_language(ui_language)
 
         def work() -> None:
             try:
@@ -220,7 +221,11 @@ class AiCommitBridge(QObject):
                         "改动超过配置上限，无法生成可靠的提交信息"
                     )
                 request = PlannerRequest(
-                    snapshot, "message", "file", settings.generate_body
+                    snapshot,
+                    "message",
+                    "file",
+                    settings.generate_body,
+                    output_language,
                 )
                 request_id = f"{serial}-{snapshot.snapshot_id[:16]}"
                 prepared = _PreparedRequest(

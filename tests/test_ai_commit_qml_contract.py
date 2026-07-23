@@ -53,7 +53,9 @@ class AiCommitQmlContractTest(unittest.TestCase):
             ROOT / "app_qml" / "qml" / "components" / "AiCommitResultDialog.qml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("AiCommitBridge.prepareCommitMessage()", source)
+        self.assertIn("Fluent.Translator.language", source)
+        self.assertIn("Fluent.Translator.detectSystemLanguage()", source)
+        self.assertIn("AiCommitBridge.prepareCommitMessage(uiLanguage)", source)
         self.assertIn("AiCommitBridge.generatePrepared(requestId, isRemote)", source)
         self.assertIn("Fluent.ProgressDialog {", source)
         self.assertIn("aiCommitProgress.open()", source)

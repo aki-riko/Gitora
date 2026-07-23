@@ -81,7 +81,10 @@ Item {
         if (!AiCommitBridge || AiCommitBridge.busy) return
         root._aiPreparedRequestId = ""
         aiCommitProgress.open()
-        AiCommitBridge.prepareCommitMessage()
+        var uiLanguage = Fluent.Translator.language
+        if (uiLanguage === "auto")
+            uiLanguage = Fluent.Translator.detectSystemLanguage()
+        AiCommitBridge.prepareCommitMessage(uiLanguage)
     }
 
     function _commitCurrentMessage() {

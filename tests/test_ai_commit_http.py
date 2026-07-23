@@ -33,7 +33,7 @@ def make_request() -> PlannerRequest:
         "snapshot-1", "workspace-1", "repo-token", "head", "master",
         False, True, (change,), recent_titles=("fix: 旧提交",),
     )
-    return PlannerRequest(snapshot, "message", "file")
+    return PlannerRequest(snapshot, "message", "file", output_language="zh_CN")
 
 
 def plan_payload() -> dict:
@@ -142,6 +142,11 @@ class AiCommitHttpTest(unittest.TestCase):
         post = next(item for item in _OllamaHandler.requests if item[0] == "POST")
         self.assertEqual(post[1], "/v1/chat/completions")
         self.assertFalse(post[2]["stream"])
+        self.assertIn("简体中文（zh_CN）", post[2]["messages"][0]["content"])
+        self.assertIn(
+            '\"output_language\":\"zh_CN\"',
+            post[2]["messages"][1]["content"],
+        )
         response_format = post[2]["response_format"]
         self.assertEqual(response_format["type"], "json_schema")
         self.assertEqual(response_format["json_schema"]["name"], "gitora_commit_plan")
@@ -202,6 +207,7 @@ class AiCommitHttpTest(unittest.TestCase):
         body = json.loads(request.data.decode("utf-8"))
         self.assertEqual(request.full_url, config.endpoint)
         self.assertEqual(request.headers["Authorization"], "Bearer top-secret")
+        self.assertIn("简体中文（zh_CN）", body["instructions"])
         self.assertEqual(body["text"]["format"]["type"], "json_schema")
         self.assertTrue(body["text"]["format"]["strict"])
         self.assertNotIn("repo-token", body["input"])

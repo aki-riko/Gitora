@@ -168,7 +168,7 @@ class AiCommitBridgeTest(unittest.TestCase):
         bridge.contextPrepared.connect(lambda *args: prepared.append(args))
         bridge.commitMessageReady.connect(lambda *args: ready.append(args))
 
-        bridge.prepareCommitMessage()
+        bridge.prepareCommitMessage("zh_CN")
         self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
         request_id, is_remote, file_count, character_count, scope = prepared[0]
         self.assertFalse(is_remote)
@@ -182,6 +182,7 @@ class AiCommitBridgeTest(unittest.TestCase):
         self.assertEqual(ready[0][3], "fix: 更新真实文件")
         self.assertEqual(ready[0][4], "补充提交正文")
         self.assertEqual(len(self.provider.requests), 1)
+        self.assertEqual(self.provider.requests[0].output_language, "zh_CN")
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
         self.assertEqual(run_git(self.repo, "rev-parse", "HEAD").stdout.strip(), before_head)
 

@@ -232,6 +232,7 @@ class PlannerRequest:
     mode: str
     level: str
     generate_body: bool = True
+    output_language: str = ""
 
     def to_prompt_payload(self) -> dict[str, Any]:
         if self.level not in PLAN_LEVELS:
@@ -241,6 +242,7 @@ class PlannerRequest:
             "mode": self.mode,
             "level": self.level,
             "generate_body": self.generate_body,
+            "output_language": self.output_language,
             "snapshot": self.snapshot.to_prompt_payload(self.level),
         }
 

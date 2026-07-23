@@ -13,7 +13,11 @@ from urllib.parse import urlsplit, urlunsplit
 
 from .ai_commit_models import PlannerRequest
 from .ai_commit_provider import ModelProvider, ProviderCancelledError
-from .ai_commit_schema import SYSTEM_INSTRUCTIONS, build_plan_schema, build_user_input
+from .ai_commit_schema import (
+    build_plan_schema,
+    build_system_instructions,
+    build_user_input,
+)
 
 
 class HttpProviderError(RuntimeError):
@@ -154,7 +158,10 @@ class OllamaProvider(ModelProvider):
             {
                 "model": self.config.model,
                 "messages": [
-                    {"role": "system", "content": SYSTEM_INSTRUCTIONS},
+                    {
+                        "role": "system",
+                        "content": build_system_instructions(request),
+                    },
                     {"role": "user", "content": build_user_input(request)},
                 ],
                 "stream": False,
@@ -240,7 +247,7 @@ class OpenAIResponsesProvider(ModelProvider):
             self._endpoint,
             {
                 "model": self.config.model,
-                "instructions": SYSTEM_INSTRUCTIONS,
+                "instructions": build_system_instructions(request),
                 "input": build_user_input(request),
                 "text": {
                     "format": {
