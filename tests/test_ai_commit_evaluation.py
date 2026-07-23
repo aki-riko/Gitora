@@ -19,6 +19,7 @@ from app.common.ai_commit_evaluation import (
     write_manual_template,
 )
 from app.common.ai_commit_provider import ModelProvider
+from app.common.ai_commit_http import OpenAIChatProvider
 from app.common.ai_commit_settings import AiCommitSettingsStore
 from tests.git_test_utils import commit_all, init_repo, write_file
 from tools import ai_commit_eval
@@ -189,6 +190,22 @@ class AiCommitEvaluationTest(unittest.TestCase):
         self.assertTrue(
             ai_commit_eval.source_upload_requires_consent(loopback, "remote")
         )
+
+    def test_remote_evaluation_uses_same_chat_protocol_selection(self) -> None:
+        settings = self.settings.with_user_values({
+            "remote_endpoint": "https://api.deepseek.com",
+            "remote_model": "deepseek-v4-pro",
+            "api_key_env": "GITORA_EVALUATION_TEST_KEY",
+        })
+
+        with mock.patch.dict(
+            "os.environ", {"GITORA_EVALUATION_TEST_KEY": "test-secret"}
+        ):
+            provider, model = ai_commit_eval.create_provider(settings, "remote")
+
+        self.assertIsInstance(provider, OpenAIChatProvider)
+        self.assertEqual(provider.config.api_key, "test-secret")
+        self.assertEqual(model, "deepseek-v4-pro")
 
     def test_non_loopback_evaluation_stops_before_provider_creation(self) -> None:
         root = Path(self.temp_dir.name)

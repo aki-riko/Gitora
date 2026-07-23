@@ -1,5 +1,5 @@
 # coding: utf-8
-"""基于已核对接口的远程 Responses 与本地 OpenAI 兼容提供方。"""
+"""基于已核对接口的远程 OpenAI 兼容与本地 Ollama 提供方。"""
 from __future__ import annotations
 
 import ipaddress
@@ -134,6 +134,33 @@ def _extract_model_ids(
     return models
 
 
+def endpoint_uses_responses_api(endpoint: str) -> bool:
+    """完整 `/responses` 地址使用 Responses，其余远程地址使用 Chat。"""
+    try:
+        path = urlsplit(endpoint.strip()).path.rstrip("/")
+    except ValueError:
+        return False
+    return path.endswith("/responses")
+
+
+def _validate_remote_endpoint(value: str) -> str:
+    url = value.strip().rstrip("/")
+    parsed = urlsplit(url)
+    if parsed.scheme != "https" or not parsed.netloc:
+        raise HttpProviderError("远程 OpenAI 兼容 API 必须使用完整 HTTPS URL")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment:
+        raise HttpProviderError("远程 API 地址不能包含凭据、查询或片段")
+    return url
+
+
+def _authorization_headers(api_key: str) -> dict[str, str]:
+    if not api_key:
+        raise HttpProviderError("未提供远程模型密钥")
+    if any(ord(char) < 32 or ord(char) == 127 for char in api_key):
+        raise HttpProviderError("远程模型密钥包含非法控制字符")
+    return {"Authorization": f"Bearer {api_key}"}
+
+
 class OllamaProvider(ModelProvider):
     def __init__(self, config: HttpProviderConfig):
         self.config = config
@@ -203,12 +230,14 @@ class OllamaProvider(ModelProvider):
             raise ProviderCancelledError("请求已取消")
 
     @staticmethod
-    def _extract_chat_content(response: Mapping[str, Any]) -> Any:
+    def _extract_chat_content(
+        response: Mapping[str, Any], source_name: str = "本地模型"
+    ) -> Any:
         try:
             return response["choices"][0]["message"]["content"]
         except (IndexError, KeyError, TypeError) as exc:
             raise HttpProviderError(
-                "本地模型响应缺少 choices[0].message.content"
+                f"{source_name} 响应缺少 choices[0].message.content"
             ) from exc
 
     @staticmethod
@@ -280,22 +309,11 @@ class OpenAIResponsesProvider(ModelProvider):
         return urlunsplit((parsed.scheme, parsed.netloc, models_path, "", ""))
 
     def _authorization_headers(self) -> dict[str, str]:
-        api_key = self.config.api_key
-        if not api_key:
-            raise HttpProviderError("未提供远程模型密钥")
-        if any(ord(char) < 32 or ord(char) == 127 for char in api_key):
-            raise HttpProviderError("远程模型密钥包含非法控制字符")
-        return {"Authorization": f"Bearer {api_key}"}
+        return _authorization_headers(self.config.api_key)
 
     @staticmethod
     def _validate_endpoint(value: str) -> str:
-        url = value.strip()
-        parsed = urlsplit(url)
-        if parsed.scheme != "https" or not parsed.netloc:
-            raise HttpProviderError("远程 Responses API 必须使用完整 HTTPS URL")
-        if parsed.username or parsed.password or parsed.query or parsed.fragment:
-            raise HttpProviderError("远程 API 地址不能包含凭据或片段")
-        return url
+        return _validate_remote_endpoint(value)
 
     @staticmethod
     def _extract_output_text(response: Mapping[str, Any]) -> str:
@@ -321,3 +339,79 @@ class OpenAIResponsesProvider(ModelProvider):
             if texts:
                 return "".join(texts)
         raise HttpProviderError("Responses API 响应缺少输出文本")
+
+
+class OpenAIChatProvider(ModelProvider):
+    """远程 OpenAI Chat Completions 兼容提供方。"""
+
+    def __init__(self, config: HttpProviderConfig):
+        self.config = config
+        self._endpoint, self._models_url = self._resolve_endpoints(config.endpoint)
+        self._client = HttpJsonClient(
+            config.timeout_seconds, config.max_response_chars
+        )
+
+    @property
+    def provider_id(self) -> str:
+        return "openai_responses"
+
+    def generate_plan(
+        self, request: PlannerRequest, cancel_event: Event | None = None
+    ) -> Mapping[str, Any]:
+        OllamaProvider._check_cancelled(cancel_event)
+        if not self.config.model:
+            raise HttpProviderError("未配置远程模型名")
+        response = self._client.request(
+            "POST",
+            self._endpoint,
+            {
+                "model": self.config.model,
+                "messages": [
+                    {
+                        "role": "system",
+                        "content": self._system_prompt(request),
+                    },
+                    {"role": "user", "content": build_user_input(request)},
+                ],
+                "stream": False,
+                "response_format": {"type": "json_object"},
+            },
+            _authorization_headers(self.config.api_key),
+        )
+        OllamaProvider._check_cancelled(cancel_event)
+        content = OllamaProvider._extract_chat_content(
+            response, "Chat Completions API"
+        )
+        return OllamaProvider._parse_plan_text(content)
+
+    def list_models(self) -> tuple[str, ...]:
+        response = self._client.request(
+            "GET",
+            self._models_url,
+            headers=_authorization_headers(self.config.api_key),
+        )
+        return _extract_model_ids(response, "远程服务")
+
+    @staticmethod
+    def _resolve_endpoints(value: str) -> tuple[str, str]:
+        endpoint = _validate_remote_endpoint(value)
+        parsed = urlsplit(endpoint)
+        path = parsed.path.rstrip("/")
+        suffix = "/chat/completions"
+        base_path = path.removesuffix(suffix) if path.endswith(suffix) else path
+        chat_path = path if path.endswith(suffix) else base_path + suffix
+        models_path = base_path + "/models"
+        chat_url = urlunsplit((parsed.scheme, parsed.netloc, chat_path, "", ""))
+        models_url = urlunsplit((parsed.scheme, parsed.netloc, models_path, "", ""))
+        return chat_url, models_url
+
+    @staticmethod
+    def _system_prompt(request: PlannerRequest) -> str:
+        schema = json.dumps(
+            build_plan_schema(request), ensure_ascii=False, separators=(",", ":")
+        )
+        return (
+            f"{build_system_instructions(request)}\n"
+            "只输出一个符合以下 JSON Schema 的 JSON 对象，不得使用 Markdown 代码块：\n"
+            f"{schema}"
+        )

@@ -22,12 +22,6 @@ Fluent.SettingsCardGroup {
     Connections {
         target: AiCommitBridge
         function onSettingsChanged() { root.loadSettings() }
-        function onConnectionTestFinished(ok, message) {
-            if (ok)
-                Fluent.NotificationManager.desktop.success("连接检测", message)
-            else
-                Fluent.NotificationManager.desktop.error("连接失败", message)
-        }
         function onModelListFinished(provider, ok, models, message) {
             if (provider !== root._modelFetchProvider) return
             var matchesCurrentConnection = provider === root._providerValues[
@@ -37,9 +31,6 @@ Fluent.SettingsCardGroup {
             if (!matchesCurrentConnection) return
             if (ok) {
                 connectionSection.setAvailableModels(provider, models)
-                Fluent.NotificationManager.desktop.success("模型列表", message)
-            } else {
-                Fluent.NotificationManager.desktop.error("获取失败", message)
             }
         }
         function onBusyChanged() {

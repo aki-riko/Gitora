@@ -217,6 +217,29 @@ class AiCommitQmlContractTest(unittest.TestCase):
         )
         self.assertNotIn("id: localModelInput", connection_source)
         self.assertNotIn("id: remoteModelInput", connection_source)
+        self.assertIn('"远程 OpenAI 兼容 API"', connection_source)
+        self.assertIn(
+            'placeholderText: "输入 API 基础地址或 Chat/Responses 完整地址"',
+            connection_source,
+        )
+
+    def test_ai_connection_notifications_are_owned_by_single_window_host(self) -> None:
+        card_source = self._settings_qml_source()
+        host_source = (
+            ROOT / "app_qml" / "qml" / "components" / "ToastProgressHost.qml"
+        ).read_text(encoding="utf-8")
+        main_source = (ROOT / "app_qml" / "qml" / "main.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertNotIn('desktop.error("获取失败"', card_source)
+        self.assertNotIn('desktop.success("模型列表"', card_source)
+        self.assertIn("function onConnectionTestFinished(ok, message)", host_source)
+        self.assertIn(
+            "function onModelListFinished(provider, ok, models, message)",
+            host_source,
+        )
+        self.assertEqual(main_source.count("ToastProgressHost {}"), 1)
 
     def test_rules_section_exposes_only_body_generation_choice(self) -> None:
         source = (

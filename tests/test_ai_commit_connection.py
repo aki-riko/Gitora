@@ -15,6 +15,7 @@ from app.common.ai_commit_credentials import CredentialStoreError
 from app.common.ai_commit_http import (
     HttpProviderError,
     OllamaProvider,
+    OpenAIChatProvider,
     OpenAIResponsesProvider,
 )
 from app.common.ai_commit_settings import AiCommitSettings, AiCommitSettingsStore
@@ -76,6 +77,19 @@ class AiCommitConnectionTest(unittest.TestCase):
         self.assertEqual(local.config.api_key, "")
         self.assertIsInstance(remote, OpenAIResponsesProvider)
         self.assertEqual(remote.config.api_key, "remote-secret")
+
+    def test_factory_uses_chat_for_remote_base_or_chat_endpoint(self) -> None:
+        for endpoint in (
+            "https://api.deepseek.com",
+            "https://example.invalid/v1",
+            "https://example.invalid/v1/chat/completions",
+        ):
+            with self.subTest(endpoint=endpoint):
+                provider = create_model_provider(
+                    self.remote_settings(endpoint), "remote-secret"
+                )
+                self.assertIsInstance(provider, OpenAIChatProvider)
+                self.assertEqual(provider.config.api_key, "remote-secret")
 
     def test_system_key_precedes_environment_and_is_endpoint_scoped(self) -> None:
         service = AiCommitCredentialService(

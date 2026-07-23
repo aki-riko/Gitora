@@ -145,6 +145,14 @@ Item {
         function onErrorOccurred(message) {
             Fluent.NotificationManager.desktop.error("AI 提交规划", message)
         }
+
+        function onConnectionTestFinished(ok, message) {
+            root._showResult(ok, ok ? "连接检测" : "连接失败", message)
+        }
+
+        function onModelListFinished(provider, ok, models, message) {
+            root._showResult(ok, ok ? "模型列表" : "获取失败", message)
+        }
     }
 
     function _fmtSize(bytes) {

@@ -15,6 +15,7 @@ from app.common.ai_commit_http import (
     HttpProviderConfig,
     HttpProviderError,
     OllamaProvider,
+    OpenAIChatProvider,
     OpenAIResponsesProvider,
 )
 from app.common.ai_commit_models import (
@@ -238,6 +239,63 @@ class AiCommitHttpTest(unittest.TestCase):
         self.assertEqual(request.headers["Authorization"], "Bearer top-secret")
         self.assertIsNone(request.data)
 
+    def test_openai_chat_uses_json_mode_schema_prompt_and_bearer_auth(self) -> None:
+        config = HttpProviderConfig(
+            "https://api.deepseek.com", "deepseek-v4-pro", "top-secret", 5, 100_000
+        )
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse({
+            "choices": [{"message": {"content": json.dumps(plan_payload())}}]
+        })
+        provider = OpenAIChatProvider(config)
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+        result = provider.generate_plan(make_request())
+
+        self.assertEqual(result["groups"][0]["title"], "fix: 修改入口")
+        request = fake_opener.open.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "https://api.deepseek.com/chat/completions")
+        self.assertEqual(request.headers["Authorization"], "Bearer top-secret")
+        self.assertFalse(body["stream"])
+        self.assertEqual(body["response_format"], {"type": "json_object"})
+        self.assertIn("简体中文（zh_CN）", body["messages"][0]["content"])
+        self.assertIn('"snapshot_id"', body["messages"][0]["content"])
+        self.assertIn('"const":"snapshot-1"', body["messages"][0]["content"])
+        self.assertNotIn("repo-token", body["messages"][1]["content"])
+
+    def test_openai_chat_derives_models_endpoint_from_base_or_full_url(self) -> None:
+        cases = {
+            "https://api.deepseek.com": "https://api.deepseek.com/models",
+            "https://example.invalid/v1": "https://example.invalid/v1/models",
+            "https://example.invalid/v1/chat/completions": "https://example.invalid/v1/models",
+        }
+        for endpoint, expected_models_url in cases.items():
+            with self.subTest(endpoint=endpoint):
+                fake_opener = Mock()
+                fake_opener.open.return_value = _FakeResponse({
+                    "data": [{"id": "model-b"}, {"id": "model-a"}]
+                })
+                provider = OpenAIChatProvider(HttpProviderConfig(
+                    endpoint, "model-a", "key", 5, 100_000
+                ))
+                provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+                self.assertEqual(provider.list_models(), ("model-b", "model-a"))
+                request = fake_opener.open.call_args.args[0]
+                self.assertEqual(request.full_url, expected_models_url)
+
+    def test_openai_chat_reports_chat_response_shape_errors(self) -> None:
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse({"choices": []})
+        provider = OpenAIChatProvider(HttpProviderConfig(
+            "https://api.deepseek.com", "model", "key", 5, 100_000
+        ))
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+        with self.assertRaisesRegex(HttpProviderError, "Chat Completions API 响应"):
+            provider.generate_plan(make_request())
+
     def test_openai_model_list_requires_responses_endpoint_path(self) -> None:
         provider = OpenAIResponsesProvider(HttpProviderConfig(
             "https://example.invalid/custom/generate", "model", "key", 5, 1000
@@ -253,10 +311,11 @@ class AiCommitHttpTest(unittest.TestCase):
             "https://example.com/v1/responses?key=value",
         ):
             with self.subTest(endpoint=endpoint):
-                with self.assertRaises(HttpProviderError):
-                    OpenAIResponsesProvider(
-                        HttpProviderConfig(endpoint, "model", "key", 5, 1000)
-                    )
+                for provider_type in (OpenAIResponsesProvider, OpenAIChatProvider):
+                    with self.assertRaises(HttpProviderError):
+                        provider_type(
+                            HttpProviderConfig(endpoint, "model", "key", 5, 1000)
+                        )
 
     def test_http_error_does_not_echo_key_or_source(self) -> None:
         error = urllib.error.HTTPError(

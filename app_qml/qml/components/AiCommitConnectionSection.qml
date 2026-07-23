@@ -83,7 +83,7 @@ ColumnLayout {
             Fluent.ComboBox {
                 id: providerCombo
                 Layout.fillWidth: true
-                model: ["本地 Ollama", "远程 Responses API"]
+                model: ["本地 Ollama", "远程 OpenAI 兼容 API"]
                 currentIndex: 0
             }
         }
@@ -113,7 +113,7 @@ ColumnLayout {
                 id: remoteEndpointInput
                 Layout.fillWidth: true
                 visible: root.isRemote
-                placeholderText: "输入 Responses API 的完整 HTTPS 地址"
+                placeholderText: "输入 API 基础地址或 Chat/Responses 完整地址"
             }
         }
 

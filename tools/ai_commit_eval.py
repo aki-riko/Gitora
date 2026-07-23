@@ -21,11 +21,11 @@ from app.common.ai_commit_evaluation import (  # noqa: E402
     write_evaluation_records,
     write_manual_template,
 )
+from app.common.ai_commit_connection import create_model_provider  # noqa: E402
 from app.common.ai_commit_http import (  # noqa: E402
     endpoint_requires_remote_consent,
     HttpProviderConfig,
     OllamaProvider,
-    OpenAIResponsesProvider,
 )
 from app.common.ai_commit_settings import (  # noqa: E402
     AiCommitSettings,
@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--allow-remote-source-upload",
         action="store_true",
-        help="允许向远程 Responses API 或非本机 Ollama 上传回放源码",
+        help="允许向远程 OpenAI 兼容 API 或非本机 Ollama 上传回放源码",
     )
     run.add_argument("--max-cases", type=int)
     return parser
@@ -75,14 +75,10 @@ def create_provider(settings: AiCommitSettings, provider_kind: str):
         )
         return OllamaProvider(config), settings.local_model
     api_key = os.environ.get(settings.api_key_env, "") if settings.api_key_env else ""
-    config = HttpProviderConfig(
-        settings.remote_endpoint,
-        settings.remote_model,
-        api_key,
-        settings.timeout_seconds,
-        settings.max_response_chars,
-    )
-    return OpenAIResponsesProvider(config), settings.remote_model
+    remote_settings = settings.with_user_values({
+        "provider": "openai_responses",
+    })
+    return create_model_provider(remote_settings, api_key), settings.remote_model
 
 
 def source_upload_requires_consent(

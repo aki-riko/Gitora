@@ -12,9 +12,11 @@ from .ai_commit_credentials import (
     credential_account,
 )
 from .ai_commit_http import (
+    endpoint_uses_responses_api,
     HttpProviderConfig,
     HttpProviderError,
     OllamaProvider,
+    OpenAIChatProvider,
     OpenAIResponsesProvider,
 )
 from .ai_commit_provider import ModelProvider
@@ -41,7 +43,9 @@ def create_model_provider(
             settings.remote_endpoint, settings.remote_model, api_key,
             settings.timeout_seconds, settings.max_response_chars,
         )
-        return OpenAIResponsesProvider(config)
+        if endpoint_uses_responses_api(config.endpoint):
+            return OpenAIResponsesProvider(config)
+        return OpenAIChatProvider(config)
     raise AiCommitSettingsError("不支持的模型提供方")
 
 
@@ -165,5 +169,5 @@ class AiCommitCredentialService:
     @staticmethod
     def _account(settings: AiCommitSettings) -> str:
         if settings.provider != "openai_responses":
-            raise CredentialStoreError("系统凭据仅用于远程 Responses API")
+            raise CredentialStoreError("系统凭据仅用于远程 AI API")
         return credential_account(settings.provider, settings.remote_endpoint)
