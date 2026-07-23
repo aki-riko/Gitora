@@ -98,13 +98,35 @@ Item {
                             Layout.fillWidth: true
                             spacing: Fluent.Enums.spacing.m
 
-                            Text {
-                                text: "提交用户"
-                                color: Fluent.Enums.textColor.primary
-                                font.family: Fluent.Enums.fontFamily
-                                font.pixelSize: Fluent.Enums.typography.body
-                                font.bold: true
+                            RowLayout {
+                                objectName: "gitUserTitleActions"
                                 Layout.fillWidth: true
+                                spacing: Fluent.Enums.spacing.s
+
+                                Text {
+                                    text: "提交用户"
+                                    color: Fluent.Enums.textColor.primary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.body
+                                    font.bold: true
+                                    Layout.fillWidth: true
+                                }
+
+                                Fluent.Button {
+                                    objectName: "gitUserReloadButton"
+                                    text: "重新读取"
+                                    icon: Fluent.Enums.icon.arrow_sync
+                                    onClicked: root._loadGitUserInfo()
+                                }
+
+                                Fluent.Button {
+                                    objectName: "gitUserSaveButton"
+                                    text: "保存"
+                                    icon: Fluent.Enums.icon.save
+                                    style: Fluent.Enums.button.style_primary
+                                    enabled: root._gitUserName.trim().length > 0 && root._gitUserEmail.trim().length > 0
+                                    onClicked: root._saveGitUserInfo()
+                                }
                             }
 
                             Text {
@@ -117,6 +139,7 @@ Item {
                             }
 
                             GridLayout {
+                                id: gitUserFields
                                 Layout.fillWidth: true
                                 columns: root.width < 720 ? 1 : 2
                                 columnSpacing: Fluent.Enums.spacing.m
@@ -139,26 +162,6 @@ Item {
                                 }
                             }
 
-                            RowLayout {
-                                Layout.fillWidth: true
-                                spacing: Fluent.Enums.spacing.s
-
-                                Item { Layout.fillWidth: true }
-
-                                Fluent.Button {
-                                    text: "重新读取"
-                                    icon: Fluent.Enums.icon.arrow_sync
-                                    onClicked: root._loadGitUserInfo()
-                                }
-
-                                Fluent.Button {
-                                    text: "保存"
-                                    icon: Fluent.Enums.icon.save
-                                    style: Fluent.Enums.button.style_primary
-                                    enabled: root._gitUserName.trim().length > 0 && root._gitUserEmail.trim().length > 0
-                                    onClicked: root._saveGitUserInfo()
-                                }
-                            }
                         }
                     }
                 }

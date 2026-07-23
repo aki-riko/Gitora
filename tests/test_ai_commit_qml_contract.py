@@ -45,6 +45,22 @@ class AiCommitQmlContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('import "../components"', source)
 
+    def test_settings_view_places_git_user_actions_in_title_row(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "views" / "SettingsView.qml"
+        ).read_text(encoding="utf-8")
+        title_actions_index = source.index('objectName: "gitUserTitleActions"')
+        fields_index = source.index("id: gitUserFields")
+
+        self.assertLess(title_actions_index, source.index('text: "提交用户"'))
+        self.assertLess(source.index('text: "提交用户"'), fields_index)
+        self.assertLess(source.index('text: "重新读取"'), fields_index)
+        self.assertLess(source.index('text: "保存"'), fields_index)
+        self.assertIn('objectName: "gitUserReloadButton"', source)
+        self.assertIn('objectName: "gitUserSaveButton"', source)
+        self.assertEqual(source.count('text: "重新读取"'), 1)
+        self.assertEqual(source.count('text: "保存"'), 1)
+
     def test_ai_settings_actions_are_above_connection_fields(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "components"
@@ -207,6 +223,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
             'toolTipText: "可选：系统凭据中没有密钥时，从该环境变量读取 API 密钥。"',
             source,
         )
+        self.assertIn("toolTipPosition: Fluent.Enums.position.bottom", source)
         self.assertNotIn('text: "环境变量回退（可选）"', source)
         self.assertNotIn("Layout.preferredWidth: 104", source)
         self.assertIn("Layout.maximumWidth: 72", source)

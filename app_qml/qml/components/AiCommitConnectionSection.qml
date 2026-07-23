@@ -238,6 +238,7 @@ ColumnLayout {
                     anchors.verticalCenter: parent.verticalCenter
                     iconSize: 14
                     toolTipText: "可选：系统凭据中没有密钥时，从该环境变量读取 API 密钥。"
+                    toolTipPosition: Fluent.Enums.position.bottom
                 }
             }
 
