@@ -13,6 +13,8 @@ Item {
     property int loadedCount: 0
     property bool hasMore: true
     property bool loading: false
+    property bool refreshing: false
+    property int refreshCount: 0
     property bool searchMode: false
     property var selectedCommit: null
     property string pendingJumpHash: ""
@@ -28,6 +30,8 @@ Item {
         root.hasMore = true
         root.searchMode = false
         root.loading = false
+        root.refreshing = false
+        root.refreshCount = 0
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
         loadMore()
@@ -46,14 +50,44 @@ Item {
         GitBridge.requestLog(root.pageSize, root.loadedCount)
     }
 
+    // 仓库状态变化时保留当前时间线,后台重新拉取已加载范围。
+    // 只有新数据返回后才替换数组,避免异步请求期间整个页面先变空。
+    function refreshIncrementally() {
+        if (!GitBridge || !GitBridge.repoPath) return
+        if (root.searchMode) {
+            if (searchInput.text === "") { resetAndLoad(); return }
+            root.refreshing = true
+            root.loading = true
+            GitBridge.requestSearch(searchInput.text, "all")
+            return
+        }
+        root.refreshing = true
+        root.loading = true
+        root.refreshCount = Math.max(root.pageSize, root.loadedCount)
+        GitBridge.requestLog(root.refreshCount, 0)
+    }
+
+    function _restoreSelection(commits) {
+        if (!root.selectedCommit) return
+        var selectedHash = root.selectedCommit.hash || ""
+        for (var index = 0; index < commits.length; index++) {
+            if ((commits[index].hash || "") === selectedHash) {
+                root.selectedCommit = commits[index]
+                return
+            }
+        }
+        // 提交已被 reset/改写时,详情面板不能继续展示过期数据。
+        root.selectedCommit = null
+    }
+
     function doSearch(query) {
         if (query === "") { resetAndLoad(); return }
         if (!GitBridge || !GitBridge.repoPath) return
-        // 进入搜索模式:清空累积状态,防止搜索结果混入普通列表
-        root.allCommits = []
+        // 进入/切换搜索模式时保留旧结果,待异步结果返回后再替换,避免闪空。
         root.loadedCount = 0
         root.hasMore = false        // 搜索结果不分页
-        root.loading = false
+        root.loading = true
+        root.refreshing = false
         root.searchMode = true
         root.selectedCommit = null
         GitBridge.requestSearch(query, "all")
@@ -87,8 +121,27 @@ Item {
         target: GitBridge
         function onLogReady(repoPath, skip, batch) {
             // 任何过期/不匹配分支都要解锁 loading,否则切仓库后再也无法加载
-            if (!GitBridge || repoPath !== GitBridge.repoPath) { root.loading = false; return }
-            if (root.searchMode) { root.loading = false; return }
+            if (!GitBridge || repoPath !== GitBridge.repoPath) {
+                root.loading = false
+                root.refreshing = false
+                return
+            }
+            // 搜索请求使用独立的后端序列号,旧的分页响应不能覆盖搜索结果。
+            if (root.searchMode) return
+            if (root.refreshing) {
+                if (skip !== 0) {
+                    root.loading = false
+                    root.refreshing = false
+                    return
+                }
+                root.allCommits = batch
+                root.loadedCount = batch.length
+                root.hasMore = batch.length === root.refreshCount
+                root.loading = false
+                root.refreshing = false
+                root._restoreSelection(batch)
+                return
+            }
             if (skip !== root.loadedCount) { root.loading = false; return }
             root.allCommits = root.allCommits.concat(batch)
             root.loadedCount += batch.length
@@ -96,16 +149,23 @@ Item {
             root.loading = false
         }
         function onSearchReady(repoPath, results) {
-            if (!GitBridge || repoPath !== GitBridge.repoPath) return
+            if (!GitBridge || repoPath !== GitBridge.repoPath) {
+                root.loading = false
+                root.refreshing = false
+                return
+            }
             if (!root.searchMode) return  // 已退出搜索,丢弃过期搜索结果
             root.allCommits = results
+            root.loading = false
+            root.refreshing = false
+            root._restoreSelection(results)
             root._selectPendingJump(results)
         }
     }
 
     Connections {
         target: GitBridge
-        function onStatusChanged() { root.resetAndLoad() }
+        function onStatusChanged() { root.refreshIncrementally() }
         function onRepoPathChanged(path) { root.resetForRepoChange() }
     }
 

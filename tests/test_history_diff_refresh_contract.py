@@ -21,7 +21,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertNotIn("width: 580", source)
         self.assertNotIn("Layout.preferredHeight: 260", source)
 
-    def test_history_operations_rely_on_status_signal_for_single_reload(self) -> None:
+    def test_history_status_refresh_keeps_existing_timeline_until_data_arrives(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
             encoding="utf-8"
         )
@@ -32,8 +32,15 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
             "function _askReset", 1
         )[0]
 
-        self.assertIn("root.resetAndLoad()", status_handler)
+        self.assertIn("root.refreshIncrementally()", status_handler)
+        self.assertNotIn("root.resetAndLoad()", status_handler)
         self.assertNotIn("root.resetAndLoad()", operation_handler)
+
+        self.assertIn("property bool refreshing: false", source)
+        self.assertIn("root.refreshCount = Math.max(root.pageSize, root.loadedCount)", source)
+        self.assertIn("if (root.refreshing)", source)
+        self.assertIn("root.allCommits = batch", source)
+        self.assertIn("root._restoreSelection(batch)", source)
 
     def test_history_timeline_uses_fluent_layered_surface(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
