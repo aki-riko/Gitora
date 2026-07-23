@@ -122,6 +122,10 @@ Item {
         GitBridge.quickCommitPush(message)
     }
 
+    function _quickCommitPushCurrentMessage() {
+        root._quickCommitPush(root._commitMessage())
+    }
+
     function _submitAiCommit(title, body) {
         var cleanTitle = (title || "").trim()
         var cleanBody = (body || "").trim()
@@ -416,10 +420,15 @@ Item {
                 && !AiCommitBridge.busy
                 && root._aiPreparedRequestId.length === 0)
             commitActionEnabled: hasTitle && !root._quickCommitPushPending
+            quickPushActionEnabled: hasTitle && !root._quickCommitPushPending
+                && (!AiCommitBridge || !AiCommitBridge.busy)
+                && root._aiPreparedRequestId.length === 0
+                && !root._aiResultPending
 
             onAiCommitRequested: root._requestAiCommitMessage()
             onCommitRequested: root._commitCurrentMessage()
             onAmendRequested: root._requestAmend()
+            onQuickPushRequested: root._quickCommitPushCurrentMessage()
         }
 
         // ---------- 主体分栏 ----------

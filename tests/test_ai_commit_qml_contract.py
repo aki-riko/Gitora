@@ -87,7 +87,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn('text: "不采用"', result_source)
         self.assertIn('text: "采用并提交推送"', result_source)
 
-    def test_commit_composer_keeps_only_title_and_submit_split_button(self) -> None:
+    def test_commit_composer_keeps_title_submit_and_quick_push_actions(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "components" / "CommitComposer.qml"
         ).read_text(encoding="utf-8")
@@ -95,7 +95,12 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("Fluent.LineEdit {\n            id: commitTitleInput", source)
         self.assertIn('placeholderText: "提交标题"', source)
         self.assertIn("signal aiCommitRequested()", source)
+        self.assertIn("signal quickPushRequested()", source)
         self.assertIn('"text": "AI 提交"', source)
+        self.assertIn('text: "一键提交推送"', source)
+        self.assertIn("onQuickPushRequested", (
+            ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
+        ).read_text(encoding="utf-8"))
         self.assertIn("Fluent.Enums.icon.sparkle", source)
         self.assertIn("feature: Fluent.Enums.button.feature_split", source)
         self.assertIn("onAiCommitRequested", (

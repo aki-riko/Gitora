@@ -10,11 +10,13 @@ ColumnLayout {
     property alias titleText: commitTitleInput.text
     property bool aiCommitActionEnabled: false
     property bool commitActionEnabled: false
+    property bool quickPushActionEnabled: false
     readonly property bool hasTitle: commitTitleInput.text.trim().length > 0
 
     signal aiCommitRequested()
     signal commitRequested()
     signal amendRequested()
+    signal quickPushRequested()
 
     spacing: Fluent.Enums.spacing.s
 
@@ -45,6 +47,12 @@ ColumnLayout {
                 else if (index === 1)
                     root.amendRequested()
             }
+        }
+
+        Fluent.Button {
+            text: "一键提交推送"
+            enabled: root.quickPushActionEnabled
+            onClicked: root.quickPushRequested()
         }
     }
 
