@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import tempfile
+import threading
 import time
 import unittest
 from dataclasses import replace
@@ -188,6 +189,75 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
             ["feat: 规划改动 2", "feat: 规划改动 1"],
         )
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
+
+    def test_auto_commit_retries_transient_index_lock(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        finished: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planCommitPushFinished.connect(lambda *args: finished.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: bridge.planModel.hasPlan))
+
+        lock_path = self.repo / ".git" / "index.lock"
+        lock_path.write_bytes(b"")
+
+        def release_lock() -> None:
+            time.sleep(0.25)
+            lock_path.unlink(missing_ok=True)
+
+        threading.Thread(target=release_lock, daemon=True).start()
+        pushes: list[tuple] = []
+
+        def fake_push(remote, branch, force=False, callback=None):
+            pushes.append((remote, branch, force))
+            if callback:
+                callback(True, "push ok")
+
+        self.service.push = fake_push
+        bridge.commitPlanAndPush()
+
+        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertTrue(finished[0][0], finished[0][1])
+        self.assertEqual(len(pushes), 1)
+        self.assertEqual(
+            run_git(self.repo, "log", "-1", "--format=%s").stdout.strip(),
+            "feat: 规划改动 1",
+        )
+
+    def test_auto_commit_failure_restores_plan_without_snapshot_level_error(
+        self,
+    ) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        finished: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planCommitPushFinished.connect(lambda *args: finished.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: bridge.planModel.hasPlan))
+
+        def fail_commit(_repo_path: str, _message: str) -> tuple[bool, str]:
+            return False, "simulated commit failure"
+
+        self.service.commit_at = fail_commit  # type: ignore[method-assign]
+        bridge.commitPlanAndPush()
+
+        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertFalse(finished[0][0])
+        self.assertIn("simulated commit failure", finished[0][1])
+        self.assertNotIn("AttributeError", finished[0][1])
+        self.assertEqual(
+            run_git(self.repo, "status", "--porcelain=v1").stdout,
+            "?? one.py\n",
+        )
 
     def test_push_failure_keeps_completed_local_commits(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")

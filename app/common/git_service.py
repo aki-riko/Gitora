@@ -7,6 +7,7 @@ import os
 import re
 import subprocess
 import threading
+import time
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Optional, Callable
@@ -201,6 +202,8 @@ class GitWorker(QThread):
 class GitService(QObject):
     """Git服务 - 提供所有Git操作接口"""
 
+    _INDEX_LOCK_RETRY_DELAYS = (0.15, 0.3, 0.6, 1.0, 1.5, 2.0)
+
     # 信号定义
     statusChanged = Signal()                    # 状态变更
     operationStarted = Signal(str)              # 操作开始
@@ -337,17 +340,30 @@ class GitService(QObject):
         # 而非 \\344\\270\\255 八进制转义(否则中文/非ASCII 路径无法被后续命令使用)
         cmd = ['git', '-c', 'core.quotepath=false'] + args
         try:
-            result = subprocess.run(
-                cmd,
-                cwd=repo_path,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                timeout=timeout,
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-            return result.returncode == 0, result.stdout, result.stderr
+            for attempt, delay in enumerate((0.0, *self._INDEX_LOCK_RETRY_DELAYS)):
+                if delay:
+                    logger.debug(
+                        "Git 检测到 index.lock，占用可能是瞬态，静默重试第 %d 次",
+                        attempt,
+                    )
+                    time.sleep(delay)
+                result = subprocess.run(
+                    cmd,
+                    cwd=repo_path,
+                    capture_output=True,
+                    text=True,
+                    encoding='utf-8',
+                    errors='replace',
+                    timeout=timeout,
+                    creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+                )
+                if (
+                    result.returncode == 0
+                    or not self._is_index_lock_error(result.stdout, result.stderr)
+                    or attempt == len(self._INDEX_LOCK_RETRY_DELAYS)
+                ):
+                    return result.returncode == 0, result.stdout, result.stderr
+            raise RuntimeError("Git index.lock 重试状态无效")
         except subprocess.TimeoutExpired:
             logger.error(f"Git命令超时: {' '.join(args)}, timeout={timeout}s, repo={repo_path}")
             return False, "", f"操作超时（{timeout}秒）"
@@ -359,13 +375,21 @@ class GitService(QObject):
             return False, "", str(e)
 
     @staticmethod
+    def _is_index_lock_error(stdout: str, stderr: str) -> bool:
+        text = f"{stdout}\n{stderr}".lower()
+        return "index.lock" in text and (
+            "file exists" in text
+            or "already exists" in text
+            or "another git process" in text
+            or "unable to create" in text
+            or "cannot create" in text
+        )
+
+    @staticmethod
     def _friendly_git_error(error: str, fallback: str) -> str:
         """把需要用户处理的常见 Git 错误转换为可执行的中文提示。"""
         detail = (error or "").strip()
-        lowered = detail.lower()
-        if "index.lock" in lowered and (
-            "file exists" in lowered or "another git process" in lowered
-        ):
+        if GitService._is_index_lock_error("", detail):
             return (
                 "仓库正被另一个 Git 操作占用，本次操作未执行。"
                 "请等待其他 Git 操作结束后重试；若确认没有 Git 操作在运行，"

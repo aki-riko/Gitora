@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import tempfile
+import threading
+import time
 import unittest
 from pathlib import Path
 
@@ -147,6 +149,7 @@ class GitServiceCoreTest(unittest.TestCase):
     def test_commit_index_lock_returns_actionable_chinese_message(self) -> None:
         repo = init_repo(self.root / "locked-repo")
         service = self.service_for(repo)
+        service._INDEX_LOCK_RETRY_DELAYS = (0.01, 0.01)  # type: ignore[attr-defined]
         write_file(repo, "tracked.txt", "content\n")
         self.assertTrue(service.stage_all())
         lock_path = repo / ".git" / "index.lock"
@@ -159,6 +162,50 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertIn(".git/index.lock", msg)
         self.assertIn("删除", msg)
         self.assertNotIn("fatal:", msg)
+
+    def test_commit_retries_until_transient_index_lock_is_released(self) -> None:
+        repo = init_repo(self.root / "transient-lock-repo")
+        service = self.service_for(repo)
+        write_file(repo, "tracked.txt", "content\n")
+        self.assertTrue(service.stage_all())
+        lock_path = repo / ".git" / "index.lock"
+        lock_path.write_bytes(b"")
+
+        def release_lock() -> None:
+            time.sleep(0.25)
+            lock_path.unlink(missing_ok=True)
+
+        threading.Thread(target=release_lock, daemon=True).start()
+        ok, msg = service.commit("transient lock succeeds")
+
+        self.assertTrue(ok, msg)
+        self.assertEqual(
+            run_git(repo, "log", "-1", "--format=%s").stdout.strip(),
+            "transient lock succeeds",
+        )
+
+    def test_quick_commit_push_retries_index_lock_before_committing(self) -> None:
+        repo = init_repo(self.root / "quick-transient-lock-repo")
+        service = self.service_for(repo)
+        write_file(repo, "tracked.txt", "content\n")
+        lock_path = repo / ".git" / "index.lock"
+        lock_path.write_bytes(b"")
+
+        def release_lock() -> None:
+            time.sleep(0.25)
+            lock_path.unlink(missing_ok=True)
+
+        threading.Thread(target=release_lock, daemon=True).start()
+        ok, msg = self.wait_operation(
+            service,
+            lambda: service.quick_commit_push("quick transient lock"),
+        )
+
+        self.assertTrue(ok, msg)
+        self.assertEqual(
+            run_git(repo, "log", "-1", "--format=%s").stdout.strip(),
+            "quick transient lock",
+        )
 
     def test_is_head_pushed_tracks_upstream_with_real_remote(self) -> None:
         remote = init_bare_repo(self.root / "remote.git")

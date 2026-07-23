@@ -89,9 +89,11 @@ class AiCommitAutoFlowMixin:
     def _start_auto_commit(self) -> None:
         applied = self._applied
         snapshot = self._model.snapshot()
-        if applied is None or snapshot is None:
+        plan = self._model.current_plan()
+        if applied is None or snapshot is None or plan is None:
             self._finish_auto_commit_failure("提交计划上下文已失效，请重新规划")
             return
+        plan_level = plan.level
         settings = self._runtime.planning_settings()
         serial, cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
@@ -107,7 +109,7 @@ class AiCommitAutoFlowMixin:
                 if not ok:
                     executor = (
                         self._hunk_executor
-                        if snapshot.level == "hunk" else self._executor
+                        if plan_level == "hunk" else self._executor
                     )
                     restored, restore_message = executor.restore_uncommitted_group(
                         applied
