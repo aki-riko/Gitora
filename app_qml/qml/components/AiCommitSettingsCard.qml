@@ -96,10 +96,47 @@ Fluent.SettingsCardGroup {
                 }
             }
 
+            RowLayout {
+                id: settingsActions
+                objectName: "aiSettingsActions"
+                Layout.fillWidth: true
+                spacing: Fluent.Enums.spacing.s
+
+                Text {
+                    Layout.fillWidth: true
+                    text: enabledSwitch.checked
+                        ? "保存后可在提交下拉菜单使用 AI 提交"
+                        : "AI 提交当前未启用"
+                    textFormat: Text.PlainText
+                    color: Fluent.Enums.textColor.tertiary
+                    font.family: Fluent.Enums.fontFamily
+                    font.pixelSize: Fluent.Enums.typography.caption
+                    elide: Text.ElideRight
+                }
+
+                Fluent.Button {
+                    objectName: "aiConnectionTestButton"
+                    text: AiCommitBridge && AiCommitBridge.busy ? "检测中…" : "检测连接"
+                    enabled: AiCommitBridge && !AiCommitBridge.busy
+                    onClicked: {
+                        if (root.saveSettings(false)) AiCommitBridge.testConnection()
+                    }
+                }
+
+                Fluent.Button {
+                    objectName: "aiSettingsSaveButton"
+                    text: "保存设置"
+                    icon: Fluent.Enums.icon.save
+                    style: Fluent.Enums.button.style_primary
+                    onClicked: root.saveSettings(true)
+                }
+            }
+
             Fluent.Separator { Layout.fillWidth: true }
 
             AiCommitConnectionSection {
                 id: connectionSection
+                objectName: "aiConnectionSection"
                 Layout.fillWidth: true
                 compact: root._compactFields
                 hasStoredApiKey: Boolean(
@@ -121,40 +158,6 @@ Fluent.SettingsCardGroup {
                 id: rulesSection
                 Layout.fillWidth: true
                 compact: root._compactFields
-            }
-
-            Fluent.Separator { Layout.fillWidth: true }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Fluent.Enums.spacing.s
-
-                Text {
-                    Layout.fillWidth: true
-                    text: enabledSwitch.checked
-                        ? "保存后可在提交下拉菜单使用 AI 提交"
-                        : "AI 提交当前未启用"
-                    textFormat: Text.PlainText
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    elide: Text.ElideRight
-                }
-
-                Fluent.Button {
-                    text: AiCommitBridge && AiCommitBridge.busy ? "检测中…" : "检测连接"
-                    enabled: AiCommitBridge && !AiCommitBridge.busy
-                    onClicked: {
-                        if (root.saveSettings(false)) AiCommitBridge.testConnection()
-                    }
-                }
-
-                Fluent.Button {
-                    text: "保存设置"
-                    icon: Fluent.Enums.icon.save
-                    style: Fluent.Enums.button.style_primary
-                    onClicked: root.saveSettings(true)
-                }
             }
         }
     }

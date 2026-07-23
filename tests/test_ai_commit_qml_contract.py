@@ -45,6 +45,20 @@ class AiCommitQmlContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('import "../components"', source)
 
+    def test_ai_settings_actions_are_above_connection_fields(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "components"
+            / "AiCommitSettingsCard.qml"
+        ).read_text(encoding="utf-8")
+        connection_index = source.index("AiCommitConnectionSection {")
+
+        self.assertLess(source.index('text: "保存设置"'), connection_index)
+        self.assertLess(source.index('"检测中…" : "检测连接"'), connection_index)
+        self.assertIn('objectName: "aiSettingsActions"', source)
+        self.assertIn('objectName: "aiConnectionTestButton"', source)
+        self.assertIn('objectName: "aiSettingsSaveButton"', source)
+        self.assertEqual(source.count('text: "保存设置"'), 1)
+
     def test_repo_view_uses_simplified_multi_commit_flow(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
