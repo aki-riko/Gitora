@@ -209,6 +209,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         )
         self.assertNotIn('text: "环境变量回退（可选）"', source)
         self.assertNotIn("Layout.preferredWidth: 104", source)
+        self.assertIn("Layout.maximumWidth: 72", source)
+        self.assertIn("anchors.right: environmentHint.left", source)
         self.assertIn("Fluent.ToggleSwitch", source)
         self.assertIn("AiCommitConnectionSection", source)
         self.assertIn("AiCommitRulesSection", source)

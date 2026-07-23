@@ -212,14 +212,18 @@ ColumnLayout {
             visible: root.isRemote
             spacing: Fluent.Enums.spacing.s
 
-            RowLayout {
+            Item {
                 Layout.preferredWidth: 72
                 Layout.minimumWidth: 72
-                spacing: Fluent.Enums.spacing.xxs
+                Layout.maximumWidth: 72
+                implicitHeight: Math.max(environmentLabel.implicitHeight, environmentHint.implicitHeight)
 
                 Text {
-                    Layout.fillWidth: true
-                    Layout.minimumWidth: 0
+                    id: environmentLabel
+                    anchors.left: parent.left
+                    anchors.right: environmentHint.left
+                    anchors.rightMargin: Fluent.Enums.spacing.xxs
+                    anchors.verticalCenter: parent.verticalCenter
                     text: "环境变量"
                     textFormat: Text.PlainText
                     color: Fluent.Enums.textColor.secondary
@@ -229,9 +233,11 @@ ColumnLayout {
                 }
 
                 Fluent.HintIcon {
+                    id: environmentHint
+                    anchors.right: parent.right
+                    anchors.verticalCenter: parent.verticalCenter
                     iconSize: 14
                     toolTipText: "可选：系统凭据中没有密钥时，从该环境变量读取 API 密钥。"
-                    Layout.alignment: Qt.AlignVCenter
                 }
             }
 
