@@ -8,8 +8,22 @@ Fluent.DialogBoxCore {
 
     property string planSummary: ""
     property var planGroups: []
+    property real windowScale: 0.9
 
-    contentWidth: 620
+    readonly property int targetDialogWidth: Math.max(
+        Fluent.Enums.dialog.minWidth,
+        Math.floor(dlg.width * dlg.windowScale))
+    readonly property int targetDialogHeight: Math.max(
+        Fluent.Enums.dialog.actionsRowHeight
+            + Fluent.Enums.dialog.contentPadding,
+        Math.floor(dlg.height * dlg.windowScale))
+    readonly property int targetBodyHeight: Math.max(
+        0,
+        dlg.targetDialogHeight
+            - Fluent.Enums.dialog.actionsRowHeight
+            - Fluent.Enums.dialog.contentPadding)
+
+    contentWidth: dlg.targetDialogWidth - Fluent.Enums.dialog.contentPadding
 
     footer: Component {
         RowLayout {
@@ -44,6 +58,7 @@ Fluent.DialogBoxCore {
 
     ColumnLayout {
         width: dlg.contentWidth
+        height: dlg.targetBodyHeight
         spacing: Fluent.Enums.spacing.l
 
         Text {
@@ -81,7 +96,8 @@ Fluent.DialogBoxCore {
 
         Fluent.ScrollArea {
             Layout.fillWidth: true
-            Layout.preferredHeight: 300
+            Layout.fillHeight: true
+            Layout.minimumHeight: 0
             padding: 0
 
             Column {

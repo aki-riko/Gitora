@@ -94,6 +94,12 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn('text: "采用并提交推送"', result_source)
         self.assertIn('"将按 AI 规划创建 "', result_source)
         self.assertIn("property var planGroups", result_source)
+        self.assertIn("property real windowScale: 0.9", result_source)
+        self.assertIn("Math.floor(dlg.width * dlg.windowScale)", result_source)
+        self.assertIn("Math.floor(dlg.height * dlg.windowScale)", result_source)
+        self.assertIn("height: dlg.targetBodyHeight", result_source)
+        self.assertIn("Layout.fillHeight: true", result_source)
+        self.assertNotIn("Layout.preferredHeight: 300", result_source)
 
     def test_commit_composer_keeps_title_submit_and_quick_push_actions(self) -> None:
         source = (
