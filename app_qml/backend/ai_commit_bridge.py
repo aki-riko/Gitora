@@ -230,7 +230,7 @@ class AiCommitBridge(QObject):
                 request_id = f"{serial}-{snapshot.snapshot_id[:16]}"
                 prepared = _PreparedRequest(
                     request_id, repo, snapshot, request, settings,
-                    settings.provider == "openai_responses"
+                    settings.provider != "ollama"
                     or endpoint_requires_remote_consent(settings.local_endpoint),
                 )
                 if not self._store_prepared_if_current(

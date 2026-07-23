@@ -23,7 +23,7 @@ ColumnLayout {
     property bool modelsLoading: false
     property bool modelFetchEnabled: false
     property bool _syncingModel: false
-    readonly property bool isRemote: providerCombo.currentIndex === 1
+    readonly property bool isRemote: providerCombo.currentIndex > 0
     readonly property string activeEndpoint: root.isRemote
         ? remoteEndpointInput.text : localEndpointInput.text
     readonly property bool hasAvailableModels: root.isRemote
@@ -83,7 +83,11 @@ ColumnLayout {
             Fluent.ComboBox {
                 id: providerCombo
                 Layout.fillWidth: true
-                model: ["本地 Ollama", "远程 OpenAI 兼容 API"]
+                model: [
+                    "本地 Ollama",
+                    "远程 OpenAI 兼容 API",
+                    "Anthropic Messages API"
+                ]
                 currentIndex: 0
             }
         }
@@ -113,7 +117,7 @@ ColumnLayout {
                 id: remoteEndpointInput
                 Layout.fillWidth: true
                 visible: root.isRemote
-                placeholderText: "输入 API 基础地址或 Chat/Responses 完整地址"
+                placeholderText: "输入 API 基础地址或 Chat/Responses/Messages 完整地址"
             }
         }
 
@@ -290,7 +294,7 @@ ColumnLayout {
     }
 
     function setAvailableModels(provider, models) {
-        var remote = provider === "openai_responses"
+        var remote = provider !== "ollama"
         var values = []
         for (var i = 0; i < models.length; i++) {
             var value = String(models[i]).trim()

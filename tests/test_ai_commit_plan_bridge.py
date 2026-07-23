@@ -143,6 +143,28 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertIn("未获得发送确认", errors[-1])
         self.assertEqual(self.provider.requests, [])
 
+    def test_anthropic_plan_requires_explicit_consent(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        self.settings = self.settings.with_user_values({
+            "provider": "anthropic",
+            "remote_endpoint": "https://api.anthropic.com",
+            "remote_model": "claude-sonnet-4-20250514",
+        })
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        errors: list[str] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.errorOccurred.connect(errors.append)
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        self.assertTrue(prepared[0][1])
+        bridge.generatePrepared(prepared[0][0], False)
+
+        self.assertTrue(self.wait_until(lambda: bool(errors)))
+        self.assertIn("未获得发送确认", errors[-1])
+        self.assertEqual(self.provider.requests, [])
+
     def test_non_loopback_ollama_plan_requires_explicit_consent(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")
         self.settings = self.settings.with_user_values({

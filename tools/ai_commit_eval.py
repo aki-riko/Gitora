@@ -53,7 +53,7 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument(
         "--allow-remote-source-upload",
         action="store_true",
-        help="允许向远程 OpenAI 兼容 API 或非本机 Ollama 上传回放源码",
+        help="允许向远程 OpenAI 兼容 API、Anthropic API 或非本机 Ollama 上传回放源码",
     )
     run.add_argument("--max-cases", type=int)
     return parser
@@ -75,9 +75,11 @@ def create_provider(settings: AiCommitSettings, provider_kind: str):
         )
         return OllamaProvider(config), settings.local_model
     api_key = os.environ.get(settings.api_key_env, "") if settings.api_key_env else ""
-    remote_settings = settings.with_user_values({
-        "provider": "openai_responses",
-    })
+    remote_settings = settings
+    if remote_settings.provider == "ollama":
+        remote_settings = remote_settings.with_user_values({
+            "provider": "openai_responses",
+        })
     return create_model_provider(remote_settings, api_key), settings.remote_model
 
 

@@ -14,7 +14,7 @@ Fluent.SettingsCardGroup {
     property string _credentialStoreError: ""
     property string _modelFetchProvider: ""
     property string _modelFetchEndpoint: ""
-    property var _providerValues: ["ollama", "openai_responses"]
+    property var _providerValues: ["ollama", "openai_responses", "anthropic"]
     readonly property bool _compactFields: root.width < 760
 
     Component.onCompleted: root.loadSettings()

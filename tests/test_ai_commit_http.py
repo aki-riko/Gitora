@@ -9,6 +9,7 @@ import urllib.error
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from unittest.mock import Mock, patch
 
+from app.common.ai_commit_anthropic import AnthropicMessagesProvider
 from app.common.ai_commit_http import (
     endpoint_requires_remote_consent,
     HttpJsonClient,
@@ -294,6 +295,66 @@ class AiCommitHttpTest(unittest.TestCase):
         provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
 
         with self.assertRaisesRegex(HttpProviderError, "Chat Completions API 响应"):
+            provider.generate_plan(make_request())
+
+    def test_anthropic_messages_uses_native_headers_and_json_prompt(self) -> None:
+        config = HttpProviderConfig(
+            "https://api.anthropic.com", "claude-sonnet-4-20250514",
+            "top-secret", 5, 100_000,
+        )
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse({
+            "content": [{"type": "text", "text": json.dumps(plan_payload())}]
+        })
+        provider = AnthropicMessagesProvider(config)
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+        result = provider.generate_plan(make_request())
+
+        self.assertEqual(result["groups"][0]["title"], "fix: 修改入口")
+        request = fake_opener.open.call_args.args[0]
+        body = json.loads(request.data.decode("utf-8"))
+        self.assertEqual(request.full_url, "https://api.anthropic.com/v1/messages")
+        self.assertEqual(request.get_header("X-api-key"), "top-secret")
+        self.assertEqual(request.get_header("Anthropic-version"), "2023-06-01")
+        self.assertNotIn("Authorization", request.headers)
+        self.assertEqual(body["model"], "claude-sonnet-4-20250514")
+        self.assertEqual(body["max_tokens"], 8192)
+        self.assertIn("简体中文（zh_CN）", body["system"])
+        self.assertIn('"const":"snapshot-1"', body["system"])
+        self.assertEqual(body["messages"][0]["role"], "user")
+
+    def test_anthropic_models_endpoint_is_derived_from_base_or_full_url(self) -> None:
+        cases = {
+            "https://api.anthropic.com": "https://api.anthropic.com/v1/models",
+            "https://example.invalid/v1": "https://example.invalid/v1/models",
+            "https://example.invalid/v1/messages": "https://example.invalid/v1/models",
+        }
+        for endpoint, expected_models_url in cases.items():
+            with self.subTest(endpoint=endpoint):
+                fake_opener = Mock()
+                fake_opener.open.return_value = _FakeResponse({
+                    "data": [{"id": "claude-sonnet-4"}]
+                })
+                provider = AnthropicMessagesProvider(HttpProviderConfig(
+                    endpoint, "claude-sonnet-4", "key", 5, 100_000
+                ))
+                provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+                self.assertEqual(provider.list_models(), ("claude-sonnet-4",))
+                request = fake_opener.open.call_args.args[0]
+                self.assertEqual(request.full_url, expected_models_url)
+                self.assertEqual(request.get_header("X-api-key"), "key")
+
+    def test_anthropic_reports_missing_text_content(self) -> None:
+        fake_opener = Mock()
+        fake_opener.open.return_value = _FakeResponse({"content": []})
+        provider = AnthropicMessagesProvider(HttpProviderConfig(
+            "https://api.anthropic.com", "model", "key", 5, 100_000
+        ))
+        provider._client = HttpJsonClient(5, 100_000, opener=fake_opener)
+
+        with self.assertRaisesRegex(HttpProviderError, "Anthropic Messages API 响应"):
             provider.generate_plan(make_request())
 
     def test_openai_model_list_requires_responses_endpoint_path(self) -> None:

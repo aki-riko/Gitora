@@ -11,6 +11,7 @@ from .ai_commit_credentials import (
     SystemCredentialStore,
     credential_account,
 )
+from .ai_commit_anthropic import AnthropicMessagesProvider
 from .ai_commit_http import (
     endpoint_uses_responses_api,
     HttpProviderConfig,
@@ -46,6 +47,12 @@ def create_model_provider(
         if endpoint_uses_responses_api(config.endpoint):
             return OpenAIResponsesProvider(config)
         return OpenAIChatProvider(config)
+    if settings.provider == "anthropic":
+        config = HttpProviderConfig(
+            settings.remote_endpoint, settings.remote_model, api_key,
+            settings.timeout_seconds, settings.max_response_chars,
+        )
+        return AnthropicMessagesProvider(config)
     raise AiCommitSettingsError("不支持的模型提供方")
 
 
@@ -119,7 +126,7 @@ class AiCommitCredentialService:
         return True, message
 
     def resolve_api_key(self, settings: AiCommitSettings) -> str:
-        if settings.provider != "openai_responses":
+        if settings.provider == "ollama":
             return ""
         store_error = self._error
         if self._store is not None:
@@ -145,7 +152,7 @@ class AiCommitCredentialService:
     def refresh(self, settings: AiCommitSettings) -> None:
         self._has_stored_api_key = False
         if (
-            settings.provider != "openai_responses"
+            settings.provider == "ollama"
             or not settings.remote_endpoint
         ):
             return
@@ -168,6 +175,6 @@ class AiCommitCredentialService:
 
     @staticmethod
     def _account(settings: AiCommitSettings) -> str:
-        if settings.provider != "openai_responses":
+        if settings.provider == "ollama":
             raise CredentialStoreError("系统凭据仅用于远程 AI API")
         return credential_account(settings.provider, settings.remote_endpoint)

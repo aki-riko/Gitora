@@ -43,7 +43,7 @@
   --provider-kind local
 ```
 
-远程 OpenAI 兼容 API 或非本机 Ollama 评测会发送临时回放中的源码差异，必须额外显式传入 `--allow-remote-source-upload`。没有该参数时命令会在 provider 创建及任何网络调用前拒绝执行：
+远程 OpenAI 兼容 API、Anthropic API 或非本机 Ollama 评测会发送临时回放中的源码差异，必须额外显式传入 `--allow-remote-source-upload`。没有该参数时命令会在 provider 创建及任何网络调用前拒绝执行：
 
 ```powershell
 .\.venv\Scripts\python.exe tools\ai_commit_eval.py run `

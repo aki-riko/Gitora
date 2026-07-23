@@ -73,6 +73,9 @@ class AiCommitSettingsTest(unittest.TestCase):
         with self.assertRaisesRegex(AiCommitSettingsError, "环境变量"):
             settings.with_user_values({"api_key_env": "密钥"})
 
+        anthropic = settings.with_user_values({"provider": "anthropic"})
+        self.assertEqual(anthropic.provider, "anthropic")
+
     def test_unknown_user_setting_is_rejected(self) -> None:
         settings = AiCommitSettingsStore(DEFAULTS, Path("missing.json")).load()
         with self.assertRaisesRegex(AiCommitSettingsError, "不支持"):

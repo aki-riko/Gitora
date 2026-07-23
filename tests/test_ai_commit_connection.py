@@ -12,6 +12,7 @@ from app.common.ai_commit_connection import (
     create_model_provider,
 )
 from app.common.ai_commit_credentials import CredentialStoreError
+from app.common.ai_commit_anthropic import AnthropicMessagesProvider
 from app.common.ai_commit_http import (
     HttpProviderError,
     OllamaProvider,
@@ -91,6 +92,17 @@ class AiCommitConnectionTest(unittest.TestCase):
                 self.assertIsInstance(provider, OpenAIChatProvider)
                 self.assertEqual(provider.config.api_key, "remote-secret")
 
+    def test_factory_builds_anthropic_messages_provider(self) -> None:
+        settings = self.remote_settings("https://api.anthropic.com").with_user_values({
+            "provider": "anthropic",
+            "remote_model": "claude-sonnet-4-20250514",
+        })
+
+        provider = create_model_provider(settings, "anthropic-secret")
+
+        self.assertIsInstance(provider, AnthropicMessagesProvider)
+        self.assertEqual(provider.config.api_key, "anthropic-secret")
+
     def test_system_key_precedes_environment_and_is_endpoint_scoped(self) -> None:
         service = AiCommitCredentialService(
             self.defaults.credential_service, _MemoryCredentialStore()
@@ -103,6 +115,17 @@ class AiCommitConnectionTest(unittest.TestCase):
             self.assertTrue(service.store_api_key(settings, "system-key")[0])
             self.assertEqual(service.resolve_api_key(settings), "system-key")
             self.assertEqual(service.resolve_api_key(other), "environment-key")
+
+    def test_anthropic_system_key_is_endpoint_scoped(self) -> None:
+        service = AiCommitCredentialService(
+            self.defaults.credential_service, _MemoryCredentialStore()
+        )
+        settings = self.remote_settings("https://api.anthropic.com").with_user_values({
+            "provider": "anthropic",
+        })
+
+        self.assertTrue(service.store_api_key(settings, "anthropic-key")[0])
+        self.assertEqual(service.resolve_api_key(settings), "anthropic-key")
 
     def test_failed_store_uses_environment_without_exposing_secret(self) -> None:
         service = AiCommitCredentialService(

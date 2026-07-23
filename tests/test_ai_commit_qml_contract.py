@@ -219,9 +219,13 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertNotIn("id: remoteModelInput", connection_source)
         self.assertIn('"远程 OpenAI 兼容 API"', connection_source)
         self.assertIn(
-            'placeholderText: "输入 API 基础地址或 Chat/Responses 完整地址"',
+            'placeholderText: "输入 API 基础地址或 Chat/Responses/Messages 完整地址"',
             connection_source,
         )
+        self.assertIn('"Anthropic Messages API"', connection_source)
+        self.assertIn("providerCombo.currentIndex > 0", connection_source)
+        self.assertIn('var remote = provider !== "ollama"', connection_source)
+        self.assertIn('"anthropic"', card_source)
 
     def test_ai_connection_notifications_are_owned_by_single_window_host(self) -> None:
         card_source = self._settings_qml_source()

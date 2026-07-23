@@ -14,7 +14,7 @@ from .ai_commit_context import SnapshotLimits
 from .setting import CONFIG_FOLDER
 
 
-PROVIDERS = {"ollama", "openai_responses"}
+PROVIDERS = {"ollama", "openai_responses", "anthropic"}
 REMOTE_SCOPES = {"staged", "all"}
 
 

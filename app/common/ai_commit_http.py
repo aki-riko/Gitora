@@ -1,5 +1,5 @@
 # coding: utf-8
-"""基于已核对接口的远程 OpenAI 兼容与本地 Ollama 提供方。"""
+"""基于已核对接口的远程 OpenAI/Anthropic 与本地 Ollama 提供方。"""
 from __future__ import annotations
 
 import ipaddress
@@ -147,18 +147,22 @@ def _validate_remote_endpoint(value: str) -> str:
     url = value.strip().rstrip("/")
     parsed = urlsplit(url)
     if parsed.scheme != "https" or not parsed.netloc:
-        raise HttpProviderError("远程 OpenAI 兼容 API 必须使用完整 HTTPS URL")
+        raise HttpProviderError("远程 AI API 必须使用完整 HTTPS URL")
     if parsed.username or parsed.password or parsed.query or parsed.fragment:
         raise HttpProviderError("远程 API 地址不能包含凭据、查询或片段")
     return url
 
 
 def _authorization_headers(api_key: str) -> dict[str, str]:
+    return {"Authorization": f"Bearer {_validate_api_key(api_key)}"}
+
+
+def _validate_api_key(api_key: str) -> str:
     if not api_key:
         raise HttpProviderError("未提供远程模型密钥")
     if any(ord(char) < 32 or ord(char) == 127 for char in api_key):
         raise HttpProviderError("远程模型密钥包含非法控制字符")
-    return {"Authorization": f"Bearer {api_key}"}
+    return api_key
 
 
 class OllamaProvider(ModelProvider):
@@ -407,11 +411,15 @@ class OpenAIChatProvider(ModelProvider):
 
     @staticmethod
     def _system_prompt(request: PlannerRequest) -> str:
-        schema = json.dumps(
-            build_plan_schema(request), ensure_ascii=False, separators=(",", ":")
-        )
-        return (
-            f"{build_system_instructions(request)}\n"
-            "只输出一个符合以下 JSON Schema 的 JSON 对象，不得使用 Markdown 代码块：\n"
-            f"{schema}"
-        )
+        return _build_json_schema_prompt(request)
+
+
+def _build_json_schema_prompt(request: PlannerRequest) -> str:
+    schema = json.dumps(
+        build_plan_schema(request), ensure_ascii=False, separators=(",", ":")
+    )
+    return (
+        f"{build_system_instructions(request)}\n"
+        "只输出一个符合以下 JSON Schema 的 JSON 对象，不得使用 Markdown 代码块：\n"
+        f"{schema}"
+    )

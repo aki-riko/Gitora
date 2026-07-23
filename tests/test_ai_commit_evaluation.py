@@ -18,6 +18,7 @@ from app.common.ai_commit_evaluation import (
     write_case_manifest,
     write_manual_template,
 )
+from app.common.ai_commit_anthropic import AnthropicMessagesProvider
 from app.common.ai_commit_provider import ModelProvider
 from app.common.ai_commit_http import OpenAIChatProvider
 from app.common.ai_commit_settings import AiCommitSettingsStore
@@ -206,6 +207,21 @@ class AiCommitEvaluationTest(unittest.TestCase):
         self.assertIsInstance(provider, OpenAIChatProvider)
         self.assertEqual(provider.config.api_key, "test-secret")
         self.assertEqual(model, "deepseek-v4-pro")
+
+        anthropic_settings = settings.with_user_values({
+            "provider": "anthropic",
+            "remote_endpoint": "https://api.anthropic.com",
+            "remote_model": "claude-sonnet-4-20250514",
+        })
+        with mock.patch.dict(
+            "os.environ", {"GITORA_EVALUATION_TEST_KEY": "test-secret"}
+        ):
+            anthropic_provider, anthropic_model = ai_commit_eval.create_provider(
+                anthropic_settings, "remote"
+            )
+
+        self.assertIsInstance(anthropic_provider, AnthropicMessagesProvider)
+        self.assertEqual(anthropic_model, "claude-sonnet-4-20250514")
 
     def test_non_loopback_evaluation_stops_before_provider_creation(self) -> None:
         root = Path(self.temp_dir.name)

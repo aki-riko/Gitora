@@ -137,7 +137,7 @@ class AiCommitPlanBridge(QObject):
                     snapshot,
                     request,
                     settings,
-                    settings.provider == "openai_responses"
+                    settings.provider != "ollama"
                     or endpoint_requires_remote_consent(settings.local_endpoint),
                 )
                 if not self._request_state.store_prepared_if_current(
