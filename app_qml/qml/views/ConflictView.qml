@@ -126,8 +126,7 @@ Item {
                 height: statusRow.implicitHeight + Fluent.Enums.spacing.l * 2
                 RowLayout {
                     id: statusRow
-                    anchors.centerIn: parent
-                    width: parent.width - Fluent.Enums.spacing.l * 2
+                    anchors.fill: parent
                     spacing: Fluent.Enums.spacing.m
                     Fluent.Icon {
                         icon: root.merging ? Fluent.Enums.icon.warning : Fluent.Enums.icon.checkmark_circle
@@ -167,7 +166,6 @@ Item {
                         RowLayout {
                             id: confRow
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Icon {
                                 icon: Fluent.Enums.icon.document_error

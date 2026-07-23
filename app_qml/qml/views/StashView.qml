@@ -137,7 +137,6 @@ Item {
                     RowLayout {
                         id: stashRow
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         ColumnLayout {
                             Layout.fillWidth: true

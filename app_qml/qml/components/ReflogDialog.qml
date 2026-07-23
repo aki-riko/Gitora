@@ -46,7 +46,7 @@ Fluent.MessageBox {
             Layout.fillWidth: true
             Layout.preferredHeight: 360
             type: Fluent.Enums.scroll.type_list
-            itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.m * 2
+            itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.l * 2
             listSpacing: Fluent.Enums.spacing.s
             reuseItems: true
             bounceEnabled: false
@@ -58,7 +58,6 @@ Fluent.MessageBox {
                 RowLayout {
                     id: rlRow
                     anchors.fill: parent
-                    anchors.margins: Fluent.Enums.spacing.m
                     spacing: Fluent.Enums.spacing.m
                     ColumnLayout {
                         Layout.fillWidth: true

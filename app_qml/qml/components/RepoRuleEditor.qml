@@ -26,7 +26,6 @@ Fluent.Card {
     ColumnLayout {
         id: editorLayout
         anchors.fill: parent
-        anchors.margins: Fluent.Enums.spacing.l
         spacing: Fluent.Enums.spacing.m
 
         RowLayout {

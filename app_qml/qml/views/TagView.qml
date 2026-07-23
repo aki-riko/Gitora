@@ -155,7 +155,6 @@ Item {
                     RowLayout {
                         id: tagRow
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         Fluent.Icon {
                             icon: Fluent.Enums.icon.tag

@@ -190,7 +190,6 @@ Item {
                     ColumnLayout {
                         id: worktreeForm
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         RowLayout {
                             Layout.fillWidth: true
@@ -231,7 +230,6 @@ Item {
                         RowLayout {
                             id: wtRow
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Icon {
                                 icon: Fluent.Enums.icon.branch_fork
@@ -281,7 +279,6 @@ Item {
                     RowLayout {
                         id: submoduleActions
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         Text {
                             Layout.fillWidth: true
@@ -310,7 +307,6 @@ Item {
                         RowLayout {
                             id: smRow
                             anchors.fill: parent
-                            anchors.margins: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Fluent.Icon {
                                 icon: Fluent.Enums.icon.branch
@@ -351,7 +347,6 @@ Item {
                     ColumnLayout {
                         id: lfsLayout
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         RowLayout {
                             Layout.fillWidth: true
@@ -421,7 +416,6 @@ Item {
                     ColumnLayout {
                         id: bisectLayout
                         anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.l
                         spacing: Fluent.Enums.spacing.m
                         RowLayout {
                             Layout.fillWidth: true
