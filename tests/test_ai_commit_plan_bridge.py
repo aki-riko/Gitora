@@ -122,6 +122,88 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, before_status)
         self.assertEqual(run_git(self.repo, "rev-parse", "HEAD").stdout.strip(), before_head)
 
+    def test_plan_generation_uses_requested_ui_language(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+
+        bridge.preparePlanForLanguage("zh-CN")
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: bridge.planModel.hasPlan))
+
+        self.assertEqual(self.provider.requests[0].output_language, "zh_CN")
+
+    def test_accept_plan_commits_each_group_then_pushes_once(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        finished: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planCommitPushFinished.connect(lambda *args: finished.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: bridge.planModel.hasPlan))
+
+        pushes: list[tuple] = []
+
+        def fake_push(remote, branch, force=False, callback=None):
+            pushes.append((remote, branch, force))
+            if callback:
+                callback(True, "推送成功")
+
+        self.service.push = fake_push
+        bridge.commitPlanAndPush()
+
+        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertEqual(finished[0][0], True)
+        self.assertIn("2 个 Commit", finished[0][1])
+        self.assertEqual(len(pushes), 1)
+        self.assertEqual(pushes[0][0], "origin")
+        self.assertEqual(
+            run_git(self.repo, "log", "-2", "--format=%s").stdout.splitlines(),
+            ["feat: 规划改动 2", "feat: 规划改动 1"],
+        )
+        self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
+
+    def test_push_failure_keeps_completed_local_commits(self) -> None:
+        write_file(self.repo, "one.py", "print('one')\n")
+        write_file(self.repo, "two.py", "print('two')\n")
+        bridge = self.make_bridge()
+        prepared: list[tuple] = []
+        finished: list[tuple] = []
+        bridge.contextPrepared.connect(lambda *args: prepared.append(args))
+        bridge.planCommitPushFinished.connect(lambda *args: finished.append(args))
+
+        bridge.preparePlan()
+        self.assertTrue(self.wait_until(lambda: len(prepared) == 1))
+        bridge.generatePrepared(prepared[0][0], False)
+        self.assertTrue(self.wait_until(lambda: bridge.planModel.hasPlan))
+
+        pushes: list[tuple] = []
+
+        def fake_push(remote, branch, force=False, callback=None):
+            pushes.append((remote, branch, force))
+            if callback:
+                callback(False, "远程拒绝推送")
+
+        self.service.push = fake_push
+        bridge.commitPlanAndPush()
+
+        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertEqual(finished[0][0], False)
+        self.assertIn("但推送失败", finished[0][1])
+        self.assertEqual(len(pushes), 1)
+        self.assertEqual(
+            run_git(self.repo, "log", "-2", "--format=%s").stdout.splitlines(),
+            ["feat: 规划改动 2", "feat: 规划改动 1"],
+        )
+        self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
+
     def test_remote_plan_requires_explicit_consent(self) -> None:
         write_file(self.repo, "one.py", "print('one')\n")
         self.settings = self.settings.with_user_values({

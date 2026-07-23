@@ -20,11 +20,12 @@ from app.common.ai_commit_models import (
     PlannerRequest,
 )
 from app.common.ai_commit_provider import ProviderCancelledError
-from app.common.ai_commit_schema import build_user_input
+from app.common.ai_commit_schema import build_user_input, normalize_output_language
 from app.common.ai_commit_settings import AiCommitSettings, AiCommitSettingsError
 from app.common.git_service import GitService
 from app.common.logger import get_logger
 from app_qml.backend.ai_commit_plan_model import AiCommitPlanModel
+from app_qml.backend.ai_commit_auto_flow import AiCommitAutoFlowMixin
 from app_qml.backend.ai_commit_plan_request_state import (
     PlannerRuntime,
     PlanRequestState,
@@ -36,8 +37,8 @@ from app_qml.backend.ai_commit_plan_request_state import (
 logger = get_logger("AiCommitPlanBridge")
 
 
-class AiCommitPlanBridge(QObject):
-    """协调快照与模型；没有暂存、提交或推送接口。"""
+class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
+    """协调快照、分组提交和最终推送。"""
 
     busyChanged = Signal()
     awaitingCommitChanged = Signal()
@@ -45,10 +46,12 @@ class AiCommitPlanBridge(QObject):
     planReady = Signal(bool, str)
     groupApplied = Signal(str, str, str, str)
     planAdvanced = Signal(bool, str)
+    planCommitPushFinished = Signal(bool, str)
     errorOccurred = Signal(str)
     _resolved = Signal(int, str, object, object)
     _applyFinished = Signal(int, object)
     _commitChecked = Signal(int, bool, str, object)
+    _autoPushFinished = Signal(int, bool, str)
     _workspaceChecked = Signal(str, str, str)
 
     def __init__(
@@ -68,6 +71,9 @@ class AiCommitPlanBridge(QObject):
         self._awaiting_commit = False
         self._execution_guard = False
         self._applied: AppliedFileGroup | None = None
+        self._auto_commit_push = False
+        self._auto_completed_groups = 0
+        self._auto_repo_path = ""
         self._request_state = PlanRequestState(
             lambda: self._git.repo_path or "",
             self.busyChanged.emit,
@@ -75,6 +81,7 @@ class AiCommitPlanBridge(QObject):
         self._resolved.connect(self._apply_resolved)
         self._applyFinished.connect(self._apply_finished)
         self._commitChecked.connect(self._commit_checked)
+        self._autoPushFinished.connect(self._auto_push_finished)
         self._workspaceChecked.connect(self._workspace_checked)
 
     @Property(bool, notify=busyChanged)
@@ -91,13 +98,23 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def preparePlan(self) -> None:
-        self._prepare_plan("file")
+        self._prepare_plan("file", "")
+
+    @Slot(str)
+    def preparePlanForLanguage(self, output_language: str) -> None:
+        """按当前 UI 语言准备文件级规划。"""
+        self._prepare_plan("file", output_language)
 
     @Slot()
     def prepareHunkPlan(self) -> None:
-        self._prepare_plan("hunk")
+        self._prepare_plan("hunk", "")
 
-    def _prepare_plan(self, level: str) -> None:
+    @Slot(str)
+    def prepareHunkPlanForLanguage(self, output_language: str) -> None:
+        """按当前 UI 语言准备代码块级规划。"""
+        self._prepare_plan("hunk", output_language)
+
+    def _prepare_plan(self, level: str, output_language: str) -> None:
         if self._execution_guard:
             self.errorOccurred.emit("上一暂存执行仍在收尾，请稍候")
             return
@@ -129,7 +146,13 @@ class AiCommitPlanBridge(QObject):
                 if not snapshot.changes:
                     scope = "工作区" if include_unstaged else "暂存区"
                     raise SnapshotCollectionError(f"{scope}没有可规划的改动")
-                request = PlannerRequest(snapshot, "plan", level, settings.generate_body)
+                request = PlannerRequest(
+                    snapshot,
+                    "plan",
+                    level,
+                    settings.generate_body,
+                    normalize_output_language(output_language),
+                )
                 request_id = f"plan-{level}-{serial}-{snapshot.snapshot_id[:16]}"
                 prepared = PreparedPlanRequest(
                     request_id,
@@ -271,7 +294,12 @@ class AiCommitPlanBridge(QObject):
             if self._awaiting_commit and not self._execution_guard
             else None
         )
-        if not self._execution_guard:
+        if self._auto_commit_push:
+            self._cancel_request()
+            self._auto_commit_push = False
+            self._auto_repo_path = ""
+            self._execution_guard = False
+        elif not self._execution_guard:
             self._cancel_request()
         self._model.clear()
         self._set_awaiting_commit(False)
@@ -286,10 +314,27 @@ class AiCommitPlanBridge(QObject):
 
     @Slot()
     def clearPlan(self) -> None:
-        if self._awaiting_commit:
+        if self._awaiting_commit or self._auto_commit_push:
             self.errorOccurred.emit("已应用的计划组尚未提交，不能清空计划")
             return
         self._model.clear()
+
+    @Slot()
+    def commitPlanAndPush(self) -> None:
+        """按计划逐组提交，全部成功后只推送一次。"""
+        if self._execution_guard or self.busy or self._awaiting_commit:
+            self.errorOccurred.emit("已有 AI 提交操作正在进行")
+            return
+        if self._model.snapshot() is None or self._model.current_plan() is None:
+            self.errorOccurred.emit("请先生成提交计划")
+            return
+        if not self._model.executable:
+            self.errorOccurred.emit("提交计划未通过执行校验")
+            return
+        self._auto_commit_push = True
+        self._auto_completed_groups = 0
+        self._auto_repo_path = self._git.repo_path or ""
+        self.applyNextGroup()
 
     @Slot()
     def applyNextGroup(self) -> None:
@@ -406,56 +451,6 @@ class AiCommitPlanBridge(QObject):
         level_name = "代码块级" if plan.level == "hunk" else "文件级"
         self.planReady.emit(True, plan.summary or f"{level_name}提交计划已生成")
 
-    @Slot(int, object)
-    def _apply_finished(self, serial: int, applied: AppliedFileGroup) -> None:
-        if (
-            not self._request_state.is_serial_current(serial)
-            or applied.repo_path != (self._git.repo_path or "")
-        ):
-            threading.Thread(
-                target=self._restore_discarded_apply,
-                args=(applied,),
-                daemon=True,
-            ).start()
-            return
-        self._execution_guard = False
-        self._applied = applied
-        self._set_awaiting_commit(True)
-        group = applied.group
-        self.groupApplied.emit(
-            group.group_id,
-            group.title,
-            group.body,
-            "下一提交组已暂存，请复核后提交",
-        )
-
-    @Slot(int, bool, str, object)
-    def _commit_checked(
-        self,
-        serial: int,
-        ok: bool,
-        message: str,
-        fresh_snapshot: ChangeSnapshot | None,
-    ) -> None:
-        if not self._request_state.is_serial_current(serial):
-            return
-        self._execution_guard = False
-        applied = self._applied
-        self._applied = None
-        self._set_awaiting_commit(False)
-        if not ok or applied is None or fresh_snapshot is None:
-            self._model.markStale()
-            self.errorOccurred.emit(message or "后续计划已失效，请重新规划")
-            return
-        advanced, completed, advance_message = self._model.advance_after_commit(
-            applied.group.group_id, fresh_snapshot
-        )
-        if not advanced:
-            self._model.markStale()
-            self.errorOccurred.emit(advance_message)
-            return
-        self.planAdvanced.emit(completed, advance_message)
-
     @Slot(str, str, str)
     def _workspace_checked(
         self, repo: str, expected_fingerprint: str, current_fingerprint: str
@@ -508,4 +503,7 @@ class AiCommitPlanBridge(QObject):
 
     def _emit_error_if_current(self, serial: int, message: str) -> None:
         if self._request_state.is_serial_current(serial):
-            self.errorOccurred.emit(message)
+            if self._auto_commit_push:
+                self._finish_auto_commit_failure(message)
+            else:
+                self.errorOccurred.emit(message)

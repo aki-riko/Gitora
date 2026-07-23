@@ -6,11 +6,10 @@ import PrismQML as Fluent
 Fluent.DialogBoxCore {
     id: dlg
 
-    property string planTitle: ""
-    property string planBody: ""
     property string planSummary: ""
+    property var planGroups: []
 
-    contentWidth: 520
+    contentWidth: 620
 
     footer: Component {
         RowLayout {
@@ -37,10 +36,9 @@ Fluent.DialogBoxCore {
         }
     }
 
-    function openPlan(title, body, summary) {
-        dlg.planTitle = title || ""
-        dlg.planBody = body || ""
+    function openPlan(summary, groups) {
         dlg.planSummary = summary || ""
+        dlg.planGroups = groups || []
         dlg.open()
     }
 
@@ -60,6 +58,16 @@ Fluent.DialogBoxCore {
 
         Text {
             Layout.fillWidth: true
+            text: "将按 AI 规划创建 " + dlg.planGroups.length + " 个 Commit"
+            textFormat: Text.PlainText
+            color: Fluent.Enums.textColor.primary
+            font.family: Fluent.Enums.fontFamily
+            font.pixelSize: Fluent.Enums.typography.bodyLarge
+            font.bold: true
+        }
+
+        Text {
+            Layout.fillWidth: true
             visible: text.length > 0
             text: dlg.planSummary
             textFormat: Text.PlainText
@@ -71,43 +79,71 @@ Fluent.DialogBoxCore {
 
         Fluent.Separator { Layout.fillWidth: true }
 
-        Text {
-            text: "提交标题"
-            textFormat: Text.PlainText
-            color: Fluent.Enums.textColor.tertiary
-            font.family: Fluent.Enums.fontFamily
-            font.pixelSize: Fluent.Enums.typography.caption
-        }
-
-        Text {
+        Fluent.ScrollArea {
             Layout.fillWidth: true
-            text: dlg.planTitle
-            textFormat: Text.PlainText
-            color: Fluent.Enums.textColor.primary
-            font.family: Fluent.Enums.fontFamily
-            font.pixelSize: Fluent.Enums.typography.bodyLarge
-            font.bold: true
-            wrapMode: Text.WordWrap
-        }
+            Layout.preferredHeight: 300
+            padding: 0
 
-        Text {
-            text: "提交正文"
-            visible: dlg.planBody.length > 0
-            textFormat: Text.PlainText
-            color: Fluent.Enums.textColor.tertiary
-            font.family: Fluent.Enums.fontFamily
-            font.pixelSize: Fluent.Enums.typography.caption
-        }
+            Column {
+                width: parent ? parent.width : 0
+                spacing: Fluent.Enums.spacing.s
 
-        Text {
-            Layout.fillWidth: true
-            text: dlg.planBody
-            visible: text.length > 0
-            textFormat: Text.PlainText
-            color: Fluent.Enums.textColor.secondary
-            font.family: Fluent.Enums.fontFamily
-            font.pixelSize: Fluent.Enums.typography.body
-            wrapMode: Text.WordWrap
+                Repeater {
+                    model: dlg.planGroups
+
+                    delegate: Rectangle {
+                        required property var modelData
+                        required property int index
+                        width: parent ? parent.width : 0
+                        height: groupColumn.implicitHeight
+                            + Fluent.Enums.spacing.m * 2
+                        radius: Fluent.Enums.radius.small
+                        color: Fluent.Enums.stateColor.settingCardBg
+                        border.width: Fluent.Enums.border.normal
+                        border.color: Fluent.Enums.stateColor.settingCardBorder
+
+                        ColumnLayout {
+                            id: groupColumn
+                            anchors.fill: parent
+                            anchors.margins: Fluent.Enums.spacing.m
+                            spacing: Fluent.Enums.spacing.xxs
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: "Commit " + (index + 1) + " · "
+                                    + (modelData.title || "未命名")
+                                textFormat: Text.PlainText
+                                color: Fluent.Enums.textColor.primary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.body
+                                font.bold: true
+                                wrapMode: Text.WordWrap
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: (modelData.changes || []).length
+                                    + " 个改动"
+                                textFormat: Text.PlainText
+                                color: Fluent.Enums.textColor.tertiary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                visible: text.length > 0
+                                text: modelData.body || ""
+                                textFormat: Text.PlainText
+                                color: Fluent.Enums.textColor.secondary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                wrapMode: Text.WordWrap
+                            }
+                        }
+                    }
+                }
+            }
         }
     }
 }

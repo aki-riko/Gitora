@@ -78,13 +78,15 @@ Item {
     }
 
     function _requestAiCommitMessage() {
-        if (!AiCommitBridge || AiCommitBridge.busy) return
+        if (!AiCommitPlanBridge || AiCommitPlanBridge.busy) return
         root._aiPreparedRequestId = ""
+        aiCommitProgress.title = "AI 正在规划提交"
+        aiCommitProgress.content = "正在分析改动并生成分组提交方案…"
         aiCommitProgress.open()
         var uiLanguage = Fluent.Translator.language
         if (uiLanguage === "auto")
             uiLanguage = Fluent.Translator.detectSystemLanguage()
-        AiCommitBridge.prepareCommitMessage(uiLanguage)
+        AiCommitPlanBridge.preparePlanForLanguage(uiLanguage)
     }
 
     function _commitCurrentMessage() {
@@ -126,11 +128,12 @@ Item {
         root._quickCommitPush(root._commitMessage())
     }
 
-    function _submitAiCommit(title, body) {
-        var cleanTitle = (title || "").trim()
-        var cleanBody = (body || "").trim()
-        var message = cleanTitle + (cleanBody.length > 0 ? "\n\n" + cleanBody : "")
-        root._quickCommitPush(message)
+    function _acceptAiPlan() {
+        root._aiResultPending = false
+        aiCommitProgress.title = "正在提交并推送 AI 计划"
+        aiCommitProgress.content = "正在按分组创建 Commit，全部完成后推送…"
+        aiCommitProgress.open()
+        AiCommitPlanBridge.commitPlanAndPush()
     }
 
     // 修补上次提交:用标题和可选正文重写 HEAD 的提交消息(git commit --amend)
@@ -249,26 +252,31 @@ Item {
     }
 
     Connections {
-        target: AiCommitBridge
+        target: AiCommitPlanBridge
         function onContextPrepared(requestId, isRemote, fileCount, characterCount, summary) {
             root._aiPreparedRequestId = requestId
-            AiCommitBridge.generatePrepared(requestId, isRemote)
+            AiCommitPlanBridge.generatePrepared(requestId, isRemote)
         }
-        function onCommitMessageReady(repoPath, requestId, ok, title, body, message) {
-            if (!GitBridge || repoPath !== GitBridge.repoPath
-                    || requestId !== root._aiPreparedRequestId) return
+        function onPlanReady(ok, message) {
             root._aiPreparedRequestId = ""
             aiCommitProgress.close()
             if (ok) {
                 root._aiResultPending = true
-                aiCommitResultDialog.openPlan(title, body, message)
-            } else {
-                Fluent.NotificationManager.desktop.error("生成失败", message || "")
+                aiCommitResultDialog.openPlan(
+                    AiCommitPlanBridge.planModel.summary,
+                    AiCommitPlanBridge.planModel.groups
+                )
             }
         }
         function onErrorOccurred(message) {
             root._aiPreparedRequestId = ""
             aiCommitProgress.close()
+        }
+        function onPlanCommitPushFinished(ok, message) {
+            root._aiResultPending = false
+            aiCommitProgress.close()
+            if (ok)
+                root.reload()
         }
     }
 
@@ -414,14 +422,19 @@ Item {
         CommitComposer {
             id: commitComposer
             Layout.fillWidth: true
-            aiCommitActionEnabled: Boolean(AiCommitBridge && GitBridge
+            aiCommitActionEnabled: Boolean(AiCommitPlanBridge && AiCommitBridge
+                && AiCommitBridge.featureEnabled && GitBridge
                 && GitBridge.repoPath.length > 0
                 && !root._quickCommitPushPending
                 && !AiCommitBridge.busy
+                && !AiCommitPlanBridge.busy
+                && !root._aiResultPending
                 && root._aiPreparedRequestId.length === 0)
             commitActionEnabled: hasTitle && !root._quickCommitPushPending
+                && !AiCommitPlanBridge.busy && !root._aiResultPending
             quickPushActionEnabled: hasTitle && !root._quickCommitPushPending
                 && (!AiCommitBridge || !AiCommitBridge.busy)
+                && !AiCommitPlanBridge.busy
                 && root._aiPreparedRequestId.length === 0
                 && !root._aiResultPending
 
@@ -846,17 +859,19 @@ Item {
     Fluent.ProgressDialog {
         id: aiCommitProgress
         title: "AI 正在规划提交"
-        content: "正在分析改动并生成提交信息…"
+        content: "正在分析改动并生成分组提交方案…"
         progress: -1
     }
 
     AiCommitResultDialog {
         id: aiCommitResultDialog
         onAccepted: {
-            root._aiResultPending = false
-            root._submitAiCommit(planTitle, planBody)
+            root._acceptAiPlan()
         }
-        onRejected: root._aiResultPending = false
+        onRejected: {
+            root._aiResultPending = false
+            AiCommitPlanBridge.clearPlan()
+        }
     }
 
     // 危险操作:丢弃工作区改动二次确认(不可恢复)

@@ -1202,10 +1202,16 @@ class GitService(QObject):
 
     def commit(self, message: str) -> tuple[bool, str]:
         """提交暂存的变更"""
+        return self.commit_at(self._repo_path or "", message)
+
+    def commit_at(self, repo_path: str, message: str) -> tuple[bool, str]:
+        """在指定仓库提交，避免异步流程切换仓库后写错目标。"""
         if not message.strip():
             return False, "提交信息不能为空"
 
-        success, stdout, stderr = self._run_git_sync(['commit', '-m', message])
+        success, stdout, stderr = self._run_git_sync_at(
+            repo_path, ['commit', '-m', message]
+        )
         if success:
             self.statusChanged.emit()
             return True, "提交成功"

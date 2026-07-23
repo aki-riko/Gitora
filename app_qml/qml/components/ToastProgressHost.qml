@@ -155,6 +155,22 @@ Item {
         }
     }
 
+    Connections {
+        target: AiCommitPlanBridge
+
+        function onErrorOccurred(message) {
+            Fluent.NotificationManager.desktop.error("AI 提交规划", message)
+        }
+
+        function onPlanCommitPushFinished(ok, message) {
+            root._showResult(
+                ok,
+                ok ? "AI 提交完成" : "AI 提交未完成",
+                message
+            )
+        }
+    }
+
     function _fmtSize(bytes) {
         if (bytes >= 1048576) return (bytes / 1048576).toFixed(1) + " MB"
         if (bytes >= 1024) return (bytes / 1024).toFixed(0) + " KB"

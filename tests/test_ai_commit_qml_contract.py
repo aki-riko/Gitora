@@ -45,7 +45,7 @@ class AiCommitQmlContractTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
         self.assertIn('import "../components"', source)
 
-    def test_repo_view_uses_single_ai_commit_flow(self) -> None:
+    def test_repo_view_uses_simplified_multi_commit_flow(self) -> None:
         source = (
             ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
         ).read_text(encoding="utf-8")
@@ -55,13 +55,19 @@ class AiCommitQmlContractTest(unittest.TestCase):
 
         self.assertIn("Fluent.Translator.language", source)
         self.assertIn("Fluent.Translator.detectSystemLanguage()", source)
-        self.assertIn("AiCommitBridge.prepareCommitMessage(uiLanguage)", source)
-        self.assertIn("AiCommitBridge.generatePrepared(requestId, isRemote)", source)
+        self.assertIn("AiCommitPlanBridge.preparePlanForLanguage(uiLanguage)", source)
+        self.assertIn("AiCommitBridge.featureEnabled", source)
+        self.assertIn("AiCommitPlanBridge.generatePrepared(requestId, isRemote)", source)
         self.assertIn("Fluent.ProgressDialog {", source)
         self.assertIn("aiCommitProgress.open()", source)
         self.assertIn("aiCommitProgress.close()", source)
         self.assertIn("AiCommitResultDialog {", source)
-        self.assertIn("aiCommitResultDialog.openPlan(title, body, message)", source)
+        self.assertIn(
+            "aiCommitResultDialog.openPlan(\n"
+            "                    AiCommitPlanBridge.planModel.summary,\n"
+            "                    AiCommitPlanBridge.planModel.groups",
+            source,
+        )
         self.assertIn('"AI 提交方案已失效", "工作区发生变化，请重新生成"', source)
         self.assertIn("aiCommitResultDialog.reject()", source)
         self.assertNotIn("remoteAiConfirm", source)
@@ -69,13 +75,13 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("CommitComposer {", source)
         self.assertIn("onAiCommitRequested: root._requestAiCommitMessage()", source)
         accepted_handler = source.split("onAccepted:", 1)[1].split("onRejected:", 1)[0]
-        self.assertIn("root._submitAiCommit(planTitle, planBody)", accepted_handler)
-        submit_handler = source.split("function _submitAiCommit", 1)[1].split(
+        self.assertIn("root._acceptAiPlan()", accepted_handler)
+        accept_handler = source.split("function _acceptAiPlan", 1)[1].split(
             "function doAmend", 1
         )[0]
-        self.assertIn("root._quickCommitPush(message)", submit_handler)
-        self.assertNotIn("GitBridge.commit", submit_handler)
-        self.assertNotIn("GitBridge.push", submit_handler)
+        self.assertIn("AiCommitPlanBridge.commitPlanAndPush()", accept_handler)
+        self.assertNotIn("GitBridge.commit", accept_handler)
+        self.assertNotIn("GitBridge.push", accept_handler)
         self.assertNotIn("_aiCommitScope", source)
 
         self.assertIn("Fluent.DialogBoxCore {", result_source)
@@ -86,6 +92,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("level: Fluent.Enums.statusLevel.success", result_source)
         self.assertIn('text: "不采用"', result_source)
         self.assertIn('text: "采用并提交推送"', result_source)
+        self.assertIn('"将按 AI 规划创建 "', result_source)
+        self.assertIn("property var planGroups", result_source)
 
     def test_commit_composer_keeps_title_submit_and_quick_push_actions(self) -> None:
         source = (
@@ -144,11 +152,12 @@ class AiCommitQmlContractTest(unittest.TestCase):
         )[1].split("}", 1)[0]
         self.assertNotIn("NotificationManager", repo_error_handler)
         self.assertNotIn("function onErrorOccurred", settings_source)
-        self.assertEqual(host_source.count("function onErrorOccurred"), 1)
+        self.assertEqual(host_source.count("function onErrorOccurred"), 2)
         self.assertIn(
             'Fluent.NotificationManager.desktop.error("AI 提交规划", message)',
             host_source,
         )
+        self.assertIn("onPlanCommitPushFinished(ok, message)", host_source)
 
     def test_settings_card_uses_system_credential_store_only(self) -> None:
         source = self._settings_qml_source()
