@@ -32,6 +32,30 @@ def _sample_graph_commit() -> CommitInfo:
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_operation_exception_hides_technical_details_from_user(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        results: list[tuple[bool, str]] = []
+        bridge.operationFinished.connect(
+            lambda ok, message: results.append((ok, message))
+        )
+
+        def fail() -> tuple[bool, str]:
+            raise RuntimeError("fatal: internal worker detail")
+
+        try:
+            bridge._submit_operation("正在测试...", fail)
+            self.assertTrue(self._wait_until(app, lambda: bool(results)))
+            self.assertEqual(
+                results,
+                [(False, "Git 操作发生异常，请重试；技术详情已记录到日志。")],
+            )
+            self.assertNotIn("fatal:", results[0][1].lower())
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_create_branch_at_forwards_start_point_and_checkout_choice(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

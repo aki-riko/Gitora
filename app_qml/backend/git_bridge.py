@@ -265,7 +265,10 @@ class GitBridge(QObject):
                 f"Git 后台操作异常: {type(exc).__name__}: {exc}"
             )
             if publish:
-                self.operationFinished.emit(False, str(exc) or "Git 操作失败")
+                self.operationFinished.emit(
+                    False,
+                    "Git 操作发生异常，请重试；技术详情已记录到日志。",
+                )
 
         return submit_to_pool(
             function,

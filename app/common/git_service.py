@@ -338,7 +338,7 @@ class GitService(QObject):
             return False, "", "Git未安装或不在PATH中"
         except Exception as e:
             logger.exception(f"Git命令异常: {' '.join(args)}, repo={repo_path}, error: {e}")
-            return False, "", str(e)
+            return False, "", "Git 操作执行异常，技术详情已记录到日志。"
 
     @staticmethod
     def _is_index_lock_error(stdout: str, stderr: str) -> bool:
@@ -354,14 +354,22 @@ class GitService(QObject):
     @staticmethod
     def _friendly_git_state_error(lower_detail: str) -> str:
         patterns = (
-            (("nothing to commit", "no changes added"), "暂存区为空，请先暂存文件再提交。"),
-            (("please tell me who you are", "user.name", "user.email"), "请先配置 Git 用户信息（用户名和邮箱）。"),
-            (("not a git repository",), "当前路径不是有效的 Git 仓库，请先打开或初始化仓库。"),
-            (("would be overwritten by checkout", "would be overwritten by merge", "commit your changes or stash them", "cannot rebase: you have unstaged changes"), "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。"),
+            (("nothing to commit", "no changes added", "nothing added to commit"), "暂存区为空，请先暂存文件再提交。"),
+            (("please tell me who you are", "author identity unknown", "unable to auto-detect email address"), "请先配置 Git 用户信息（用户名和邮箱）。"),
+            (("not a git repository", "operation must be run in a work tree"), "当前路径不是有效的 Git 仓库，请先打开或初始化仓库。"),
+            (("does not have any commits yet", "bad revision 'head'"), "当前仓库还没有提交，请先完成首次提交。"),
+            (("untracked working tree files would be overwritten",), "未跟踪文件会被本次操作覆盖，请先移动、删除或暂存这些文件。"),
+            (("would be overwritten by checkout", "would be overwritten by merge", "would be overwritten by switch", "commit your changes or stash them", "cannot rebase: you have unstaged changes", "cannot pull with rebase: you have unstaged changes"), "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。"),
             (("not fully merged",), "该分支尚未完全合并，删除可能会丢失未合并的提交；如确认不再需要，请选择强制删除。"),
-            (("you have unmerged paths", "fix conflicts and then commit", "needs merge", "automatic merge failed", "mergeconflict"), "当前存在未解决的合并冲突，请先解决冲突后再继续。"),
+            (("you have unmerged paths", "fix conflicts and then commit", "needs merge", "automatic merge failed", "mergeconflict", "you have not concluded your merge", "merge_head exists"), "当前存在未解决的合并冲突，请先解决冲突后再继续。"),
+            (("no cherry-pick or revert in progress", "no rebase in progress", "there is no merge to abort"), "当前没有可继续或中止的 Git 操作。"),
+            (("rebase-merge directory", "rebase-apply directory", "rebase in progress"), "当前已有未完成的变基操作，请先继续、跳过或中止该操作。"),
+            (("cherry-pick is already in progress", "cherry-pick is currently in progress", "revert is already in progress"), "当前已有未完成的提交应用或撤销操作，请先继续或中止该操作。"),
             (("no stash entries found", "no stash found"), "当前没有可用的 stash 记录。"),
             (("no local changes to save",), "当前没有可保存的工作区修改。"),
+            (("empty commit message",), "提交信息不能为空，请填写后重试。"),
+            (("detached head", "you are not currently on a branch"), "当前处于分离头指针状态，请先切换或创建分支后再继续。"),
+            (("detected dubious ownership",), "Git 因仓库目录所有权异常拒绝操作，请确认该目录可信后再标记为安全目录。"),
         )
         for needles, message in patterns:
             if any(needle in lower_detail for needle in needles):
@@ -373,18 +381,26 @@ class GitService(QObject):
     @staticmethod
     def _friendly_git_remote_error(lower_detail: str) -> str:
         patterns = (
-            (("repository not found",), "远程仓库不存在或当前账号无权访问，请检查远程地址和权限。"),
+            (("pre-receive hook declined", "protected branch hook declined", "remote rejected"), "远程仓库规则拒绝了本次更新，请检查受保护分支、提交规范或服务器钩子要求。"),
+            (("repository not found", "does not appear to be a git repository", "could not read from remote repository"), "远程仓库不存在或当前账号无权访问，请检查远程地址和权限。"),
             (("non-fast-forward", "fetch first", "updates were rejected"), "推送被拒绝：远程有本地没有的提交，请先拉取并合并后再推送。"),
             (("no upstream branch", "has no upstream branch", "no upstream configured"), "当前分支未设置上游，请先设置跟踪分支后再同步。"),
             (("you asked to pull from the remote", "must specify a branch on the command line"), "当前分支没有配置从所选远程拉取哪个分支。请使用“拉取 → 指定拉取”同时选择远程和分支，或先为当前分支设置上游。"),
-            (("authentication failed", "permission denied (publickey)", "could not read username"), "远程认证失败，请检查账号、访问令牌或 SSH 密钥配置。"),
-            (("could not resolve host", "failed to connect", "network is unreachable", "connection timed out"), "无法连接远程仓库，请检查网络和远程地址。"),
+            (("authentication failed", "permission denied (publickey)", "could not read username", "terminal prompts disabled", "invalid username or password", "requested url returned error: 401", "requested url returned error: 403", "permission to"), "远程认证失败，请检查账号、访问令牌、SSH 密钥及仓库权限。"),
+            (("ssl certificate problem", "server certificate verification failed", "schannel: next initializesecuritycontext failed"), "远程服务器证书校验失败，请检查系统时间、证书链或代理设置。"),
+            (("could not resolve host", "could not resolve proxy", "failed to connect", "network is unreachable", "connection timed out", "connection refused"), "无法连接远程仓库，请检查网络、代理和远程地址。"),
+            (("remote end hung up unexpectedly", "unexpected disconnect", "early eof", "rpc failed"), "与远程仓库的连接中途断开，请检查网络稳定性后重试。"),
+            (("need to specify how to reconcile divergent branches", "not possible to fast-forward"), "本地与远程分支已分叉，请选择合并或变基方式后再拉取。"),
         )
         for needles, message in patterns:
             if any(needle in lower_detail for needle in needles):
                 return message
         if "remote" in lower_detail and "already exists" in lower_detail:
             return "远程仓库名称已存在，请换一个名称。"
+        if "couldn't find remote ref" in lower_detail or "could not find remote ref" in lower_detail:
+            return "远程仓库中找不到指定的分支或标签，请刷新远程信息后重新选择。"
+        if "no such remote" in lower_detail:
+            return "找不到指定的远程仓库，请刷新远程列表或重新配置远程。"
         return ""
 
     @staticmethod
@@ -395,14 +411,53 @@ class GitService(QObject):
             return "找不到要推送的本地分支或提交，请先确认当前分支和提交状态。"
         if "remote ref" in lower_detail and "does not exist" in lower_detail:
             return "远程分支或标签不存在，请刷新远程信息后重试。"
-        if any(token in lower_detail for token in ("unknown revision", "bad object", "needed a single revision")):
+        if any(token in lower_detail for token in ("unknown revision", "bad object", "needed a single revision", "ambiguous argument")):
             return "找不到指定的提交或引用，请检查哈希、分支或标签名称。"
+        if any(token in lower_detail for token in ("invalid object name", "not a valid object name", "reference is not a tree")):
+            return "指定内容不是有效的提交或引用，请重新选择。"
         if "already checked out at" in lower_detail:
             return "该分支已在其他工作树中检出，不能重复检出。"
         if "would clobber existing tag" in lower_detail or re.search(r"\btag\b.*\balready exists\b", lower_detail):
             return "该标签已存在，请换一个标签名称。"
+        if re.search(r"\bbranch named .+ already exists\b", lower_detail):
+            return "同名分支已存在，请换一个名称或直接使用已有分支。"
+        if "cannot delete branch" in lower_detail and ("checked out" in lower_detail or "current branch" in lower_detail):
+            return "不能删除当前正在使用的分支，请先切换到其他分支。"
         if "refusing to merge unrelated histories" in lower_detail:
             return "两个仓库历史没有共同起点，不能直接合并；请确认后再选择允许合并无关历史。"
+        if "cannot lock ref" in lower_detail or "unable to update local ref" in lower_detail:
+            return "分支或标签已被其他 Git 操作更新，请刷新仓库状态后重试。"
+        if any(token in lower_detail for token in ("invalid refspec", "not a valid refname", "invalid branch name")):
+            return "分支、标签或远程引用名称不合法，请修改名称后重试。"
+        return ""
+
+    @staticmethod
+    def _friendly_git_storage_error(lower_detail: str) -> str:
+        patterns = (
+            (("no space left on device", "disk quota exceeded"), "磁盘空间不足，无法完成 Git 操作，请清理空间后重试。"),
+            (("read-only file system",), "仓库所在位置为只读，无法写入，请检查磁盘或目录权限。"),
+            (("filename too long", "path too long"), "文件路径过长，Git 无法处理，请缩短仓库路径或文件名。"),
+            (("permission denied", "access is denied", "operation not permitted"), "Git 无权读写相关文件，请检查仓库目录和文件权限。"),
+            (("already exists and is not an empty directory",), "目标目录已存在且不为空，请选择空目录或新的保存位置。"),
+            (("unable to create directory", "could not create work tree dir", "cannot create directory"), "无法创建所需目录，请检查路径是否有效以及当前账号是否有写入权限。"),
+            (("locked working tree", "worktree is locked", "cannot remove a locked working tree"), "该工作树已锁定，请先确认没有任务使用它，再解除锁定后重试。"),
+        )
+        for needles, message in patterns:
+            if any(needle in lower_detail for needle in needles):
+                return message
+        return ""
+
+    @staticmethod
+    def _friendly_git_feature_error(lower_detail: str) -> str:
+        patterns = (
+            (("git: 'lfs' is not a git command", "git-lfs: command not found"), "当前系统未安装 Git LFS，请先安装并初始化 Git LFS。"),
+            (("no submodule mapping found in .gitmodules", "no url found for submodule path"), "子模块配置不完整，请检查 .gitmodules 中的路径和地址。"),
+            (("bad config line", "key does not contain a section", "invalid key"), "Git 配置文件包含无效内容，请检查对应配置项。"),
+            (("is a missing but locked working tree", "is already registered worktree"), "工作树记录与磁盘状态不一致，请先清理或修复 worktree 记录。"),
+        )
+        for needles, message in patterns:
+            if any(needle in lower_detail for needle in needles):
+                return message
         return ""
 
     @staticmethod
@@ -420,10 +475,15 @@ class GitService(QObject):
             GitService._friendly_git_state_error(lower_detail),
             GitService._friendly_git_remote_error(lower_detail),
             GitService._friendly_git_reference_error(lower_detail),
+            GitService._friendly_git_storage_error(lower_detail),
+            GitService._friendly_git_feature_error(lower_detail),
         ):
             if message:
                 return message
-        return detail or fallback
+        if detail:
+            logger.warning(f"未识别的 Git 错误，已向用户隐藏技术原文: {detail}")
+        fallback = (fallback or "Git 操作失败").strip().rstrip("。.!！")
+        return f"{fallback}。请检查仓库状态后重试；技术详情已记录到日志。"
 
     def _run_git_async(
         self,
@@ -455,7 +515,11 @@ class GitService(QObject):
         return submit_to_pool(
             lambda: self._run_git_sync_at(work_dir, args, timeout),
             on_success=lambda result: callback(*result),
-            on_failure=lambda exc: callback(False, "", str(exc)),
+            on_failure=lambda exc: callback(
+                False,
+                "",
+                self._friendly_git_error(str(exc), "Git 后台操作失败"),
+            ),
         )
 
     def _run_git_push_async(
@@ -489,7 +553,11 @@ class GitService(QObject):
         return submit_to_pool(
             work,
             on_success=lambda result: callback(*result),
-            on_failure=lambda exc: callback(False, "", str(exc)),
+            on_failure=lambda exc: callback(
+                False,
+                "",
+                self._friendly_git_error(str(exc), "Git 推送任务失败"),
+            ),
             on_progress=report_progress,
         )
 
@@ -1737,7 +1805,9 @@ class GitService(QObject):
                 return False, self._friendly_git_error(
                     stderr, "创建分支失败", branch_name=branch
                 )
-            return False, error or f"分支起点不存在或不是提交: {start_point}"
+            return False, self._friendly_git_error(
+                error, f"分支起点不存在或不是提交: {start_point}"
+            )
         commit_hash = commit_hash.strip()
         if not commit_hash:
             return False, f"无法解析分支起点: {start_point}"
@@ -2984,7 +3054,8 @@ class GitService(QObject):
                 return True, f"已初始化Git仓库: {path}"
             return False, self._friendly_git_error(result.stderr, "初始化失败")
         except Exception as e:
-            return False, str(e)
+            logger.exception(f"初始化 Git 仓库失败: path={path}, error={e}")
+            return False, "初始化失败，请检查目录权限与 Git 安装状态后重试。"
 
     # ==================== Rebase操作 ====================
 

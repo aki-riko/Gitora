@@ -62,7 +62,11 @@ class GitBranchCreationTest(unittest.TestCase):
         )
 
         self.assertFalse(ok)
-        self.assertTrue(msg)
+        self.assertEqual(
+            msg,
+            "找不到指定的提交或引用，请检查哈希、分支或标签名称。",
+        )
+        self.assertNotIn("fatal:", msg.lower())
         self.assertEqual(run_git(repo, "branch", "--list", "topic").stdout, "")
 
     def test_duplicate_branch_returns_actionable_chinese_message(self) -> None:
