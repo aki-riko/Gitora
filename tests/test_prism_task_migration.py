@@ -8,6 +8,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QThread, QTimer
 
+from app.common.scanned_repos import ScannedReposCache
 from app_qml.backend.git_bridge import GitBridge
 from app_qml.backend.repo_scanner import RepoScanner
 
@@ -167,7 +168,9 @@ def test_repo_scanner_uses_engine_task_and_reports_on_main_thread(
     second = tmp_path / "group" / "second"
     (first / ".git").mkdir(parents=True)
     (second / ".git").mkdir(parents=True)
-    scanner = RepoScanner()
+    scanner = RepoScanner(
+        cache=ScannedReposCache(tmp_path / "scanned_repos.json")
+    )
     found: list[str] = []
     finished: list[int] = []
     callback_threads: list[QThread] = []

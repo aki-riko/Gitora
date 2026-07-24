@@ -14,6 +14,7 @@ from prismqml import TaskHandle, current_task
 
 from app.common.logger import get_logger
 from app.common.prism_task import submit_to_pool
+from app.common.scanned_repos import ScannedReposCache
 
 logger = get_logger("RepoScanner")
 
@@ -68,11 +69,17 @@ class RepoScanner(QObject):
     scanProgress = Signal(str)
     scanningChanged = Signal(bool)
 
-    def __init__(self, parent: Optional[QObject] = None):
+    def __init__(
+        self,
+        parent: Optional[QObject] = None,
+        cache: Optional[ScannedReposCache] = None,
+    ):
         super().__init__(parent)
+        self._cache = cache or ScannedReposCache()
         self._task: Optional[TaskHandle] = None
         self._scanning = False
-        self._results: List[str] = []
+        self._scan_found_count = 0
+        self._results: List[str] = self._cache.get_all()
 
     @Property(bool, notify=scanningChanged)
     def scanning(self) -> bool:
@@ -92,7 +99,8 @@ class RepoScanner(QObject):
             return
         roots = list(roots) if roots else _list_fixed_drives()
         logger.info(f"开始扫描 Git 仓库,根目录: {roots}")
-        self._results = []
+        self._results = self._cache.get_all()
+        self._scan_found_count = 0
         self._scanning = True
         self.scanningChanged.emit(True)
         self._task = submit_to_pool(
@@ -121,11 +129,15 @@ class RepoScanner(QObject):
             self.scanProgress.emit(str(value))
 
     def _on_repo_found(self, path: str):
-        self._results.append(path)
-        self.repoFound.emit(path)
+        self._scan_found_count += 1
+        normalized_path, added = self._cache.add(path)
+        if added:
+            self._results.append(normalized_path)
+        self.repoFound.emit(normalized_path)
 
     def _on_finished(self, count: object):
         logger.info(f"扫描完成,找到 {count} 个仓库")
+        self._cache.save()
         self._task = None
         self._scanning = False
         self.scanningChanged.emit(False)
@@ -140,7 +152,8 @@ class RepoScanner(QObject):
         self._finish_without_result()
 
     def _finish_without_result(self) -> None:
-        count = len(self._results)
+        self._cache.save()
+        count = self._scan_found_count
         self._task = None
         self._scanning = False
         self.scanningChanged.emit(False)
