@@ -376,6 +376,7 @@ class GitService(QObject):
             (("repository not found",), "远程仓库不存在或当前账号无权访问，请检查远程地址和权限。"),
             (("non-fast-forward", "fetch first", "updates were rejected"), "推送被拒绝：远程有本地没有的提交，请先拉取并合并后再推送。"),
             (("no upstream branch", "has no upstream branch", "no upstream configured"), "当前分支未设置上游，请先设置跟踪分支后再同步。"),
+            (("you asked to pull from the remote", "must specify a branch on the command line"), "当前分支没有配置从所选远程拉取哪个分支。请使用“拉取 → 指定拉取”同时选择远程和分支，或先为当前分支设置上游。"),
             (("authentication failed", "permission denied (publickey)", "could not read username"), "远程认证失败，请检查账号、访问令牌或 SSH 密钥配置。"),
             (("could not resolve host", "failed to connect", "network is unreachable", "connection timed out"), "无法连接远程仓库，请检查网络和远程地址。"),
         )

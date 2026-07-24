@@ -58,6 +58,12 @@ class GitErrorMessageTest(unittest.TestCase):
                 "当前分支未设置上游，请先设置跟踪分支后再同步。",
             ),
             (
+                "You asked to pull from the remote 'origin', but did not specify\n"
+                "a branch. Because this is not the default configured remote for\n"
+                "your current branch, you must specify a branch on the command line.",
+                "当前分支没有配置从所选远程拉取哪个分支。请使用“拉取 → 指定拉取”同时选择远程和分支，或先为当前分支设置上游。",
+            ),
+            (
                 "fatal: Authentication failed for 'https://example.invalid/repo.git/'",
                 "远程认证失败，请检查账号、访问令牌或 SSH 密钥配置。",
             ),
