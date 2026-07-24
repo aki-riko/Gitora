@@ -461,6 +461,23 @@ class GitService(QObject):
         return ""
 
     @staticmethod
+    def _git_error_for_log(detail: str) -> str:
+        """保留诊断信息，同时移除远程 URL 和常见令牌中的凭据。"""
+        substitutions = (
+            (r"(?i)\b(https?://)[^/\s@]+@", r"\1***@"),
+            (r"(?i)([?&](?:access_token|token|password|passwd|auth)=)[^&\s]+", r"\1***"),
+            (r"(?i)(authorization:\s*(?:bearer|basic)\s+)\S+", r"\1***"),
+            (
+                r"\b(?:github_pat_[A-Za-z0-9_]{20,}|gh[pousr]_[A-Za-z0-9]{20,}|glpat-[A-Za-z0-9_-]{20,})\b",
+                "***",
+            ),
+        )
+        redacted = detail
+        for pattern, replacement in substitutions:
+            redacted = re.sub(pattern, replacement, redacted)
+        return redacted if len(redacted) <= 4000 else redacted[:4000] + "…[已截断]"
+
+    @staticmethod
     def _friendly_git_error(
         error: str, fallback: str, *, branch_name: str = ""
     ) -> str:
@@ -481,7 +498,10 @@ class GitService(QObject):
             if message:
                 return message
         if detail:
-            logger.warning(f"未识别的 Git 错误，已向用户隐藏技术原文: {detail}")
+            logger.warning(
+                "未识别的 Git 错误，已向用户隐藏技术原文: "
+                f"{GitService._git_error_for_log(detail)}"
+            )
         fallback = (fallback or "Git 操作失败").strip().rstrip("。.!！")
         return f"{fallback}。请检查仓库状态后重试；技术详情已记录到日志。"
 

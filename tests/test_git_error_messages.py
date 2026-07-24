@@ -4,6 +4,7 @@ from __future__ import annotations
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from app.common.git_service import GitService
 from tests.git_test_utils import commit_all, init_repo, run_git, write_file
@@ -93,9 +94,14 @@ class GitErrorMessageTest(unittest.TestCase):
         )
 
     def test_unknown_git_error_uses_chinese_fallback_for_users(self) -> None:
-        raw = "fatal: a future Git error that Gitora does not recognize"
+        secret = "ghp_abcdefghijklmnopqrstuvwxyz123456"
+        raw = (
+            "fatal: a future Git error from "
+            f"https://user:password@example.invalid/repo.git?token={secret}"
+        )
 
-        message = GitService._friendly_git_error(raw, "切换分支失败")
+        with patch("app.common.git_service.logger.warning") as warning:
+            message = GitService._friendly_git_error(raw, "切换分支失败")
 
         self.assertEqual(
             message,
@@ -103,6 +109,10 @@ class GitErrorMessageTest(unittest.TestCase):
         )
         self.assertNotIn(raw, message)
         self.assertNotIn("fatal:", message.lower())
+        logged = warning.call_args.args[0]
+        self.assertNotIn("user:password", logged)
+        self.assertNotIn(secret, logged)
+        self.assertIn("https://***@example.invalid/repo.git?token=***", logged)
 
     def test_reference_names_containing_conflict_are_not_merge_conflicts(self) -> None:
         cases = (
