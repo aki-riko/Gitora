@@ -58,7 +58,7 @@
 | 历史 | 提交详情 | 已有 | `CommitDetailDialog`, `DiffViewer` | 已支持点击变更文件过滤 diff |
 | 历史 | 文件历史比较 | 已有 | `FileHistoryDialog`, `requestDiffBetween`, `DiffViewer` | 已支持两提交 diff 的统一/分栏视图 |
 | 历史 | checkout commit | 已有 | `checkoutCommit` | 分离 HEAD 提示复核 |
-| 历史 | cherry-pick | 已有 | `cherryPick`, `continueCherryPick`, `abortCherryPick` | 已支持冲突 continue/abort |
+| 历史 | cherry-pick | 已有 | `cherryPickToBranch`, `continueCherryPick`, `abortCherryPick` | 显式选择本地目标分支，已支持冲突 continue/abort |
 | 历史 | revert | 已有 | `revertCommit`, `continueRevert`, `abortRevert` | 已支持冲突 continue/abort |
 | 历史 | reset soft/mixed/hard | 已有 | `HistoryView.resetDanger`, `resetToCommit` | hard 文案继续明确丢弃 |
 | 历史 | 复制 hash | 已有 | `ClipboardHelper.copy` | 保持轻量入口 |

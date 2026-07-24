@@ -460,6 +460,41 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertEqual(run_git(repo, "rev-parse", "HEAD").stdout.strip(), master_commit)
         self.assertEqual((repo / "conflict.txt").read_text(encoding="utf-8"), "master\n")
 
+    def test_cherry_pick_to_branch_switches_to_explicit_local_target(self) -> None:
+        repo = init_repo(self.root / "cherry-target")
+        write_file(repo, "base.txt", "base\n")
+        commit_all(repo, "base")
+        run_git(repo, "checkout", "-b", "source")
+        write_file(repo, "picked.txt", "picked\n")
+        source_commit = commit_all(repo, "source change")
+        run_git(repo, "checkout", "master")
+        run_git(repo, "checkout", "-b", "target")
+        run_git(repo, "checkout", "master")
+        service = self.service_for(repo)
+
+        ok, msg = service.cherry_pick_to_branch(source_commit, "target")
+
+        self.assertTrue(ok, msg)
+        self.assertEqual(
+            run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
+            "target",
+        )
+        self.assertEqual((repo / "picked.txt").read_text(encoding="utf-8"), "picked\n")
+        self.assertIn("应用到分支 target", msg)
+
+    def test_cherry_pick_to_branch_rejects_missing_target_without_switching(self) -> None:
+        repo = init_repo(self.root / "cherry-missing-target")
+        write_file(repo, "base.txt", "base\n")
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+        current = service.get_current_branch()
+
+        ok, msg = service.cherry_pick_to_branch("HEAD", "missing")
+
+        self.assertFalse(ok)
+        self.assertEqual(current, service.get_current_branch())
+        self.assertEqual(msg, "目标分支不存在: missing")
+
     def test_revert_continue_and_abort_use_real_conflicts(self) -> None:
         repo, service, target_commit = self.make_revert_conflict_repo("revert-continue")
         ok, msg = service.revert_commit(target_commit)

@@ -19,6 +19,10 @@ Item {
     property bool includeAllRefs: false
     property var selectedCommit: null
     property string pendingJumpHash: ""
+    property var cherryPickBranches: []
+    property string cherryPickCurrentBranch: ""
+    property string cherryPickTargetBranch: ""
+    property string cherryPickRequestRepoPath: ""
 
     property var allCommits: []        // 已加载的提交(累积)
     readonly property var timelineItems: historyTimelineModel.items
@@ -183,7 +187,26 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() { root.refreshIncrementally() }
-        function onRepoPathChanged(path) { root.resetForRepoChange() }
+        function onRepoPathChanged(path) {
+            cherryPickDialog.close()
+            root._clearCherryPickDialogState()
+            root.resetForRepoChange()
+        }
+        function onBranchesReady(repoPath, list) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || repoPath !== root.cherryPickRequestRepoPath) return
+            var names = []
+            for (var i = 0; i < list.length; i++) {
+                var branch = list[i]
+                // 分离头指针展示项不是可检出的本地分支，不能作为目标。
+                if (!branch.isRemote && branch.name.indexOf(" ") < 0)
+                    names.push(branch.name)
+            }
+            root.cherryPickBranches = names
+            var targetIndex = names.indexOf(root.cherryPickCurrentBranch)
+            if (targetIndex < 0 && names.length > 0) targetIndex = 0
+            root.cherryPickTargetBranch = targetIndex >= 0 ? names[targetIndex] : ""
+        }
     }
 
     function _op(res) {
@@ -192,6 +215,23 @@ Item {
         } else {
             Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
         }
+    }
+
+    function _openCherryPickDialog() {
+        if (!root.selectedCommit || !GitBridge || !GitBridge.repoPath) return
+        root.cherryPickRequestRepoPath = GitBridge.repoPath
+        root.cherryPickCurrentBranch = GitBridge.getCurrentBranch()
+        root.cherryPickBranches = []
+        root.cherryPickTargetBranch = ""
+        cherryPickDialog.open()
+        GitBridge.requestBranches()
+    }
+
+    function _clearCherryPickDialogState() {
+        root.cherryPickRequestRepoPath = ""
+        root.cherryPickBranches = []
+        root.cherryPickCurrentBranch = ""
+        root.cherryPickTargetBranch = ""
     }
 
     // 弹 reset 危险确认(按模式给不同说明,hard 额外强警告)
@@ -517,7 +557,7 @@ Item {
                             Fluent.Button {
                                 text: "Cherry-pick"
                                 icon: Fluent.Enums.icon.branch
-                                onClicked: root._op(GitBridge.cherryPick(root.selectedCommit.hash))
+                                onClicked: root._openCherryPickDialog()
                             }
                             Fluent.Button {
                                 text: "Revert"
@@ -576,6 +616,92 @@ Item {
 
     // 提交详情
     CommitDetailDialog { id: commitDetailDialog }
+
+    // Cherry-pick 必须明确显示并选择目标本地分支，避免误以为会应用到提交所属分支。
+    Fluent.MessageBox {
+        id: cherryPickDialog
+        objectName: "cherryPickDialog"
+        title: ""
+        confirmText: "应用 Cherry-pick"
+        cancelText: "取消"
+        function validate() {
+            return root.selectedCommit !== null
+                && root.cherryPickBranches.indexOf(root.cherryPickTargetBranch) >= 0
+        }
+        onAccepted: {
+            var commit = root.selectedCommit
+            var target = root.cherryPickTargetBranch
+            if (commit && target)
+                root._op(GitBridge.cherryPickToBranch(commit.hash, target))
+            root._clearCherryPickDialogState()
+        }
+        onRejected: root._clearCherryPickDialogState()
+
+        ColumnLayout {
+            width: 420
+            spacing: Fluent.Enums.spacing.m
+
+            Fluent.Label {
+                objectName: "cherryPickDialogTitle"
+                Layout.fillWidth: true
+                text: "Cherry-pick 提交"
+                type: Fluent.Enums.label.type_subtitle
+                color: Fluent.Enums.textColor.primary
+            }
+
+            Text {
+                objectName: "cherryPickCommitSummary"
+                Layout.fillWidth: true
+                text: root.selectedCommit
+                    ? root.selectedCommit.shortHash + " · " + root.selectedCommit.message
+                    : ""
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
+                wrapMode: Text.WordWrap
+                maximumLineCount: 3
+                elide: Text.ElideRight
+            }
+
+            Fluent.Label {
+                objectName: "cherryPickTargetLabel"
+                Layout.fillWidth: true
+                text: "目标分支"
+                type: Fluent.Enums.label.type_body_strong
+                color: Fluent.Enums.textColor.secondary
+            }
+
+            Fluent.ComboBox {
+                id: cherryPickTargetCombo
+                objectName: "cherryPickTargetCombo"
+                Layout.fillWidth: true
+                model: root.cherryPickBranches
+                currentIndex: root.cherryPickBranches.indexOf(root.cherryPickTargetBranch)
+                placeholderText: "正在加载本地分支…"
+                enabled: root.cherryPickBranches.length > 0
+                onActivated: function(index) {
+                    root.cherryPickTargetBranch = root.cherryPickBranches[index] || ""
+                }
+            }
+
+            Text {
+                objectName: "cherryPickTargetHint"
+                Layout.fillWidth: true
+                text: root.cherryPickTargetBranch
+                    ? (root.cherryPickTargetBranch === root.cherryPickCurrentBranch
+                        ? "当前分支: " + root.cherryPickCurrentBranch
+                        : "将先切换到 " + root.cherryPickTargetBranch
+                            + "，再应用该提交")
+                    : "未找到可用的本地目标分支"
+                color: root.cherryPickTargetBranch
+                    ? Fluent.Enums.textColor.tertiary
+                    : Fluent.Enums.statusLevel.warningColor
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.caption
+                wrapMode: Text.WordWrap
+            }
+        }
+    }
 
     // 直接从选中的历史提交创建，默认不切换，避免扰动当前工作区。
     CreateBranchDialog { id: createBranchDialog }

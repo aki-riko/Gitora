@@ -2894,6 +2894,34 @@ class GitService(QObject):
             )
         return False, self._friendly_git_error(stderr, "Cherry-pick失败")
 
+    def cherry_pick_to_branch(
+        self, commit_hash: str, target_branch: str
+    ) -> tuple[bool, str]:
+        """将指定提交应用到明确的本地目标分支。"""
+        commit_hash = (commit_hash or "").strip()
+        target_branch = (target_branch or "").strip()
+        if not commit_hash:
+            return False, "未指定提交"
+        if self._bad_ref(target_branch):
+            return False, "非法的目标分支名"
+
+        branch_exists, _, _ = self._run_git_sync([
+            'show-ref', '--verify', '--quiet', f'refs/heads/{target_branch}'
+        ])
+        if not branch_exists:
+            return False, f"目标分支不存在: {target_branch}"
+
+        current_branch = self.get_current_branch()
+        if current_branch != target_branch:
+            switched, switch_msg = self.checkout_branch(target_branch)
+            if not switched:
+                return False, f"无法切换到目标分支“{target_branch}”: {switch_msg}"
+
+        ok, message = self.cherry_pick(commit_hash)
+        if ok:
+            return True, f"已将提交 {commit_hash[:7]} 应用到分支 {target_branch}"
+        return False, message
+
     # ==================== 克隆仓库 ====================
 
     def clone(self, url: str, path: str, callback: Callable[[bool, str], None] = None):

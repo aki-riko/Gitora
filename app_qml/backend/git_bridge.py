@@ -741,6 +741,11 @@ class GitBridge(QObject):
         ok, msg = self._svc.cherry_pick(commit_hash)
         return [ok, msg]
 
+    @Slot(str, str, result="QVariantList")
+    def cherryPickToBranch(self, commit_hash: str, target_branch: str) -> list:
+        ok, msg = self._svc.cherry_pick_to_branch(commit_hash, target_branch)
+        return [ok, msg]
+
     # ==================== 分支 ====================
     @Slot()
     def requestBranches(self):
