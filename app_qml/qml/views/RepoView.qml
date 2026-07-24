@@ -313,46 +313,63 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
-            Fluent.Button {
-                id: openButton
-                text: "打开"
-                icon: Fluent.Enums.icon.folder
-                feature: Fluent.Enums.button.feature_split
-                // 主按钮:选目录;下拉:最近仓库 + 后台扫描到的仓库(去重)
-                property var pathList: []
-                menuItems: {
-                    var items = []
-                    for (var i = 0; i < pathList.length; i++)
-                        items.push({ "text": root._displayRepoPath(pathList[i]), "icon": Fluent.Enums.icon.folder })
-                    if (items.length === 0) {
-                        var scannerActive = (typeof RepoScanner !== "undefined") && RepoScanner !== null && RepoScanner.scanning
-                        items.push({ "text": scannerActive ? "正在扫描磁盘..." : "暂无最近仓库", "icon": Fluent.Enums.icon.info })
+            RowLayout {
+                id: openButtonGroup
+                objectName: "repositoryOpenButtonGroup"
+                spacing: -Fluent.Enums.border.thin
+
+                Fluent.Button {
+                    id: openButton
+                    objectName: "repositoryOpenButton"
+                    text: "打开"
+                    icon: Fluent.Enums.icon.folder
+                    // 主按钮选择目录；相邻箭头打开可搜索的最近/扫描仓库列表。
+                    property var pathList: []
+
+                    function rebuildList() {
+                        var seen = ({})
+                        var merged = []
+                        var recent = GitBridge ? GitBridge.getRecentRepos() : []
+                        var scanned = (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner.getResults() : []
+                        var all = recent.concat(scanned)
+                        for (var i = 0; i < all.length; i++) {
+                            var p = all[i]
+                            if (!seen[p]) { seen[p] = true; merged.push(p) }
+                        }
+                        pathList = merged
                     }
-                    return items
-                }
-                function rebuildList() {
-                    var seen = ({})
-                    var merged = []
-                    var recent = GitBridge ? GitBridge.getRecentRepos() : []
-                    var scanned = (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner.getResults() : []
-                    var all = recent.concat(scanned)
-                    for (var i = 0; i < all.length; i++) {
-                        var p = all[i]
-                        if (!seen[p]) { seen[p] = true; merged.push(p) }
-                    }
-                    pathList = merged
-                }
-                Component.onCompleted: rebuildList()
-                onClicked: folderDialog.open()
-                onMenuItemClicked: function(index, text) {
-                    if (index >= 0 && index < pathList.length) {
-                        GitBridge.openRepoAsync(pathList[index])
+
+                    Component.onCompleted: rebuildList()
+                    onClicked: folderDialog.open()
+
+                    Connections {
+                        target: (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner : null
+                        function onScanFinished(n) {
+                            openButton.rebuildList()
+                            if (repositorySearchMenu.isOpen) {
+                                repositorySearchMenu.loading = false
+                                repositorySearchMenu.setPaths(openButton.pathList)
+                            }
+                        }
                     }
                 }
-                // 扫描有新结果时刷新下拉
-                Connections {
-                    target: (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner : null
-                    function onScanFinished(n) { openButton.rebuildList() }
+
+                Fluent.Button {
+                    id: openMenuButton
+                    objectName: "repositoryOpenMenuButton"
+                    icon: Fluent.Enums.icon.chevron_down
+                    toolTipText: "搜索并打开仓库"
+                    Layout.preferredWidth: Fluent.Enums.controlSize.splitButtonArrowWidth
+                    Layout.minimumWidth: Fluent.Enums.controlSize.splitButtonArrowWidth
+                    onHoveredChanged: {
+                        if (hovered) repositorySearchMenu.prewarm()
+                    }
+                    onClicked: {
+                        openButton.rebuildList()
+                        repositorySearchMenu.loading = (typeof RepoScanner !== "undefined")
+                            && RepoScanner !== null && RepoScanner.scanning
+                        repositorySearchMenu.openFor(openButtonGroup, openButton.pathList)
+                    }
                 }
             }
             Fluent.Button {
@@ -644,6 +661,14 @@ Item {
                     }
                 }
             }
+        }
+    }
+
+    RepositorySearchMenu {
+        id: repositorySearchMenu
+        pathFormatter: root._displayRepoPath
+        onPathSelected: function(path) {
+            GitBridge.openRepoAsync(path)
         }
     }
 

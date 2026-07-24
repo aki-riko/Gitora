@@ -47,12 +47,22 @@ class RepoViewPerformanceTest(unittest.TestCase):
 
     def test_repository_dropdown_limits_display_width_but_opens_original_path(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+        menu_source = Path(
+            "app_qml/qml/components/RepositorySearchMenu.qml"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("repoPathFontMetrics.elidedText(", source)
         self.assertIn("Text.ElideMiddle", source)
-        self.assertIn('"text": root._displayRepoPath(pathList[i])', source)
-        self.assertIn("GitBridge.openRepoAsync(pathList[index])", source)
-        self.assertNotIn('"text": pathList[i]', source)
+        self.assertIn("pathFormatter: root._displayRepoPath", source)
+        self.assertIn(
+            "repositorySearchMenu.openFor(openButtonGroup, openButton.pathList)",
+            source,
+        )
+        self.assertIn("GitBridge.openRepoAsync(path)", source)
+        self.assertIn("if (repositorySearchMenu.isOpen)", source)
+        self.assertIn("repositorySearchMenu.setPaths(openButton.pathList)", source)
+        self.assertIn("pathSelected(selectedPath)", menu_source)
+        self.assertNotIn("GitBridge.openRepoAsync(pathList[index])", source)
 
     def test_advanced_view_loads_repository_state_in_background(self) -> None:
         source = Path("app_qml/qml/views/AdvancedView.qml").read_text(encoding="utf-8")
