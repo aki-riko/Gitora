@@ -24,8 +24,10 @@ Window {
     id: root
 
     readonly property int probeLaneCount: graphModel.laneCount
+    readonly property int probeGroupCount: graphModel.items.length
     readonly property int probeCardCount: _cardCount(graphModel.items)
     readonly property int probeLabelCount: _labelCount(graphModel.items)
+    readonly property string probeHashOrder: _hashOrder(graphModel.items)
 
     function _cardCount(groups) {
         var total = 0
@@ -42,6 +44,16 @@ Window {
                 total += cards[cardIndex].labels.length
         }
         return total
+    }
+
+    function _hashOrder(groups) {
+        var hashes = []
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            var cards = groups[groupIndex].cards
+            for (var cardIndex = 0; cardIndex < cards.length; cardIndex++)
+                hashes.push(cards[cardIndex].hash)
+        }
+        return hashes.join(",")
     }
 
     width: 1000
@@ -114,7 +126,7 @@ def _assert_probe_result(result: subprocess.CompletedProcess[str], output: Path)
     assert image.width() >= 900 and image.height() >= 600, diagnostic
 
 
-def test_real_branched_repo_renders_graph_timeline_in_qml() -> None:
+def test_interleaved_dates_keep_graph_order_in_real_qml_timeline() -> None:
     with tempfile.TemporaryDirectory(prefix="gitora-graph-qml-") as temp_dir:
         repo, _hashes = build_branched_repo(Path(temp_dir))
         configured = os.environ.get(SCREENSHOT_ENV, "").strip()
@@ -141,7 +153,17 @@ def _graph_payload(repo: Path) -> list[dict]:
     assert len(commits) == 5
     assert any(len(commit.parents) == 2 for commit in commits)
     assert any(ref.kind == "tag" for commit in commits for ref in commit.refs)
-    return [_commit_to_dict(commit) for commit in commits]
+    payload = [_commit_to_dict(commit) for commit in commits]
+    interleaved_dates = (
+        "2026-07-24T10:00:00+08:00",
+        "2026-07-24T09:00:00+08:00",
+        "2026-07-25T12:00:00+08:00",
+        "2026-07-25T11:00:00+08:00",
+        "2026-07-24T08:00:00+08:00",
+    )
+    for commit, date in zip(payload, interleaved_dates, strict=True):
+        commit["date"] = date
+    return payload
 
 
 def _create_scene(engine, payload: list[dict]):
@@ -192,10 +214,14 @@ def _validate_rendered_scene(root, payload: list[dict], output: Path) -> str:
         if item.objectName() == "timelineGraphLayer"
     ]
     lane_count = int(root.property("probeLaneCount"))
+    group_count = int(root.property("probeGroupCount"))
     card_count = int(root.property("probeCardCount"))
     label_count = int(root.property("probeLabelCount"))
+    hash_order = str(root.property("probeHashOrder")).split(",")
     assert timeline is not None and int(timeline.property("graphLaneCount")) == lane_count
-    assert lane_count >= 2 and card_count == len(payload) and label_count >= 4
+    assert lane_count >= 2 and group_count == 3
+    assert card_count == len(payload) and label_count >= 4
+    assert hash_order == [commit["hash"] for commit in payload]
     assert len(layers) >= card_count
     image = root.grabWindow()
     assert not image.isNull() and _sample_color_count(image) >= 4

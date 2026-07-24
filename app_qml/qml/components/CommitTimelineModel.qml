@@ -70,23 +70,23 @@ QtObject {
 
     function _buildResult(values) {
         var groups = []
-        var indexByLabel = ({})
         var maximumLanes = 1
         for (var index = 0; index < values.length; index++) {
             var commit = values[index]
             var label = _dateGroup(commit.date)
-            if (indexByLabel[label] === undefined) {
-                indexByLabel[label] = groups.length
+            var groupIndex = groups.length - 1
+            if (groupIndex < 0 || groups[groupIndex].title !== label) {
                 groups.push({
                     "title": label,
                     "status": "info",
                     "graph": commit.graphHeader || {},
                     "cards": []
                 })
+                groupIndex = groups.length - 1
             }
             var card = _cardFor(commit)
             maximumLanes = Math.max(maximumLanes, card.graph.laneCount || 1)
-            groups[indexByLabel[label]].cards.push(card)
+            groups[groupIndex].cards.push(card)
         }
         return {"items": groups, "laneCount": maximumLanes}
     }
