@@ -392,6 +392,7 @@ class GitService(QObject):
             (("please tell me who you are", "user.name", "user.email"), "请先配置 Git 用户信息（用户名和邮箱）。"),
             (("not a git repository",), "当前路径不是有效的 Git 仓库，请先打开或初始化仓库。"),
             (("would be overwritten by checkout", "would be overwritten by merge", "commit your changes or stash them", "cannot rebase: you have unstaged changes"), "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。"),
+            (("not fully merged",), "该分支尚未完全合并，删除可能会丢失未合并的提交；如确认不再需要，请选择强制删除。"),
             (("you have unmerged paths", "fix conflicts and then commit", "needs merge", "automatic merge failed", "conflict"), "当前存在未解决的合并冲突，请先解决冲突后再继续。"),
             (("no stash entries found", "no stash found"), "当前没有可用的 stash 记录。"),
             (("no local changes to save",), "当前没有可保存的工作区修改。"),

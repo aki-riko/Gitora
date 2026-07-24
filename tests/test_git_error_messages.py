@@ -41,6 +41,11 @@ class GitErrorMessageTest(unittest.TestCase):
                 "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。",
             ),
             (
+                "error: the branch 'backup/fix-netease-pylint-before-reset-20260725' is not fully merged\n"
+                "hint: If you are sure you want to delete it, run 'git branch -D backup/fix-netease-pylint-before-reset-20260725'",
+                "该分支尚未完全合并，删除可能会丢失未合并的提交；如确认不再需要，请选择强制删除。",
+            ),
+            (
                 "Automatic merge failed; fix conflicts and then commit the result.",
                 "当前存在未解决的合并冲突，请先解决冲突后再继续。",
             ),
@@ -135,6 +140,24 @@ class GitErrorMessageTest(unittest.TestCase):
         self.assertEqual(
             message,
             "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。",
+        )
+
+    def test_real_unmerged_branch_delete_is_rewritten(self) -> None:
+        repo = init_repo(self.root / "unmerged-branch")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        run_git(repo, "checkout", "-b", "feature")
+        write_file(repo, "feature.txt", "feature\n")
+        commit_all(repo, "feature")
+        run_git(repo, "checkout", "master")
+        service = self.service_for(repo)
+
+        ok, message = service.delete_branch("feature")
+
+        self.assertFalse(ok)
+        self.assertEqual(
+            message,
+            "该分支尚未完全合并，删除可能会丢失未合并的提交；如确认不再需要，请选择强制删除。",
         )
 
 
