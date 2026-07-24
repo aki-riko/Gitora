@@ -827,22 +827,27 @@ class GitService(QObject):
         return commits
 
     def get_graph_log_at(
-        self, repo_path: str, count: int = 50, skip: int = 0
+        self,
+        repo_path: str,
+        count: int = 50,
+        skip: int = 0,
+        include_all_refs: bool = False,
     ) -> list[CommitInfo]:
-        """获取包含全部引用、父关系和稳定轨道的提交图分页。"""
+        """获取当前 HEAD 或全部引用的提交图分页。"""
         safe_count = max(0, count)
         safe_skip = max(0, skip)
         if safe_count == 0:
             return []
         cmd = [
             "log",
-            "--all",
             "--topo-order",
             "--decorate=full",
             f"--max-count={safe_skip + safe_count}",
             f"--format={self._GRAPH_LOG_FORMAT}",
             "--date=format:%Y-%m-%d %H:%M",
         ]
+        if include_all_refs:
+            cmd.insert(1, "--all")
         success, stdout, stderr = self._run_git_sync_at(repo_path, cmd)
         if not success:
             logger.warning(f"获取提交图失败: {stderr or '未知错误'}")
@@ -879,8 +884,10 @@ class GitService(QObject):
 
         return commits
 
-    def _resolve_commit_hash(self, repo_path: str, query: str) -> str:
-        """解析当前 HEAD 历史内唯一的提交对象前缀，避免十六进制引用名误命中。"""
+    def _resolve_commit_hash(
+        self, repo_path: str, query: str, include_all_refs: bool = False
+    ) -> str:
+        """解析选定历史范围内唯一的提交对象前缀。"""
         if not re.fullmatch(r"[0-9a-fA-F]{4,64}", query):
             return ""
 
@@ -898,26 +905,54 @@ class GitService(QObject):
         if not success or object_type.strip() != 'commit':
             return ""
 
+        if include_all_refs:
+            in_head, _, _ = self._run_git_sync_at(repo_path, [
+                'merge-base', '--is-ancestor', commit_hash, 'HEAD'
+            ])
+            if in_head:
+                return commit_hash
+            reachable, refs, _ = self._run_git_sync_at(repo_path, [
+                'for-each-ref', '--format=%(refname)',
+                f'--contains={commit_hash}',
+                'refs/heads', 'refs/remotes', 'refs/tags',
+            ])
+            return commit_hash if reachable and refs.strip() else ""
+
         reachable, _, _ = self._run_git_sync_at(repo_path, [
             'merge-base', '--is-ancestor', commit_hash, 'HEAD'
         ])
         return commit_hash if reachable else ""
 
-    def _search_text_commit_hashes(self, repo_path: str, query: str, count: int) -> list[str]:
+    def _search_text_commit_hashes(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool = False,
+    ) -> list[str]:
         """分别按消息和作者搜索候选提交，并去重。"""
         hashes = []
         for filter_arg in (f'--grep={query}', f'--author={query}'):
-            success, stdout, _ = self._run_git_sync_at(repo_path, [
-                'log', f'-{count}', '--format=%H', filter_arg,
-                '--regexp-ignore-case', '--fixed-strings'
+            cmd = ['log']
+            if include_all_refs:
+                cmd.append('--all')
+            cmd.extend([
+                f'-{count}', '--format=%H', filter_arg,
+                '--regexp-ignore-case', '--fixed-strings',
             ])
+            success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
             if success:
                 hashes.extend(line for line in stdout.splitlines() if line)
 
         return list(dict.fromkeys(hashes))
 
     def _build_commit_search_command(
-        self, repo_path: str, query: str, search_type: str, count: int
+        self,
+        repo_path: str,
+        query: str,
+        search_type: str,
+        count: int,
+        include_all_refs: bool = False,
     ) -> list[str]:
         """构造提交搜索命令；空列表表示没有候选结果。"""
         format_str = '%H|%h|%an|%ae|%ad|%s'
@@ -930,21 +965,33 @@ class GitService(QObject):
             'author': f'--author={query}',
         }
         if search_type in text_filters:
+            if include_all_refs:
+                cmd.insert(1, '--all')
             cmd.extend([text_filters[search_type], '--regexp-ignore-case', '--fixed-strings'])
             return cmd
 
-        resolved_hash = self._resolve_commit_hash(repo_path, query)
+        resolved_hash = self._resolve_commit_hash(
+            repo_path, query, include_all_refs
+        )
         hashes = (
             [resolved_hash]
             if resolved_hash
-            else self._search_text_commit_hashes(repo_path, query, count)
+            else self._search_text_commit_hashes(
+                repo_path, query, count, include_all_refs
+            )
         )
         if not hashes:
             return []
         cmd.extend(['--no-walk=sorted', *hashes])
         return cmd
 
-    def search_commits(self, query: str, search_type: str = "all", count: int = 50) -> list[CommitInfo]:
+    def search_commits(
+        self,
+        query: str,
+        search_type: str = "all",
+        count: int = 50,
+        include_all_refs: bool = False,
+    ) -> list[CommitInfo]:
         """搜索提交记录
         
         Args:
@@ -953,17 +1000,26 @@ class GitService(QObject):
             count: 最大返回数量
         """
         repo_path = self._repo_path or ""
-        return self.search_commits_at(repo_path, query, search_type, count)
+        return self.search_commits_at(
+            repo_path, query, search_type, count, include_all_refs
+        )
 
     def search_commits_at(
-        self, repo_path: str, query: str, search_type: str = "all", count: int = 50
+        self,
+        repo_path: str,
+        query: str,
+        search_type: str = "all",
+        count: int = 50,
+        include_all_refs: bool = False,
     ) -> list[CommitInfo]:
         """搜索指定仓库快照，避免异步切仓库导致多步命令串读。"""
         query = query.strip()
         if not query:
             return self.get_log_at(repo_path, count=count)
 
-        cmd = self._build_commit_search_command(repo_path, query, search_type, count)
+        cmd = self._build_commit_search_command(
+            repo_path, query, search_type, count, include_all_refs
+        )
         if not cmd:
             return []
         success, stdout, _ = self._run_git_sync_at(repo_path, cmd)

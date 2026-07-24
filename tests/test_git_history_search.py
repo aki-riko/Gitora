@@ -80,6 +80,17 @@ class GitHistorySearchTest(unittest.TestCase):
         run_git(repo, "checkout", "master")
 
         self.assertEqual(service.search_commits(side_commit[:7], "all", 20), [])
+        all_refs_results = service.search_commits(
+            side_commit[:7], "all", 20, include_all_refs=True
+        )
+        self.assertEqual([item.hash for item in all_refs_results], [side_commit])
+
+        all_refs_text_results = service.search_commits(
+            "side only", "message", 20, include_all_refs=True
+        )
+        self.assertEqual(
+            [item.hash for item in all_refs_text_results], [side_commit]
+        )
 
     def test_text_search_treats_query_as_literal_text(self) -> None:
         repo = init_repo(self.root / "literal")

@@ -162,11 +162,13 @@ class GitBridgeAsyncTest(unittest.TestCase):
         bridge._poll_timer.stop()
         bridge._svc._repo_path = "repo"
         commit = _sample_graph_commit()
-        calls: list[tuple[str, int, int]] = []
+        calls: list[tuple[str, int, int, bool]] = []
         emitted: list[tuple[str, int, list]] = []
 
-        def fake_graph_log(repo_path: str, count: int, skip: int):
-            calls.append((repo_path, count, skip))
+        def fake_graph_log(
+            repo_path: str, count: int, skip: int, include_all_refs: bool
+        ):
+            calls.append((repo_path, count, skip, include_all_refs))
             return [commit]
 
         bridge._svc.get_graph_log_at = fake_graph_log  # type: ignore[method-assign]
@@ -174,13 +176,30 @@ class GitBridgeAsyncTest(unittest.TestCase):
             lambda repo, skip, items: emitted.append((repo, skip, items))
         )
         try:
-            bridge.requestLog(30, 60)
+            bridge.requestLog(30, 60, True)
             self.assertTrue(self._wait_until(app, lambda: len(emitted) == 1))
-            self.assertEqual(calls, [("repo", 30, 60)])
+            self.assertEqual(calls, [("repo", 30, 60, True)])
             payload = emitted[0][2][0]
             self.assertEqual(payload["graph"]["nodeLane"], 1)
             self.assertTrue(payload["graph"]["segments"][0]["startAtNode"])
             self.assertEqual(payload["graphHeader"]["segments"][0]["fromLane"], 0)
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_history_scope_slots_expose_boolean_argument_to_qml(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        meta = bridge.metaObject()
+        signatures = {
+            bytes(meta.method(index).methodSignature()).decode("ascii")
+            for index in range(meta.methodCount())
+        }
+
+        try:
+            self.assertIn("requestLog(int,int,bool)", signatures)
+            self.assertIn("requestSearch(QString,QString,bool)", signatures)
         finally:
             bridge.deleteLater()
             app.processEvents()
@@ -192,7 +211,12 @@ class GitBridgeAsyncTest(unittest.TestCase):
         calls: list[str] = []
         emitted: list[tuple[str, str]] = []
 
-        def fake_graph_log(repo_path: str, _count: int, _skip: int):
+        def fake_graph_log(
+            repo_path: str,
+            _count: int,
+            _skip: int,
+            _include_all_refs: bool,
+        ):
             index = len(calls)
             calls.append(repo_path)
             started[index].set()
@@ -257,7 +281,13 @@ class GitBridgeAsyncTest(unittest.TestCase):
         calls: list[str] = []
         emitted: list[str] = []
 
-        def fake_search(repo_path: str, query: str, search_type: str, count: int):
+        def fake_search(
+            repo_path: str,
+            query: str,
+            search_type: str,
+            count: int,
+            _include_all_refs: bool,
+        ):
             index = len(calls)
             calls.append(query)
             started[index].set()

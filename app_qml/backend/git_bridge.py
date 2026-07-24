@@ -653,8 +653,8 @@ class GitBridge(QObject):
         """提交历史(分页) -> [{hash, shortHash, author, ...}, ...]"""
         return [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast_mode)]
 
-    @Slot(int, int)
-    def requestLog(self, count: int, skip: int):
+    @Slot(int, int, bool)
+    def requestLog(self, count: int, skip: int, include_all_refs: bool = False):
         """后台分页获取提交,完成发 logReady(repoPath, skip, list),不阻塞主线程。"""
         import threading
         repo = self._svc.repo_path or ""
@@ -665,7 +665,9 @@ class GitBridge(QObject):
             try:
                 batch = [
                     _commit_to_dict(c)
-                    for c in self._svc.get_graph_log_at(repo, count, skip)
+                    for c in self._svc.get_graph_log_at(
+                        repo, count, skip, include_all_refs
+                    )
                 ]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"获取提交历史失败: {e}")
@@ -678,8 +680,10 @@ class GitBridge(QObject):
 
         threading.Thread(target=work, daemon=True).start()
 
-    @Slot(str, str)
-    def requestSearch(self, query: str, search_type: str):
+    @Slot(str, str, bool)
+    def requestSearch(
+        self, query: str, search_type: str, include_all_refs: bool = False
+    ):
         """后台搜索提交,完成发 searchReady(repoPath, list)。"""
         import threading
         repo = self._svc.repo_path or ""
@@ -690,7 +694,9 @@ class GitBridge(QObject):
             try:
                 results = [
                     _commit_to_dict(c)
-                    for c in self._svc.search_commits_at(repo, query, search_type, 100)
+                    for c in self._svc.search_commits_at(
+                        repo, query, search_type, 100, include_all_refs
+                    )
                 ]
             except Exception as e:  # noqa: BLE001
                 logger.warning(f"搜索提交失败: {e}")

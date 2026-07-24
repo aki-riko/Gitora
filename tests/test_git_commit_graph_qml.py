@@ -135,7 +135,9 @@ def _graph_payload(repo: Path) -> list[dict]:
     from app.common.git_service import GitService
     from app_qml.backend.git_bridge import _commit_to_dict
 
-    commits = GitService().get_graph_log_at(str(repo), count=20)
+    commits = GitService().get_graph_log_at(
+        str(repo), count=20, include_all_refs=True
+    )
     assert len(commits) == 5
     assert any(len(commit.parents) == 2 for commit in commits)
     assert any(ref.kind == "tag" for commit in commits for ref in commit.refs)

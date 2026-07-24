@@ -16,6 +16,7 @@ Item {
     property bool refreshing: false
     property int refreshCount: 0
     property bool searchMode: false
+    property bool includeAllRefs: false
     property var selectedCommit: null
     property string pendingJumpHash: ""
 
@@ -47,7 +48,9 @@ Item {
         if (!GitBridge || !GitBridge.repoPath) return
         root.loading = true
         // 后台分页获取,结果经 logReady 回填
-        GitBridge.requestLog(root.pageSize, root.loadedCount)
+        GitBridge.requestLog(
+            root.pageSize, root.loadedCount, root.includeAllRefs
+        )
     }
 
     // 仓库状态变化时保留当前时间线,后台重新拉取已加载范围。
@@ -58,13 +61,15 @@ Item {
             if (searchInput.text === "") { resetAndLoad(); return }
             root.refreshing = true
             root.loading = true
-            GitBridge.requestSearch(searchInput.text, "all")
+            GitBridge.requestSearch(
+                searchInput.text, "all", root.includeAllRefs
+            )
             return
         }
         root.refreshing = true
         root.loading = true
         root.refreshCount = Math.max(root.pageSize, root.loadedCount)
-        GitBridge.requestLog(root.refreshCount, 0)
+        GitBridge.requestLog(root.refreshCount, 0, root.includeAllRefs)
     }
 
     function _restoreSelection(commits) {
@@ -90,7 +95,17 @@ Item {
         root.refreshing = false
         root.searchMode = true
         root.selectedCommit = null
-        GitBridge.requestSearch(query, "all")
+        GitBridge.requestSearch(query, "all", root.includeAllRefs)
+    }
+
+    function setHistoryScope(scopeIndex) {
+        var nextIncludeAllRefs = scopeIndex === 1
+        if (root.includeAllRefs === nextIncludeAllRefs) return
+        root.includeAllRefs = nextIncludeAllRefs
+        if (searchInput.text.trim() !== "")
+            root.doSearch(searchInput.text)
+        else
+            root.resetAndLoad()
     }
 
     function jumpToCommit(hash) {
@@ -113,8 +128,10 @@ Item {
                 return
             }
         }
-        Fluent.NotificationManager.desktop.error("无法跳转", "关联提交不在当前分支历史中"
-        )
+        var scopeText = root.includeAllRefs
+            ? "关联提交不在任何分支历史中"
+            : "关联提交不在当前分支历史中"
+        Fluent.NotificationManager.desktop.error("无法跳转", scopeText)
     }
 
     Connections {
@@ -217,10 +234,23 @@ Item {
                 // 标题 + 搜索
                 PageHeader {
                     title: "历史"
-                    subtitle: root.searchMode ? (root.allCommits.length + " 条搜索结果") : (root.allCommits.length + " 条提交")
+                    subtitle: (root.searchMode
+                        ? root.allCommits.length + " 条搜索结果"
+                        : root.allCommits.length + " 条提交")
+                        + (root.includeAllRefs ? " · 全部分支" : " · 当前分支")
+                    Fluent.ComboBox {
+                        id: historyScopeCombo
+                        objectName: "historyScopeCombo"
+                        width: 112
+                        model: ["当前分支", "全部分支"]
+                        currentIndex: root.includeAllRefs ? 1 : 0
+                        onActivated: function(scopeIndex) {
+                            root.setHistoryScope(scopeIndex)
+                        }
+                    }
                     Fluent.LineEdit {
                         id: searchInput
-                        width: 240
+                        width: root.width < 1200 ? 160 : 240
                         placeholderText: "搜索提交(消息/作者/哈希)"
                         onTextChanged: searchDebounce.restart()
                     }

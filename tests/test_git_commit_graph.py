@@ -41,9 +41,15 @@ def _assert_merge_payload(merge, hashes: dict[str, str]) -> None:
     assert payload["graphHeader"]["segments"] is not None
 
 
-def _assert_stable_pages(service: GitService, repo: Path, full: list) -> None:
-    first_page = service.get_graph_log_at(str(repo), count=2, skip=0)
-    second_page = service.get_graph_log_at(str(repo), count=2, skip=2)
+def _assert_stable_pages(
+    service: GitService, repo: Path, full: list, include_all_refs: bool
+) -> None:
+    first_page = service.get_graph_log_at(
+        str(repo), count=2, skip=0, include_all_refs=include_all_refs
+    )
+    second_page = service.get_graph_log_at(
+        str(repo), count=2, skip=2, include_all_refs=include_all_refs
+    )
     assert [commit.hash for commit in first_page + second_page] == [
         commit.hash for commit in full[:4]
     ]
@@ -55,13 +61,23 @@ def _assert_stable_pages(service: GitService, repo: Path, full: list) -> None:
     ]
 
 
-def test_graph_log_includes_all_refs_merge_parents_and_stable_pages() -> None:
+def test_graph_log_supports_current_head_and_all_refs_with_stable_pages() -> None:
     with tempfile.TemporaryDirectory() as temp_dir:
         repo, hashes = build_branched_repo(Path(temp_dir))
         service = GitService()
 
-        full = service.get_graph_log_at(str(repo), count=20)
-        by_hash = {commit.hash: commit for commit in full}
-        assert set(by_hash) == set(hashes.values())
-        _assert_merge_payload(by_hash[hashes["merge"]], hashes)
-        _assert_stable_pages(service, repo, full)
+        current = service.get_graph_log_at(str(repo), count=20)
+        current_by_hash = {commit.hash: commit for commit in current}
+        assert set(current_by_hash) == set(hashes.values()) - {hashes["side"]}
+        _assert_merge_payload(current_by_hash[hashes["merge"]], hashes)
+        _assert_stable_pages(service, repo, current, include_all_refs=False)
+
+        all_refs = service.get_graph_log_at(
+            str(repo), count=20, include_all_refs=True
+        )
+        all_by_hash = {commit.hash: commit for commit in all_refs}
+        assert set(all_by_hash) == set(hashes.values())
+        assert {(ref.name, ref.kind) for ref in all_by_hash[hashes["side"]].refs} >= {
+            ("side", "branch")
+        }
+        _assert_stable_pages(service, repo, all_refs, include_all_refs=True)
