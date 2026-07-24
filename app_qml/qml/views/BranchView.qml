@@ -119,8 +119,25 @@ Item {
                 Repeater {
                     model: localModel
                     delegate: Fluent.Card {
+                        id: localBranchCard
+                        property string branchName: model.name
                         width: parent ? parent.width : 0
                         height: lbRow.implicitHeight + Fluent.Enums.spacing.l * 2
+                        Fluent.MenuCore {
+                            id: forceDeleteBranchMenu
+                            property string branchName: localBranchCard.branchName
+                            objectName: "forceDeleteBranchMenu"
+                            useInWindowPopup: true
+                            Fluent.Action {
+                                objectName: "forceDeleteBranchAction"
+                                text: "强制删除"
+                                icon: Fluent.Enums.icon.warning
+                                onTriggered: {
+                                    forceDeleteBranchDanger._branch = localBranchCard.branchName
+                                    forceDeleteBranchDanger.start()
+                                }
+                            }
+                        }
                         RowLayout {
                             id: lbRow
                             anchors.fill: parent
@@ -199,19 +216,14 @@ Item {
                                 }
                             }
                             Fluent.Button {
+                                property string branchName: localBranchCard.branchName
+                                objectName: "deleteBranchButton"
                                 text: "删除"
                                 style: Fluent.Enums.button.style_transparent
                                 visible: !model.isCurrent
                                 feature: Fluent.Enums.button.feature_split
-                                menuItems: [
-                                    { "text": "强制删除", "icon": Fluent.Enums.icon.warning }
-                                ]
-                                onClicked: root._op(GitBridge.deleteBranch(model.name, false))
-                                onMenuItemClicked: function(index, text) {
-                                    if (index !== 0) return
-                                    forceDeleteBranchDanger._branch = model.name
-                                    forceDeleteBranchDanger.start()
-                                }
+                                menu: forceDeleteBranchMenu
+                                onClicked: root._op(GitBridge.deleteBranch(localBranchCard.branchName, false))
                             }
                         }
                     }
@@ -393,6 +405,7 @@ Item {
     // 危险操作:强制删除本地分支二次确认(会丢弃该分支未合并提交)
     DangerDialog {
         id: forceDeleteBranchDanger
+        objectName: "forceDeleteBranchDanger"
         title: "确认强制删除分支"
         countdown: 3
         property string _branch: ""
