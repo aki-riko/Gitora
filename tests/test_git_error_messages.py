@@ -99,6 +99,21 @@ class GitErrorMessageTest(unittest.TestCase):
 
         self.assertEqual(GitService._friendly_git_error(raw, "未知错误"), raw)
 
+    def test_reference_names_containing_conflict_are_not_merge_conflicts(self) -> None:
+        cases = (
+            (
+                "error: pathspec 'conflict' did not match any file(s) known to git",
+                "找不到指定的分支、标签或文件，请检查名称是否正确。",
+            ),
+            (
+                "error: src refspec conflict does not match any",
+                "找不到要推送的本地分支或提交，请先确认当前分支和提交状态。",
+            ),
+        )
+        for raw, expected in cases:
+            with self.subTest(raw=raw):
+                self.assertEqual(GitService._friendly_git_error(raw, "未知错误"), expected)
+
     def test_real_git_tag_remote_and_pathspec_errors_are_rewritten(self) -> None:
         repo = init_repo(self.root / "real-errors")
         write_file(repo, "tracked.txt", "base\n")
