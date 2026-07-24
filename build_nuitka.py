@@ -61,7 +61,7 @@ args = [
     # 产品元信息
     "--company-name=aki-riko",
     "--product-name=Gitora",
-    "--product-version=1.3.1",
+    "--product-version=1.3.2",
     "--file-description=Gitora - Git GUI",
     f"--output-dir={OUT}",
     ENTRY,
