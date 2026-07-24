@@ -755,6 +755,15 @@ class GitBridge(QObject):
         ok, msg = self._svc.create_branch(branch, checkout)
         return [ok, msg]
 
+    @Slot(str, str, bool, result="QVariantList")
+    def createBranchAt(
+        self, branch: str, start_point: str, checkout: bool
+    ) -> list:
+        ok, msg = self._svc.create_branch(
+            branch, checkout=checkout, start_point=start_point
+        )
+        return [ok, msg]
+
     @Slot(str, result="QVariantList")
     def checkoutBranch(self, branch: str) -> list:
         ok, msg = self._svc.checkout_branch(branch)

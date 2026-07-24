@@ -32,6 +32,29 @@ def _sample_graph_commit() -> CommitInfo:
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_create_branch_at_forwards_start_point_and_checkout_choice(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        calls: list[tuple[str, bool, str]] = []
+
+        def fake_create_branch(
+            branch: str, checkout: bool = True, start_point: str = "HEAD"
+        ) -> tuple[bool, str]:
+            calls.append((branch, checkout, start_point))
+            return True, "created"
+
+        bridge._svc.create_branch = fake_create_branch  # type: ignore[method-assign]
+        try:
+            self.assertEqual(
+                bridge.createBranchAt("topic", "abc123", False),
+                [True, "created"],
+            )
+            self.assertEqual(calls, [("topic", False, "abc123")])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_internal_status_change_invalidates_poll_baseline_without_duplicate(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

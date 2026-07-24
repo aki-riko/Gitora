@@ -1616,18 +1616,42 @@ class GitService(QObject):
             return True, f"已检出 {remote_branch} 为本地分支 {local_branch}"
         return False, stderr or "检出远程分支失败"
 
-    def create_branch(self, branch: str, checkout: bool = True) -> tuple[bool, str]:
-        """创建分支"""
+    def create_branch(
+        self,
+        branch: str,
+        checkout: bool = True,
+        start_point: str = "HEAD",
+    ) -> tuple[bool, str]:
+        """从指定提交起点创建分支，可选择是否切换过去。"""
+        branch = (branch or "").strip()
+        start_point = (start_point or "HEAD").strip()
         if self._bad_ref(branch):
             return False, "非法的分支名"
+        if self._bad_ref(start_point):
+            return False, "非法的分支起点"
+
+        resolved, commit_hash, error = self._run_git_sync(
+            ['rev-parse', '--verify', f'{start_point}^{{commit}}']
+        )
+        if not resolved:
+            return False, error or f"分支起点不存在或不是提交: {start_point}"
+        commit_hash = commit_hash.strip()
+        if not commit_hash:
+            return False, f"无法解析分支起点: {start_point}"
+
         if checkout:
-            success, stdout, stderr = self._run_git_sync(['checkout', '-b', branch])
+            success, _, stderr = self._run_git_sync(
+                ['checkout', '-b', branch, commit_hash]
+            )
         else:
-            success, stdout, stderr = self._run_git_sync(['branch', branch])
+            success, _, stderr = self._run_git_sync(
+                ['branch', branch, commit_hash]
+            )
 
         if success:
             self.statusChanged.emit()
-            return True, f"已创建分支 {branch}"
+            action = "已创建并切换到" if checkout else "已创建"
+            return True, f"{action}分支 {branch}（起点 {start_point}）"
         return False, stderr or "创建分支失败"
 
     def delete_branch(self, branch: str, force: bool = False) -> tuple[bool, str]:
