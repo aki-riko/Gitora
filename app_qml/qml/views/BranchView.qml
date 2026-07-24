@@ -107,7 +107,7 @@ Item {
                     text: "新建分支"
                     style: Fluent.Enums.button.style_primary
                     icon: Fluent.Enums.icon.add
-                    onClicked: createDialog.open()
+                    onClicked: createBranchDialog.openFor("HEAD", true)
                 }
             }
 
@@ -258,23 +258,8 @@ Item {
         }
     }
 
-    // 新建分支对话框
-    Fluent.MessageBox {
-        id: createDialog
-        title: "新建分支"
-        confirmText: "创建"
-        cancelText: "取消"
-        Fluent.LineEdit {
-            id: newBranchInput
-            width: 320
-            placeholderText: "分支名称"
-        }
-        onAccepted: {
-            if (newBranchInput.text)
-                root._op(GitBridge.createBranch(newBranchInput.text, true))
-            newBranchInput.text = ""
-        }
-    }
+    // 默认从 HEAD 创建并切换；对话框内可改为任意提交并取消切换。
+    CreateBranchDialog { id: createBranchDialog }
 
     // 重命名本地分支
     Fluent.MessageBox {

@@ -479,6 +479,12 @@ Item {
                                 onClicked: root._op(GitBridge.checkoutCommit(root.selectedCommit.hash))
                             }
                             Fluent.Button {
+                                text: "新建分支"
+                                icon: Fluent.Enums.icon.branch_fork
+                                onClicked: createBranchDialog.openFor(
+                                    root.selectedCommit.hash, false)
+                            }
+                            Fluent.Button {
                                 text: "Cherry-pick"
                                 icon: Fluent.Enums.icon.branch
                                 onClicked: root._op(GitBridge.cherryPick(root.selectedCommit.hash))
@@ -540,6 +546,9 @@ Item {
 
     // 提交详情
     CommitDetailDialog { id: commitDetailDialog }
+
+    // 直接从选中的历史提交创建，默认不切换，避免扰动当前工作区。
+    CreateBranchDialog { id: createBranchDialog }
 
     // 引用日志
     ReflogDialog {

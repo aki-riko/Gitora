@@ -392,6 +392,18 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(msg)
         self.assertEqual(run_git(repo, "branch", "--list", "topic").stdout, "")
 
+    def test_create_branch_preserves_unborn_head_checkout_behavior(self) -> None:
+        repo = init_repo(self.root / "empty-repo")
+        service = self.service_for(repo)
+
+        ok, msg = service.create_branch("topic", checkout=True)
+
+        self.assertTrue(ok, msg)
+        self.assertEqual(
+            run_git(repo, "symbolic-ref", "--short", "HEAD").stdout.strip(),
+            "topic",
+        )
+
     def test_rename_branch_set_upstream_and_rename_remote_use_real_repo(self) -> None:
         remote = init_bare_repo(self.root / "remote.git")
         repo = init_repo(self.root / "repo")

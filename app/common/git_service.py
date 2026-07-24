@@ -1634,6 +1634,16 @@ class GitService(QObject):
             ['rev-parse', '--verify', f'{start_point}^{{commit}}']
         )
         if not resolved:
+            # 保留空仓库原有的“创建并切换到未出生分支”能力；
+            # 不切换时 Git 尚无提交可供创建实际分支引用，仍明确报错。
+            if start_point == "HEAD" and checkout:
+                success, _, stderr = self._run_git_sync(
+                    ['checkout', '-b', branch]
+                )
+                if success:
+                    self.statusChanged.emit()
+                    return True, f"已创建并切换到分支 {branch}（空仓库）"
+                return False, stderr or "创建分支失败"
             return False, error or f"分支起点不存在或不是提交: {start_point}"
         commit_hash = commit_hash.strip()
         if not commit_hash:
