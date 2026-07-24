@@ -33,6 +33,15 @@ Item {
         root._setHtml(root._stateHtml(root.loadingText))
     }
 
+    function setDiff(rawDiff, filterPath) {
+        root.rawDiff = rawDiff || ""
+        root.filterPath = filterPath || ""
+        root.loading = false
+        // 相同（或同为空）字符串再次赋值不会触发属性变化信号，必须显式刷新。
+        root._reloadFileModel()
+        root._rebuild()
+    }
+
     function _setHtml(html) {
         diffArea.text = html || ""
         // Qt 会按 HTML 源码长度把 TextEdit 切到大文本视口剔除；表格行在

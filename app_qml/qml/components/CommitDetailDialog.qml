@@ -69,8 +69,7 @@ Fluent.DialogBoxCore {
         function onCommitDiffReady(repoPath, hash, diff) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
             dlg._rawDiff = diff || ""
-            commitDiffViewer.rawDiff = dlg._rawDiff
-            commitDiffViewer.filterPath = dlg._selectedFilePath
+            commitDiffViewer.setDiff(dlg._rawDiff, dlg._selectedFilePath)
         }
     }
 

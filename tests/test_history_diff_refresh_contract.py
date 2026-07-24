@@ -143,6 +143,27 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertEqual(source.count("diffArea.text ="), 1)
         self.assertNotIn("smoothScroll: false", source)
 
+    def test_commit_detail_explicitly_finishes_repeated_diff_loading(self) -> None:
+        viewer_source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
+            encoding="utf-8"
+        )
+        dialog_source = (
+            QML_ROOT / "components" / "CommitDetailDialog.qml"
+        ).read_text(encoding="utf-8")
+
+        set_diff = viewer_source.split("function setDiff", 1)[1].split("\n    }", 1)[0]
+        diff_ready = dialog_source.split("function onCommitDiffReady", 1)[1].split(
+            "\n        }", 1
+        )[0]
+
+        self.assertIn("root.loading = false", set_diff)
+        self.assertIn("root._reloadFileModel()", set_diff)
+        self.assertIn("root._rebuild()", set_diff)
+        self.assertIn(
+            "commitDiffViewer.setDiff(dlg._rawDiff, dlg._selectedFilePath)",
+            diff_ready,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
