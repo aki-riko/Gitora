@@ -12,6 +12,7 @@ Item {
     property string _mergeTarget: ""   // 待合并到当前分支的目标分支名
     property string _rebaseTarget: ""  // 当前分支要 rebase 到的目标分支名
     property string _remoteCheckoutTarget: ""
+    property string _remoteDeleteTarget: ""
     property string _branchesRequestRepoPath: ""
     ListModel { id: localModel }
     ListModel { id: remoteModel }
@@ -251,6 +252,15 @@ Item {
                                     remoteCheckoutDialog.open()
                                 }
                             }
+                            Fluent.Button {
+                                objectName: "deleteRemoteBranchButton"
+                                text: "删除"
+                                style: Fluent.Enums.button.style_transparent
+                                onClicked: {
+                                    root._remoteDeleteTarget = model.name
+                                    deleteRemoteBranchDanger.start()
+                                }
+                            }
                         }
                     }
                 }
@@ -393,6 +403,21 @@ Item {
             if (_branch)
                 root._op(GitBridge.deleteBranch(_branch, true))
             _branch = ""
+        }
+    }
+
+    // 危险操作:删除远程仓库中的分支，但保留本地分支
+    DangerDialog {
+        id: deleteRemoteBranchDanger
+        title: "确认删除远程分支"
+        countdown: 3
+        content: "将删除远程分支 \"" + root._remoteDeleteTarget + "\"。\n"
+            + "其他协作者将无法再获取该远程分支，但本地同名分支不会被删除。\n"
+            + "如需恢复，必须从仍保留该提交的本地仓库重新推送。"
+        onConfirmed: {
+            if (root._remoteDeleteTarget)
+                GitBridge.deleteRemoteBranch(root._remoteDeleteTarget)
+            root._remoteDeleteTarget = ""
         }
     }
 

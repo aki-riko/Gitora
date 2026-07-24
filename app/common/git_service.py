@@ -1802,6 +1802,34 @@ class GitService(QObject):
             return True, f"已删除分支 {branch}"
         return False, self._friendly_git_error(stderr, "删除分支失败")
 
+    def delete_remote_branch(self, remote_branch: str) -> tuple[bool, str]:
+        """删除完整远程跟踪名对应的远程分支，保留本地分支。"""
+        remote_branch = (remote_branch or "").strip()
+        remote = ""
+        branch = ""
+        for candidate in sorted(self.get_remotes(), key=len, reverse=True):
+            prefix = f"{candidate}/"
+            if remote_branch.startswith(prefix):
+                remote = candidate
+                branch = remote_branch[len(prefix):]
+                break
+
+        if not remote:
+            return False, f"未配置远程分支所属远程: {remote_branch}"
+        if self._bad_ref(branch):
+            return False, "非法的远程分支名"
+
+        success, _, stderr = self._run_git_sync(
+            ['push', remote, '--delete', f'refs/heads/{branch}'],
+            timeout=300,
+        )
+        if success:
+            self.statusChanged.emit()
+            return True, f"已删除远程分支 {remote}/{branch}"
+        return False, self._friendly_git_error(
+            stderr, f"删除远程分支失败: {remote}/{branch}"
+        )
+
     def rename_branch(self, old_name: str, new_name: str) -> tuple[bool, str]:
         """重命名本地分支。"""
         old_name = (old_name or "").strip()

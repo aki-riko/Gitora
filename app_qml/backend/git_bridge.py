@@ -790,6 +790,23 @@ class GitBridge(QObject):
         ok, msg = self._svc.delete_branch(branch, force)
         return [ok, msg]
 
+    @Slot(str)
+    def deleteRemoteBranch(self, remote_branch: str):
+        """后台删除远程分支；本地分支不会被删除。"""
+        import threading
+
+        self.operationStarted.emit(f"正在删除远程分支 {remote_branch}...")
+
+        def work():
+            try:
+                ok, msg = self._svc.delete_remote_branch(remote_branch)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning(f"删除远程分支失败: {exc}")
+                ok, msg = False, str(exc)
+            self.operationFinished.emit(ok, msg)
+
+        threading.Thread(target=work, daemon=True).start()
+
     @Slot(str, str, result="QVariantList")
     def renameBranch(self, old_name: str, new_name: str) -> list:
         ok, msg = self._svc.rename_branch(old_name, new_name)
