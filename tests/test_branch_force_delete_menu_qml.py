@@ -36,8 +36,23 @@ def test_branch_force_delete_uses_in_window_menu() -> None:
 
     assert "Fluent.MenuCore" in source
     assert "useInWindowPopup: true" in source
-    assert "menu: forceDeleteBranchMenu" in source
+    assert "menu: localBranchActionsMenu" in source
     assert "onMenuItemClicked" not in source
+
+
+def test_branch_cards_collapse_secondary_actions_into_split_menus() -> None:
+    source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
+        encoding="utf-8"
+    )
+    local_section = source.split("// 本地分支", 1)[1].split("// 远程分支", 1)[0]
+    remote_section = source.split("// 远程分支", 1)[1].split("// 默认从 HEAD", 1)[0]
+
+    assert local_section.count("Fluent.Button {") == 1
+    assert remote_section.count("Fluent.Button {") == 1
+    assert 'objectName: "localBranchActionButton"' in local_section
+    assert 'objectName: "remoteBranchActionButton"' in remote_section
+    assert local_section.count("feature: Fluent.Enums.button.feature_split") == 1
+    assert remote_section.count("feature: Fluent.Enums.button.feature_split") == 1
 
 
 def test_branch_force_delete_opens_confirmation_without_deleting() -> None:
@@ -121,6 +136,7 @@ def _property(item, name):
 def _probe() -> int:
     from PySide6.QtCore import (
         Property,
+        QMetaObject,
         QObject,
         QPointF,
         QTimer,
@@ -233,13 +249,13 @@ def _probe() -> int:
     button = next(
         item
         for item in items
-        if item.objectName() == "deleteBranchButton"
+        if item.objectName() == "localBranchActionButton"
         and _property(item, "branchName") == TARGET_BRANCH
     )
     menu = next(
         item
         for item in items
-        if item.objectName() == "forceDeleteBranchMenu"
+        if item.objectName() == "localBranchActionsMenu"
         and _property(item, "branchName") == TARGET_BRANCH
     )
     danger = root.findChild(QObject, "forceDeleteBranchDanger")
@@ -259,7 +275,7 @@ def _probe() -> int:
         Qt.KeyboardModifier.NoModifier,
         arrow,
     )
-    _pump(120)
+    _pump(250)
     if not bool(_property(menu, "isOpen")):
         raise AssertionError("force-delete menu did not open")
 
@@ -270,19 +286,21 @@ def _probe() -> int:
         and _property(item, "text") == "强制删除"
         and item.isVisible()
     )
-    action_point = action.mapToScene(
-        QPointF(action.width() / 2, action.height() / 2)
-    ).toPoint()
-    QTest.mouseClick(
-        root,
-        Qt.MouseButton.LeftButton,
-        Qt.KeyboardModifier.NoModifier,
-        action_point,
-    )
+    rendered = root.grabWindow()
+    if rendered.isNull():
+        raise AssertionError("branch action menu did not render")
+    preview_path = os.environ.get("GITORA_BRANCH_MENU_PREVIEW", "").strip()
+    if preview_path and not rendered.save(preview_path):
+        raise AssertionError(f"branch action preview could not be saved: {preview_path}")
+    if not QMetaObject.invokeMethod(action, "triggered"):
+        raise AssertionError("force-delete menu action could not be triggered")
     _pump(150)
 
     if not bool(_property(danger, "_isOpen")):
-        raise AssertionError("force-delete confirmation did not open")
+        raise AssertionError(
+            "force-delete confirmation did not open; "
+            f"branch={_property(danger, '_branch')}; deletes={bridge.delete_calls}"
+        )
     if _property(danger, "_branch") != TARGET_BRANCH:
         raise AssertionError(_property(danger, "_branch"))
     if bridge.delete_calls:

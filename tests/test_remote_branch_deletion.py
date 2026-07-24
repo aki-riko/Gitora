@@ -173,7 +173,8 @@ class RemoteBranchDeletionTest(unittest.TestCase):
             ROOT / "app_qml" / "qml" / "views" / "BranchView.qml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('objectName: "deleteRemoteBranchButton"', source)
+        self.assertIn('objectName: "deleteRemoteBranchAction"', source)
+        self.assertIn('objectName: "remoteBranchActionButton"', source)
         self.assertIn('id: deleteRemoteBranchDanger', source)
         self.assertIn('title: "确认删除远程分支"', source)
         self.assertIn('countdown: 3', source)

@@ -130,17 +130,70 @@ Item {
                     delegate: Fluent.Card {
                         id: localBranchCard
                         property string branchName: model.name
+                        property bool isCurrentBranch: model.isCurrent
                         width: parent ? parent.width : 0
                         height: lbRow.implicitHeight + Fluent.Enums.spacing.l * 2
                         Fluent.MenuCore {
-                            id: forceDeleteBranchMenu
+                            id: localBranchActionsMenu
                             property string branchName: localBranchCard.branchName
-                            objectName: "forceDeleteBranchMenu"
+                            objectName: "localBranchActionsMenu"
                             useInWindowPopup: true
+                            Fluent.Action {
+                                text: "合并到当前分支"
+                                icon: Fluent.Enums.icon.branch_compare
+                                visible: !localBranchCard.isCurrentBranch
+                                onTriggered: {
+                                    root._mergeTarget = localBranchCard.branchName
+                                    mergeConfirm.open()
+                                }
+                            }
+                            Fluent.Action {
+                                text: "Rebase 到此分支"
+                                icon: Fluent.Enums.icon.arrow_sync
+                                visible: !localBranchCard.isCurrentBranch
+                                onTriggered: {
+                                    root._rebaseTarget = localBranchCard.branchName
+                                    rebaseDanger.start()
+                                }
+                            }
+                            Fluent.MenuSeparator {
+                                visible: !localBranchCard.isCurrentBranch
+                            }
+                            Fluent.Action {
+                                text: "设置上游"
+                                icon: Fluent.Enums.icon.branch_fork_link
+                                onTriggered: {
+                                    upstreamDialog._branch = localBranchCard.branchName
+                                    upstreamRemoteInput.text = root._defaultRemoteName()
+                                    upstreamBranchInput.text = localBranchCard.branchName
+                                    upstreamDialog.open()
+                                }
+                            }
+                            Fluent.Action {
+                                text: "重命名"
+                                icon: Fluent.Enums.icon.rename
+                                onTriggered: {
+                                    renameBranchDialog._oldBranch = localBranchCard.branchName
+                                    renameBranchInput.text = localBranchCard.branchName
+                                    renameBranchDialog.open()
+                                }
+                            }
+                            Fluent.MenuSeparator {
+                                visible: !localBranchCard.isCurrentBranch
+                            }
+                            Fluent.Action {
+                                text: "删除分支"
+                                icon: Fluent.Enums.icon.dismiss_circle
+                                visible: !localBranchCard.isCurrentBranch
+                                onTriggered: root._op(
+                                    GitBridge.deleteBranch(localBranchCard.branchName, false)
+                                )
+                            }
                             Fluent.Action {
                                 objectName: "forceDeleteBranchAction"
                                 text: "强制删除"
                                 icon: Fluent.Enums.icon.warning
+                                visible: !localBranchCard.isCurrentBranch
                                 onTriggered: {
                                     forceDeleteBranchDanger._branch = localBranchCard.branchName
                                     forceDeleteBranchDanger.start()
@@ -182,57 +235,18 @@ Item {
                                 }
                             }
                             Fluent.Button {
-                                text: model.isCurrent ? "当前" : "切换"
-                                enabled: !model.isCurrent
-                                onClicked: root._op(GitBridge.checkoutBranch(model.name))
-                            }
-                            Fluent.Button {
-                                text: "合并"
-                                visible: !model.isCurrent
-                                // 把该分支合并到当前分支(异步,结果经全局 operationFinished 弹 toast;
-                                // 冲突时 git 会中止合并并在 toast 报错,不会静默破坏工作区)
-                                onClicked: {
-                                    root._mergeTarget = model.name
-                                    mergeConfirm.open()
-                                }
-                            }
-                            Fluent.Button {
-                                text: "Rebase"
-                                style: Fluent.Enums.button.style_transparent
-                                visible: !model.isCurrent
-                                onClicked: {
-                                    root._rebaseTarget = model.name
-                                    rebaseDanger.start()
-                                }
-                            }
-                            Fluent.Button {
-                                text: "上游"
-                                style: Fluent.Enums.button.style_transparent
-                                onClicked: {
-                                    upstreamDialog._branch = model.name
-                                    upstreamRemoteInput.text = root._defaultRemoteName()
-                                    upstreamBranchInput.text = model.name
-                                    upstreamDialog.open()
-                                }
-                            }
-                            Fluent.Button {
-                                text: "重命名"
-                                style: Fluent.Enums.button.style_transparent
-                                onClicked: {
-                                    renameBranchDialog._oldBranch = model.name
-                                    renameBranchInput.text = model.name
-                                    renameBranchDialog.open()
-                                }
-                            }
-                            Fluent.Button {
+                                id: localBranchActionButton
                                 property string branchName: localBranchCard.branchName
-                                objectName: "deleteBranchButton"
-                                text: "删除"
-                                style: Fluent.Enums.button.style_transparent
-                                visible: !model.isCurrent
+                                objectName: "localBranchActionButton"
+                                text: localBranchCard.isCurrentBranch ? "管理" : "切换"
                                 feature: Fluent.Enums.button.feature_split
-                                menu: forceDeleteBranchMenu
-                                onClicked: root._op(GitBridge.deleteBranch(localBranchCard.branchName, false))
+                                menu: localBranchActionsMenu
+                                onClicked: {
+                                    if (localBranchCard.isCurrentBranch)
+                                        localBranchActionsMenu.openAtControl(localBranchActionButton)
+                                    else
+                                        root._op(GitBridge.checkoutBranch(localBranchCard.branchName))
+                                }
                             }
                         }
                     }
@@ -247,8 +261,25 @@ Item {
                 Repeater {
                     model: remoteModel
                     delegate: Fluent.Card {
+                        id: remoteBranchCard
+                        property string branchName: model.name
                         width: parent ? parent.width : 0
                         height: rbRow.implicitHeight + Fluent.Enums.spacing.l * 2
+                        Fluent.MenuCore {
+                            id: remoteBranchActionsMenu
+                            property string branchName: remoteBranchCard.branchName
+                            objectName: "remoteBranchActionsMenu"
+                            useInWindowPopup: true
+                            Fluent.Action {
+                                objectName: "deleteRemoteBranchAction"
+                                text: "删除远程分支"
+                                icon: Fluent.Enums.icon.warning
+                                onTriggered: {
+                                    root._remoteDeleteTarget = remoteBranchCard.branchName
+                                    deleteRemoteBranchDanger.start()
+                                }
+                            }
+                        }
                         RowLayout {
                             id: rbRow
                             anchors.fill: parent
@@ -266,20 +297,15 @@ Item {
                                 font.pixelSize: Fluent.Enums.typography.body
                             }
                             Fluent.Button {
+                                property string branchName: remoteBranchCard.branchName
+                                objectName: "remoteBranchActionButton"
                                 text: "检出"
+                                feature: Fluent.Enums.button.feature_split
+                                menu: remoteBranchActionsMenu
                                 onClicked: {
-                                    root._remoteCheckoutTarget = model.name
-                                    remoteCheckoutLocalInput.text = root._localNameForRemote(model.name)
+                                    root._remoteCheckoutTarget = remoteBranchCard.branchName
+                                    remoteCheckoutLocalInput.text = root._localNameForRemote(remoteBranchCard.branchName)
                                     remoteCheckoutDialog.open()
-                                }
-                            }
-                            Fluent.Button {
-                                objectName: "deleteRemoteBranchButton"
-                                text: "删除"
-                                style: Fluent.Enums.button.style_transparent
-                                onClicked: {
-                                    root._remoteDeleteTarget = model.name
-                                    deleteRemoteBranchDanger.start()
                                 }
                             }
                         }
