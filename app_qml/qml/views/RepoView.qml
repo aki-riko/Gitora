@@ -339,16 +339,10 @@ Item {
                 property var pathList: []
 
                 function rebuildList() {
-                    var seen = ({})
-                    var merged = []
                     var recent = GitBridge ? GitBridge.getRecentRepos() : []
-                    var scanned = (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner.getResults() : []
-                    var all = recent.concat(scanned)
-                    for (var i = 0; i < all.length; i++) {
-                        var p = all[i]
-                        if (!seen[p]) { seen[p] = true; merged.push(p) }
-                    }
-                    pathList = merged
+                    pathList = (typeof RepoScanner !== "undefined" && RepoScanner !== null)
+                        ? RepoScanner.mergeWithOpenedRepos(recent)
+                        : recent
                 }
 
                 Component.onCompleted: rebuildList()

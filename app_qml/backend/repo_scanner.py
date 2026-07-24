@@ -90,6 +90,13 @@ class RepoScanner(QObject):
         """返回已扫描到的仓库列表(累积)。"""
         return list(self._results)
 
+    @Slot("QVariantList", result="QVariantList")
+    def mergeWithOpenedRepos(self, opened_repos) -> list:
+        """打开记录优先，按当前系统的路径等价规则合并扫描缓存。"""
+        return self._cache.merge_prioritized(
+            list(opened_repos or []), self._results
+        )
+
     @Slot()
     @Slot("QVariantList")
     def start(self, roots=None):

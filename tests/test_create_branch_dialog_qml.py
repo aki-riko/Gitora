@@ -2,6 +2,7 @@
 """新建分支入口与表单布局的 QML 回归测试。"""
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
@@ -72,7 +73,7 @@ DIALOG_ITEM_NAMES = [
 ]
 
 
-def _probe_environment() -> dict[str, str]:
+def _probe_environment(config_root: Path | None = None) -> dict[str, str]:
     environment = os.environ.copy()
     environment.update(
         {
@@ -81,6 +82,9 @@ def _probe_environment() -> dict[str, str]:
             "PYTHONUTF8": "1",
         }
     )
+    if config_root is not None:
+        environment["LOCALAPPDATA"] = str(config_root)
+        environment["XDG_CONFIG_HOME"] = str(config_root)
     windows_root = environment.get("WINDIR", "").strip()
     font_directory = Path(windows_root) / "Fonts"
     if os.name == "nt" and font_directory.is_dir():
@@ -109,7 +113,7 @@ def _run_probe(output: Path) -> subprocess.CompletedProcess[str]:
 
 
 def _run_operation_probe(
-    repo: Path, start_point: str
+    repo: Path, start_point: str, config_root: Path
 ) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         [
@@ -121,7 +125,7 @@ def _run_operation_probe(
             start_point,
         ],
         cwd=str(ROOT),
-        env=_probe_environment(),
+        env=_probe_environment(config_root),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -165,7 +169,9 @@ def test_create_branch_dialog_renders_fields_without_overlap() -> None:
 
 def test_dialog_creates_from_selected_commit_without_switching() -> None:
     with tempfile.TemporaryDirectory(prefix="gitora-create-branch-flow-") as temp_dir:
-        repo = init_repo(Path(temp_dir) / "repo")
+        temp_root = Path(temp_dir)
+        repo = init_repo(temp_root / "repo")
+        config_root = temp_root / "config"
         write_file(repo, "tracked.txt", "base\n")
         base_commit = commit_all(repo, "base")
         write_file(repo, "tracked.txt", "latest\n")
@@ -173,7 +179,7 @@ def test_dialog_creates_from_selected_commit_without_switching() -> None:
         write_file(repo, "tracked.txt", "uncommitted\n")
         before_diff = run_git(repo, "diff").stdout
 
-        result = _run_operation_probe(repo, base_commit)
+        result = _run_operation_probe(repo, base_commit, config_root)
 
         diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         assert result.returncode == 0, diagnostic
@@ -181,6 +187,12 @@ def test_dialog_creates_from_selected_commit_without_switching() -> None:
         assert "[WARNING]" not in result.stdout, diagnostic
         assert "[ERROR]" not in result.stdout, diagnostic
         assert result.stderr == "", diagnostic
+        cached_repos = json.loads(
+            (config_root / "Gitora" / "recent_repos.json").read_text(
+                encoding="utf-8"
+            )
+        )["repos"]
+        assert cached_repos == [str(repo)]
         assert (
             run_git(repo, "rev-parse", "refs/heads/qml-from-base").stdout.strip()
             == base_commit

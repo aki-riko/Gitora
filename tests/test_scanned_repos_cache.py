@@ -53,6 +53,15 @@ def test_scanned_repo_cache_persists_deduplicates_and_prunes(tmp_path: Path) -> 
     assert json.loads(cache_path.read_text(encoding="utf-8"))["repos"] == []
 
 
+def test_scanned_repo_cache_ignores_non_object_json_root(tmp_path: Path) -> None:
+    cache_path = tmp_path / "scanned_repos.json"
+    cache_path.write_text("[]", encoding="utf-8")
+
+    cache = ScannedReposCache(cache_path)
+
+    assert cache.get_all() == []
+
+
 def test_repo_scanner_restores_previous_results_after_restart(tmp_path: Path) -> None:
     app = QCoreApplication.instance() or QCoreApplication([])
     cache_path = tmp_path / "scanned_repos.json"
@@ -77,6 +86,39 @@ def test_repo_scanner_restores_previous_results_after_restart(tmp_path: Path) ->
     finally:
         restored.shutdown()
         restored.deleteLater()
+        app.processEvents()
+
+
+def test_opened_repositories_have_priority_and_deduplicate_equivalent_paths(
+    tmp_path: Path,
+) -> None:
+    app = QCoreApplication.instance() or QCoreApplication([])
+    overlap_repo = _make_repo(tmp_path / "PriorityRepo")
+    opened_only_repo = _make_repo(tmp_path / "OpenedOnly")
+    scanned_only_repo = _make_repo(tmp_path / "ScannedOnly")
+    cache_path = tmp_path / "scanned_repos.json"
+    cache = ScannedReposCache(cache_path)
+    cache.add(str(scanned_only_repo))
+    cache.add(str(overlap_repo))
+    cache.save()
+    scanner = RepoScanner(cache=ScannedReposCache(cache_path))
+    opened_path = (
+        str(overlap_repo).swapcase()
+        if os.name == "nt"
+        else f"{overlap_repo.parent}{os.sep}.{os.sep}{overlap_repo.name}"
+    )
+
+    try:
+        assert scanner.mergeWithOpenedRepos(
+            [opened_path, str(opened_only_repo)]
+        ) == [
+            os.path.normpath(opened_path),
+            str(opened_only_repo),
+            str(scanned_only_repo),
+        ]
+    finally:
+        scanner.shutdown()
+        scanner.deleteLater()
         app.processEvents()
 
 
