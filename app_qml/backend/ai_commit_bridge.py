@@ -40,6 +40,7 @@ from app.common.ai_commit_settings import (
 )
 from app.common.git_service import GitService
 from app.common.logger import get_logger
+from app.common.prism_task import submit_to_pool
 
 
 logger = get_logger("AiCommitBridge")
@@ -207,54 +208,57 @@ class AiCommitBridge(QObject):
         settings = self._settings
         output_language = normalize_output_language(ui_language)
 
-        def work() -> None:
-            try:
-                snapshot = ChangeContextCollector(
-                    self._git, settings.limits
-                ).collect(repo, include_unstaged=True)
-                if not snapshot.changes:
-                    raise SnapshotCollectionError(
-                        "工作区没有可生成提交信息的改动"
-                    )
-                if not snapshot.complete:
-                    raise SnapshotCollectionError(
-                        "改动超过配置上限，无法生成可靠的提交信息"
-                    )
-                request = PlannerRequest(
-                    snapshot,
-                    "message",
-                    "file",
-                    settings.generate_body,
-                    output_language,
+        def work() -> tuple[_PreparedRequest, int]:
+            snapshot = ChangeContextCollector(
+                self._git, settings.limits
+            ).collect(repo, include_unstaged=True)
+            if not snapshot.changes:
+                raise SnapshotCollectionError("工作区没有可生成提交信息的改动")
+            if not snapshot.complete:
+                raise SnapshotCollectionError(
+                    "改动超过配置上限，无法生成可靠的提交信息"
                 )
-                request_id = f"{serial}-{snapshot.snapshot_id[:16]}"
-                prepared = _PreparedRequest(
-                    request_id, repo, snapshot, request, settings,
-                    settings.provider != "ollama"
-                    or endpoint_requires_remote_consent(settings.local_endpoint),
-                )
-                if not self._store_prepared_if_current(
-                    serial, repo, cancel_event, prepared
-                ):
-                    return
-                character_count = len(build_user_input(request))
+            request = PlannerRequest(
+                snapshot,
+                "message",
+                "file",
+                settings.generate_body,
+                output_language,
+            )
+            request_id = f"{serial}-{snapshot.snapshot_id[:16]}"
+            prepared = _PreparedRequest(
+                request_id, repo, snapshot, request, settings,
+                settings.provider != "ollama"
+                or endpoint_requires_remote_consent(settings.local_endpoint),
+            )
+            return prepared, len(build_user_input(request))
+
+        def succeeded(result: object) -> None:
+            prepared, character_count = result
+            if self._store_prepared_if_current(
+                serial, repo, cancel_event, prepared
+            ):
                 self.contextPrepared.emit(
-                    request_id,
+                    prepared.request_id,
                     prepared.is_remote,
-                    len(snapshot.changes),
+                    len(prepared.snapshot.changes),
                     character_count,
                     "分析整个工作区的已暂存、未暂存和未跟踪改动",
                 )
-            except (SnapshotCollectionError, AiCommitSettingsError) as exc:
+            self._set_busy_if_current(serial, False)
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, (SnapshotCollectionError, AiCommitSettingsError)):
                 logger.warning(f"准备 AI 提交上下文失败: {type(exc).__name__}")
                 self._emit_error_if_current(serial, str(exc))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"准备 AI 提交上下文异常: {type(exc).__name__}")
+            else:
+                logger.error(
+                    f"准备 AI 提交上下文异常: {type(exc).__name__}: {exc}"
+                )
                 self._emit_error_if_current(serial, "准备提交上下文失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+            self._set_busy_if_current(serial, False)
 
-        threading.Thread(target=work, daemon=True).start()
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot(str, bool)
     def generatePrepared(self, request_id: str, remote_consent: bool) -> None:
@@ -273,55 +277,62 @@ class AiCommitBridge(QObject):
 
         serial, cancel_event = self._start_request(clear_prepared=False)
 
-        def work() -> None:
-            try:
-                collector = ChangeContextCollector(self._git, prepared.settings.limits)
-                if collector.workspace_fingerprint(prepared.repo_path) != prepared.snapshot.workspace_fingerprint:
-                    raise SnapshotCollectionError("工作区已变化，请重新生成")
-                provider = self._provider_factory(
-                    prepared.settings,
-                    self._credentials.resolve_api_key(prepared.settings),
-                )
-                raw_plan = provider.generate_plan(prepared.request, cancel_event)
-                plan = CommitPlan.from_mapping(raw_plan)
-                result = self._validator.validate(
-                    plan, prepared.snapshot, expected_level=prepared.request.level
-                )
-                if not result.valid:
-                    details = "；".join(issue.message for issue in result.issues)
-                    raise PlanProtocolError(details or "模型计划校验失败")
-                if len(plan.groups) != 1:
-                    raise PlanProtocolError("单条提交信息模式必须只返回一个提交组")
-                if collector.workspace_fingerprint(prepared.repo_path) != prepared.snapshot.workspace_fingerprint:
-                    raise SnapshotCollectionError("模型返回前工作区已变化，请重新生成")
-                if not self._is_current(serial, prepared.repo_path, cancel_event):
-                    return
-                group = plan.groups[0]
-                body = group.body if prepared.settings.generate_body else ""
+        def work() -> tuple[str, str, str]:
+            collector = ChangeContextCollector(self._git, prepared.settings.limits)
+            if collector.workspace_fingerprint(prepared.repo_path) != prepared.snapshot.workspace_fingerprint:
+                raise SnapshotCollectionError("工作区已变化，请重新生成")
+            provider = self._provider_factory(
+                prepared.settings,
+                self._credentials.resolve_api_key(prepared.settings),
+            )
+            raw_plan = provider.generate_plan(prepared.request, cancel_event)
+            plan = CommitPlan.from_mapping(raw_plan)
+            result = self._validator.validate(
+                plan, prepared.snapshot, expected_level=prepared.request.level
+            )
+            if not result.valid:
+                details = "；".join(issue.message for issue in result.issues)
+                raise PlanProtocolError(details or "模型计划校验失败")
+            if len(plan.groups) != 1:
+                raise PlanProtocolError("单条提交信息模式必须只返回一个提交组")
+            if collector.workspace_fingerprint(prepared.repo_path) != prepared.snapshot.workspace_fingerprint:
+                raise SnapshotCollectionError("模型返回前工作区已变化，请重新生成")
+            group = plan.groups[0]
+            body = group.body if prepared.settings.generate_body else ""
+            return group.title.strip(), body.strip(), plan.summary
+
+        def succeeded(result: object) -> None:
+            if self._is_current(serial, prepared.repo_path, cancel_event):
+                title, body, summary = result
                 self.commitMessageReady.emit(
                     prepared.repo_path, prepared.request_id, True,
-                    group.title.strip(), body.strip(), plan.summary,
+                    title, body, summary,
                 )
-            except ProviderCancelledError:
+            self._set_busy_if_current(serial, False)
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, ProviderCancelledError):
+                self._set_busy_if_current(serial, False)
                 return
-            except (
+            if isinstance(exc, (
                 HttpProviderError, PlanProtocolError,
                 SnapshotCollectionError, AiCommitSettingsError,
-            ) as exc:
+            )):
                 logger.warning(f"生成 AI 提交信息失败: {type(exc).__name__}")
                 self._emit_message_error_if_current(
                     serial, prepared.repo_path, prepared.request_id, str(exc)
                 )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"生成 AI 提交信息异常: {type(exc).__name__}")
+            else:
+                logger.error(
+                    f"生成 AI 提交信息异常: {type(exc).__name__}: {exc}"
+                )
                 self._emit_message_error_if_current(
                     serial, prepared.repo_path, prepared.request_id,
                     "生成提交信息失败",
                 )
-            finally:
-                self._set_busy_if_current(serial, False)
+            self._set_busy_if_current(serial, False)
 
-        threading.Thread(target=work, daemon=True).start()
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot(str)
     def cancelPrepared(self, request_id: str) -> None:
@@ -341,32 +352,36 @@ class AiCommitBridge(QObject):
         settings = self._settings
         serial, cancel_event = self._start_request(clear_prepared=False)
 
-        def work() -> None:
-            try:
-                provider = self._provider_factory(
-                    settings, self._credentials.resolve_api_key(settings)
-                )
-                if isinstance(provider, OllamaProvider):
-                    models = provider.list_models()
-                    if settings.local_model and settings.local_model not in models:
-                        raise HttpProviderError("连接成功，但未找到配置的本地模型")
-                    message = f"连接成功，检测到 {len(models)} 个本地模型"
-                else:
-                    message = "远程配置格式有效，将在首次生成时验证连接"
-                if self._is_current(serial, self._git.repo_path or "", cancel_event, check_repo=False):
-                    self.connectionTestFinished.emit(True, message)
-            except (HttpProviderError, AiCommitSettingsError) as exc:
+        def work() -> str:
+            provider = self._provider_factory(
+                settings, self._credentials.resolve_api_key(settings)
+            )
+            if isinstance(provider, OllamaProvider):
+                models = provider.list_models()
+                if settings.local_model and settings.local_model not in models:
+                    raise HttpProviderError("连接成功，但未找到配置的本地模型")
+                return f"连接成功，检测到 {len(models)} 个本地模型"
+            return "远程配置格式有效，将在首次生成时验证连接"
+
+        def succeeded(message: object) -> None:
+            if self._is_current(
+                serial, self._git.repo_path or "", cancel_event, check_repo=False
+            ):
+                self.connectionTestFinished.emit(True, str(message))
+            self._set_busy_if_current(serial, False)
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, (HttpProviderError, AiCommitSettingsError)):
                 logger.warning(f"检测 AI 连接失败: {type(exc).__name__}")
                 if self._is_serial_current(serial, cancel_event):
                     self.connectionTestFinished.emit(False, str(exc))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"检测 AI 连接异常: {type(exc).__name__}")
+            else:
+                logger.error(f"检测 AI 连接异常: {type(exc).__name__}: {exc}")
                 if self._is_serial_current(serial, cancel_event):
                     self.connectionTestFinished.emit(False, "模型连接检测失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+            self._set_busy_if_current(serial, False)
 
-        threading.Thread(target=work, daemon=True).start()
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot()
     def fetchModels(self) -> None:
@@ -377,41 +392,40 @@ class AiCommitBridge(QObject):
         provider_id = settings.provider
         serial, cancel_event = self._start_request(clear_prepared=False)
 
-        def work() -> None:
-            def emit_model_list_result(
-                ok: bool, models: list[str], message: str
-            ) -> None:
-                if not self._is_serial_current(serial, cancel_event):
-                    return
-                # 先发布空闲状态，再通知 UI 结果，避免回调读取到过期 busy=True。
-                self._set_busy_if_current(serial, False)
-                self.modelListFinished.emit(
-                    provider_id, ok, models, message
-                )
-
+        def work() -> list[str]:
+            provider = self._provider_factory(
+                settings, self._credentials.resolve_api_key(settings)
+            )
             try:
-                provider = self._provider_factory(
-                    settings, self._credentials.resolve_api_key(settings)
-                )
-                try:
-                    models = provider.list_models()
-                except NotImplementedError as exc:
-                    raise HttpProviderError("当前模型提供方不支持获取模型列表") from exc
-                available = sorted(set(models), key=str.casefold)
-                if not available:
-                    raise HttpProviderError("模型服务未返回可用模型")
-                message = f"已获取 {len(available)} 个可用模型"
-                emit_model_list_result(True, available, message)
-            except (HttpProviderError, AiCommitSettingsError) as exc:
-                logger.warning(f"获取 AI 模型列表失败: {type(exc).__name__}")
-                emit_model_list_result(False, [], str(exc))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"获取 AI 模型列表异常: {type(exc).__name__}")
-                emit_model_list_result(False, [], "获取模型列表失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+                models = provider.list_models()
+            except NotImplementedError as exc:
+                raise HttpProviderError(
+                    "当前模型提供方不支持获取模型列表"
+                ) from exc
+            available = sorted(set(models), key=str.casefold)
+            if not available:
+                raise HttpProviderError("模型服务未返回可用模型")
+            return available
 
-        threading.Thread(target=work, daemon=True).start()
+        def publish(ok: bool, models: list[str], message: str) -> None:
+            if not self._is_serial_current(serial, cancel_event):
+                return
+            self._set_busy_if_current(serial, False)
+            self.modelListFinished.emit(provider_id, ok, models, message)
+
+        def succeeded(available: object) -> None:
+            models = list(available)
+            publish(True, models, f"已获取 {len(models)} 个可用模型")
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, (HttpProviderError, AiCommitSettingsError)):
+                logger.warning(f"获取 AI 模型列表失败: {type(exc).__name__}")
+                publish(False, [], str(exc))
+            else:
+                logger.error(f"获取 AI 模型列表异常: {type(exc).__name__}: {exc}")
+                publish(False, [], "获取模型列表失败")
+
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot()
     def invalidateWorkspace(self) -> None:

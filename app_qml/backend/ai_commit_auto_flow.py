@@ -2,14 +2,13 @@
 """AI 分组提交并最终推送的自动流程混入。"""
 from __future__ import annotations
 
-import threading
-
 from PySide6.QtCore import Slot
 
 from app.common.ai_commit_context import ChangeContextCollector
 from app.common.ai_commit_executor import AppliedFileGroup
 from app.common.ai_commit_models import ChangeSnapshot
 from app.common.logger import get_logger
+from app.common.prism_task import submit_to_pool
 
 
 logger = get_logger("AiCommitAutoFlow")
@@ -23,11 +22,7 @@ class AiCommitAutoFlowMixin:
             not self._request_state.is_serial_current(serial)
             or applied.repo_path != (self._git.repo_path or "")
         ):
-            threading.Thread(
-                target=self._restore_discarded_apply,
-                args=(applied,),
-                daemon=True,
-            ).start()
+            self._submit_restore_discarded_apply(applied)
             return
         self._execution_guard = False
         self._applied = applied
@@ -52,8 +47,8 @@ class AiCommitAutoFlowMixin:
     ) -> None:
         if not self._request_state.is_serial_current(serial):
             return
-        # 提交校验信号可能先于 worker 的 finally 到达；先释放本次请求的
-        # busy 状态，再启动下一组，否则第二组会被竞态误判为“仍在进行”。
+        # 提交校验完成后先释放本次请求的 busy 状态，再启动下一组，
+        # 否则第二组会被竞态误判为“仍在进行”。
         self._set_busy_if_current(serial, False)
         self._execution_guard = False
         applied = self._applied
@@ -98,43 +93,52 @@ class AiCommitAutoFlowMixin:
         serial, cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
 
-        def work() -> None:
-            try:
-                body = applied.group.body.strip()
-                message = applied.group.title.strip()
-                if body:
-                    message += "\n\n" + body
-                ok, commit_message = self._git.commit_at(applied.repo_path, message)
-                fresh_snapshot = None
-                if not ok:
-                    executor = (
-                        self._hunk_executor
-                        if plan_level == "hunk" else self._executor
-                    )
-                    restored, restore_message = executor.restore_uncommitted_group(
-                        applied
-                    )
-                    if not restored:
-                        commit_message = f"{commit_message}；{restore_message}"
-                else:
-                    fresh_snapshot = ChangeContextCollector(
-                        self._git, settings.limits
-                    ).collect(
-                        applied.repo_path,
-                        include_unstaged=snapshot.include_unstaged,
-                    )
-                if self._is_current(serial, applied.repo_path, cancel_event):
-                    self._commitChecked.emit(
-                        serial, ok, commit_message, fresh_snapshot
-                    )
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"自动提交计划组异常: {type(exc).__name__}")
-                self._execution_guard = False
-                self._emit_error_if_current(serial, "自动提交计划组失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+        def work() -> tuple[bool, str, ChangeSnapshot | None]:
+            body = applied.group.body.strip()
+            message = applied.group.title.strip()
+            if body:
+                message += "\n\n" + body
+            ok, commit_message = self._git.commit_at(applied.repo_path, message)
+            fresh_snapshot = None
+            if not ok:
+                executor = (
+                    self._hunk_executor
+                    if plan_level == "hunk" else self._executor
+                )
+                restored, restore_message = executor.restore_uncommitted_group(
+                    applied
+                )
+                if not restored:
+                    commit_message = f"{commit_message}；{restore_message}"
+            else:
+                fresh_snapshot = ChangeContextCollector(
+                    self._git, settings.limits
+                ).collect(
+                    applied.repo_path,
+                    include_unstaged=snapshot.include_unstaged,
+                )
+            return ok, commit_message, fresh_snapshot
 
-        threading.Thread(target=work, daemon=True).start()
+        def succeeded(result: object) -> None:
+            self._set_busy_if_current(serial, False)
+            if self._is_current(serial, applied.repo_path, cancel_event):
+                ok, commit_message, fresh_snapshot = result
+                self._commit_checked(
+                    serial, ok, commit_message, fresh_snapshot
+                )
+            else:
+                self._execution_guard = False
+
+        def failed(exc: BaseException) -> None:
+            logger.error(
+                f"自动提交计划组异常: {type(exc).__name__}: {exc}"
+            )
+            self._execution_guard = False
+            if self._is_current(serial, applied.repo_path, cancel_event):
+                self._emit_error_if_current(serial, "自动提交计划组失败")
+            self._set_busy_if_current(serial, False)
+
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     def _start_auto_push(self) -> None:
         if self._git.repo_path != self._auto_repo_path:
@@ -142,10 +146,9 @@ class AiCommitAutoFlowMixin:
             return
         serial, _cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
-        branch = self._git.get_current_branch()
         self._git.push(
             "origin",
-            branch,
+            "",
             callback=lambda ok, message: self._autoPushFinished.emit(
                 serial, ok, message
             ),

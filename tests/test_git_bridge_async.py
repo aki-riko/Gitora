@@ -45,10 +45,12 @@ class GitBridgeAsyncTest(unittest.TestCase):
             return True, "created"
 
         bridge._svc.create_branch = fake_create_branch  # type: ignore[method-assign]
+        results: list[object] = []
         try:
-            self.assertEqual(
-                bridge.createBranchAt("topic", "abc123", False),
-                [True, "created"],
+            handle = bridge.createBranchAt("topic", "abc123", False)
+            handle.succeeded.connect(results.append)
+            self.assertTrue(
+                self._wait_until(app, lambda: results == [(True, "created")])
             )
             self.assertEqual(calls, [("topic", False, "abc123")])
         finally:

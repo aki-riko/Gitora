@@ -87,13 +87,20 @@ Fluent.MessageBox {
     }
 
     onAccepted: {
-        var result = GitBridge.createBranchAt(
+        var task = GitBridge.createBranchAt(
             branchNameInput.text.trim(),
             startPointInput.text.trim(),
             checkoutCheck.checked)
-        if (result[0])
-            Fluent.NotificationManager.desktop.success("成功", result[1] || "分支已创建")
-        else
-            Fluent.NotificationManager.desktop.error("无法创建分支", result[1] || "创建分支失败")
+        task.succeeded.connect(function(result) {
+            if (result && result[0])
+                Fluent.NotificationManager.desktop.success(
+                    "成功", result[1] || "分支已创建")
+            else
+                Fluent.NotificationManager.desktop.error("无法创建分支", result[1] || "创建分支失败")
+        })
+        task.failed.connect(function() {
+            Fluent.NotificationManager.desktop.error(
+                "无法创建分支", "创建分支失败")
+        })
     }
 }

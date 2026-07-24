@@ -13,9 +13,10 @@ from enum import Enum
 from typing import Optional, Callable
 from pathlib import Path
 
-from PySide6.QtCore import QObject, Signal, QThread, QMutex, QMutexLocker
+from PySide6.QtCore import QObject, Signal, QMutex, QMutexLocker
+from prismqml import current_task
 
-from .git_push_progress import GitPushWorker, run_git_push_with_progress
+from .git_push_progress import run_git_push_with_progress
 from .git_graph import (
     CommitGraphRow,
     CommitRef,
@@ -23,6 +24,7 @@ from .git_graph import (
     parse_commit_refs,
 )
 from .logger import get_logger
+from .prism_task import submit_to_pool
 
 logger = get_logger("GitService")
 
@@ -154,51 +156,6 @@ class DiffFile:
     raw: str = ""
 
 
-class GitWorker(QThread):
-    """异步执行Git命令线程"""
-    finished = Signal(bool, str, str)  # success, stdout, stderr
-
-    def __init__(self, cmd: list[str], cwd: str, timeout: int = 30, parent=None):
-        super().__init__(parent)
-        self.cmd = cmd
-        self.cwd = cwd
-        self.timeout = timeout  # 超时时间（秒）
-
-    def run(self):
-        cmd_str = ' '.join(self.cmd)
-        logger.debug(f"[GitWorker] 执行Git命令: {cmd_str}")
-        try:
-            # 根据命令类型设置超时
-            # 网络操作（push/pull/fetch）使用传入的timeout
-            # 本地操作使用较短超时
-            result = subprocess.run(
-                self.cmd,
-                cwd=self.cwd,
-                capture_output=True,
-                text=True,
-                encoding='utf-8',
-                errors='replace',
-                timeout=self.timeout,  # 添加超时控制
-                creationflags=subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
-            )
-            success = result.returncode == 0
-            if success:
-                logger.debug(f"[GitWorker] 命令执行成功: {cmd_str}")
-            else:
-                logger.warning(f"[GitWorker] 命令执行失败: {cmd_str}, stderr: {result.stderr}")
-            self.finished.emit(
-                success,
-                result.stdout,
-                result.stderr
-            )
-        except subprocess.TimeoutExpired:
-            logger.error(f"[GitWorker] 命令超时: {cmd_str}, timeout={self.timeout}s")
-            self.finished.emit(False, "", f"操作超时（{self.timeout}秒），可能是网络问题或仓库过大")
-        except Exception as e:
-            logger.exception(f"[GitWorker] 命令执行异常: {cmd_str}, error: {e}")
-            self.finished.emit(False, "", str(e))
-
-
 class GitService(QObject):
     """Git服务 - 提供所有Git操作接口"""
 
@@ -214,7 +171,6 @@ class GitService(QObject):
         super().__init__(parent)
         self._repo_path: Optional[str] = None
         self._mutex = QMutex()
-        self._workers: list[GitWorker] = []
         self._revert_cache_key: tuple[str, str] | None = None
         self._revert_cache: tuple[dict[str, str], dict[str, str]] = ({}, {})
         self._revert_cache_lock = threading.Lock()
@@ -252,6 +208,12 @@ class GitService(QObject):
     def set_repo_path(self, path: str, emit_status: bool = True) -> bool:
         """设置仓库路径"""
         logger.info(f"设置仓库路径: {path}")
+        if not self.validate_repo_path(path):
+            return False
+        return self.activate_repo_path(path, emit_status=emit_status)
+
+    def validate_repo_path(self, path: str) -> bool:
+        """验证仓库路径；可安全地在线程池执行，不修改 QObject 状态。"""
         if not path or not os.path.isdir(path):
             logger.warning(f"路径无效: {path}")
             return False
@@ -265,6 +227,10 @@ class GitService(QObject):
             logger.warning(f"不是Git仓库: {path}")
             return False
 
+        return True
+
+    def activate_repo_path(self, path: str, emit_status: bool = True) -> bool:
+        """激活已经验证的仓库路径；调用方必须位于 Qt 主线程。"""
         self._repo_path = path
         logger.info(f"仓库路径设置成功: {path}")
         if emit_status:
@@ -485,17 +451,11 @@ class GitService(QObject):
             else:
                 timeout = 30  # 本地操作30秒
 
-        cmd = ['git', '-c', 'core.quotepath=false'] + args
-        worker = GitWorker(cmd, work_dir, timeout, self)
-        worker.finished.connect(callback)
-        worker.finished.connect(lambda: self._cleanup_worker(worker))
-        self._workers.append(worker)
-        worker.start()
-
-    def _cleanup_worker(self, worker: GitWorker):
-        """清理完成的worker"""
-        if worker in self._workers:
-            self._workers.remove(worker)
+        return submit_to_pool(
+            lambda: self._run_git_sync_at(work_dir, args, timeout),
+            on_success=lambda result: callback(*result),
+            on_failure=lambda exc: callback(False, "", str(exc)),
+        )
 
     def _run_git_push_async(
         self,
@@ -507,12 +467,30 @@ class GitService(QObject):
             callback(False, "", "未设置仓库路径")
             return
         command = ['git', '-c', 'core.quotepath=false'] + args
-        worker = GitPushWorker(command, self._repo_path, timeout, self)
-        worker.progress.connect(self.progressUpdated)
-        worker.finished.connect(callback)
-        worker.finished.connect(lambda: self._cleanup_worker(worker))
-        self._workers.append(worker)
-        worker.start()
+        repo_path = self._repo_path
+
+        def work() -> tuple[bool, str, str]:
+            task = current_task()
+            result = run_git_push_with_progress(
+                command,
+                repo_path,
+                timeout,
+                lambda percent, message: task.report_progress(
+                    (percent, message)
+                ),
+            )
+            return result.success, result.stdout, result.stderr
+
+        def report_progress(update: object) -> None:
+            percent, message = update
+            self.progressUpdated.emit(int(percent), str(message))
+
+        return submit_to_pool(
+            work,
+            on_success=lambda result: callback(*result),
+            on_failure=lambda exc: callback(False, "", str(exc)),
+            on_progress=report_progress,
+        )
 
     def _run_git_push_sync(
         self,
@@ -1670,31 +1648,18 @@ class GitService(QObject):
 
     def force_reset_to_upstream(self, callback: Callable[[bool, str], None] = None):
         """异步执行远程覆盖本地。"""
-        from PySide6.QtCore import QThread
-
-        class ForceResetWorker(QThread):
-            finished = Signal(bool, str)
-
-            def __init__(self, service):
-                super().__init__()
-                self.service = service
-
-            def run(self):
-                success, msg = self.service.force_reset_to_upstream_sync()
-                self.finished.emit(success, msg)
-
-        worker = ForceResetWorker(self)
-
-        def on_worker_finished(success: bool, msg: str):
+        def on_finished(result: object) -> None:
+            success, msg = result
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
 
         self.operationStarted.emit("正在用远程覆盖本地...")
-        worker.finished.connect(on_worker_finished)
-        worker.finished.connect(lambda *_: self._cleanup_worker(worker))
-        self._workers.append(worker)
-        worker.start()
+        return submit_to_pool(
+            self.force_reset_to_upstream_sync,
+            on_success=on_finished,
+            on_failure=lambda exc: on_finished((False, str(exc))),
+        )
 
     # ==================== 分支操作 ====================
 
@@ -1963,12 +1928,14 @@ class GitService(QObject):
         callback: Callable[[bool, str], None] = None
     ):
         """一键操作：暂存 + 提交 + 推送（完全异步）"""
-        # 注意：不在这里发送operationStarted，由QuickCommitWorker开始时发送
-        # self.operationStarted.emit("正在执行一键提交推送...")
-        
         # 异步执行所有步骤
         def do_quick_commit_push():
-            """在子线程执行所有Git操作"""
+            """在 PrismQML 线程池执行所有 Git 操作。"""
+            task = current_task()
+
+            def report(percent: int, message: str) -> None:
+                task.report_progress((percent, message))
+
             has_committed = False
             
             # 步骤1：检查是否有变更需要暂存
@@ -1978,7 +1945,7 @@ class GitService(QObject):
             
             # 步骤2：如果有未暂存的变更，暂存所有
             if has_unstaged:
-                self.progressUpdated.emit(10, "暂存所有变更...")
+                report(10, "暂存所有变更...")
                 staged_ok, stage_msg = self._stage_all_result()
                 if not staged_ok:
                     return False, stage_msg
@@ -1986,7 +1953,7 @@ class GitService(QObject):
             
             # 步骤3：如果有已暂存的变更，提交
             if has_staged:
-                self.progressUpdated.emit(33, "提交变更...")
+                report(33, "提交变更...")
                 success, commit_msg = self.commit(message)
                 if not success:
                     return False, commit_msg
@@ -2001,20 +1968,20 @@ class GitService(QObject):
                     return False, "没有变更需要提交，也没有配置远程仓库"
             
             # 步骤5：推送（同步执行）
-            self.progressUpdated.emit(66, "推送到远程...")
+            report(66, "推送到远程...")
             current_branch = self.get_current_branch()
             args = ['push', '--progress', '-u', 'origin', current_branch]
 
             def emit_push_progress(percent: int, detail: str) -> None:
                 overall = 66 + round(percent * 0.33)
-                self.progressUpdated.emit(overall, detail)
+                report(overall, detail)
 
             success, stdout, stderr = self._run_git_push_sync(
                 args, timeout=60, on_progress=emit_push_progress
             )
             
             if success:
-                self.progressUpdated.emit(100, "完成")
+                report(100, "完成")
                 if has_committed:
                     return True, "一键提交推送成功"
                 else:
@@ -2022,41 +1989,26 @@ class GitService(QObject):
             else:
                 return False, f"推送失败: {self._friendly_git_error(stderr, '未知错误')}"
         
-        # 异步执行
-        def on_finished(success: bool, stdout: str, stderr: str):
-            # stdout存储的是(success, msg)元组的第一个值，stderr存储的是第二个值
-            # 但这里我们需要特殊处理
-            pass
-        
-        # 使用异步Worker执行
-        from PySide6.QtCore import QThread
-        
-        class QuickCommitWorker(QThread):
-            finished = Signal(bool, str)
-            
-            def __init__(self, parent_service):
-                super().__init__()
-                self.parent_service = parent_service
-            
-            def run(self):
-                success, msg = do_quick_commit_push()
-                self.finished.emit(success, msg)
-        
-        worker = QuickCommitWorker(self)
-        
-        def on_worker_finished(success: bool, msg: str):
+        def on_finished(result: object) -> None:
+            success, msg = result
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
         
-        # 在worker开始时发送operationStarted信号
+        # 提交到引擎任务池前先通知界面进入操作状态。
         self.operationStarted.emit("正在执行一键提交推送...")
         self.progressUpdated.emit(0, "正在检查变更")
-        
-        worker.finished.connect(on_worker_finished)
-        worker.finished.connect(lambda: self._cleanup_worker(worker))
-        self._workers.append(worker)
-        worker.start()
+
+        def report_progress(update: object) -> None:
+            percent, detail = update
+            self.progressUpdated.emit(int(percent), str(detail))
+
+        return submit_to_pool(
+            do_quick_commit_push,
+            on_success=on_finished,
+            on_failure=lambda exc: on_finished((False, str(exc))),
+            on_progress=report_progress,
+        )
 
     # ==================== 冲突处理 ====================
 

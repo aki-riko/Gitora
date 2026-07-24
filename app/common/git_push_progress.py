@@ -2,16 +2,13 @@
 """Git push 的实时进度解析与流式进程执行。"""
 from __future__ import annotations
 
+import asyncio
+import codecs
 import os
-import queue
 import re
 import subprocess
-import threading
-import time
 from dataclasses import dataclass
-from typing import Callable, TextIO
-
-from PySide6.QtCore import QThread, Signal
+from typing import Callable
 
 from .logger import get_logger
 
@@ -114,123 +111,98 @@ class GitPushProgressParser:
         return PushProgress(percent, message)
 
 
-def _read_plain_stream(stream: TextIO, chunks: list[str]) -> None:
-    try:
-        while True:
-            chunk = stream.read(4096)
-            if not chunk:
-                return
-            chunks.append(chunk)
-    except (OSError, ValueError) as exc:
-        logger.warning(f"读取 Git push stdout 失败: {exc}")
+async def _read_plain_stream(
+    stream: asyncio.StreamReader, chunks: list[str]
+) -> None:
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
+    while chunk := await stream.read(4096):
+        chunks.append(decoder.decode(chunk))
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        chunks.append(tail)
 
 
-def _read_progress_stream(
-    stream: TextIO,
+async def _read_progress_stream(
+    stream: asyncio.StreamReader,
     chunks: list[str],
-    updates: queue.Queue[PushProgress],
+    on_progress: Callable[[int, str], None],
 ) -> None:
+    decoder = codecs.getincrementaldecoder("utf-8")("replace")
     parser = GitPushProgressParser()
-    line_chars: list[str] = []
-    try:
-        while True:
-            char = stream.read(1)
-            if not char:
-                _parse_progress_line(line_chars, parser, updates)
-                return
-            chunks.append(char)
-            if char in "\r\n":
-                _parse_progress_line(line_chars, parser, updates)
-                line_chars.clear()
-            else:
-                line_chars.append(char)
-    except (OSError, ValueError) as exc:
-        logger.warning(f"读取 Git push stderr 失败: {exc}")
+    pending = ""
+    while chunk := await stream.read(4096):
+        text = decoder.decode(chunk)
+        chunks.append(text)
+        pending = _publish_complete_progress_lines(
+            pending + text, parser, on_progress
+        )
+    tail = decoder.decode(b"", final=True)
+    if tail:
+        chunks.append(tail)
+        pending += tail
+    if pending:
+        _publish_progress_line(pending, parser, on_progress)
 
 
-def _parse_progress_line(
-    line_chars: list[str],
+def _publish_complete_progress_lines(
+    text: str,
     parser: GitPushProgressParser,
-    updates: queue.Queue[PushProgress],
+    on_progress: Callable[[int, str], None],
+) -> str:
+    parts = re.split(r"[\r\n]", text)
+    for line in parts[:-1]:
+        _publish_progress_line(line, parser, on_progress)
+    return parts[-1]
+
+
+def _publish_progress_line(
+    line: str,
+    parser: GitPushProgressParser,
+    on_progress: Callable[[int, str], None],
 ) -> None:
-    if not line_chars:
-        return
-    update = parser.feed("".join(line_chars))
-    if update:
-        updates.put(update)
+    update = parser.feed(line)
+    if update is not None:
+        on_progress(update.percent, update.message)
 
 
-def _start_reader_threads(
-    process: subprocess.Popen[str],
-    stdout_chunks: list[str],
-    stderr_chunks: list[str],
-    updates: queue.Queue[PushProgress],
-) -> tuple[threading.Thread, threading.Thread]:
-    stdout_thread = threading.Thread(
-        target=_read_plain_stream,
-        args=(process.stdout, stdout_chunks),
-        daemon=True,
-    )
-    stderr_thread = threading.Thread(
-        target=_read_progress_stream,
-        args=(process.stderr, stderr_chunks, updates),
-        daemon=True,
-    )
-    stdout_thread.start()
-    stderr_thread.start()
-    return stdout_thread, stderr_thread
-
-
-def _monitor_process(
-    process: subprocess.Popen[str],
-    readers: tuple[threading.Thread, threading.Thread],
-    updates: queue.Queue[PushProgress],
+async def _run_git_push(
+    command: list[str],
+    cwd: str,
     timeout: int,
     on_progress: Callable[[int, str], None],
-) -> bool:
-    deadline = time.monotonic() + timeout
-    timed_out = False
-    while process.poll() is None or any(reader.is_alive() for reader in readers):
-        if process.poll() is None and time.monotonic() >= deadline:
-            process.kill()
-            timed_out = True
-        _deliver_progress(updates, on_progress)
-    _deliver_progress(updates, on_progress, drain=True)
-    for reader in readers:
-        reader.join(timeout=1)
-    return timed_out
-
-
-def _deliver_progress(
-    updates: queue.Queue[PushProgress],
-    on_progress: Callable[[int, str], None],
-    drain: bool = False,
-) -> None:
-    wait = 0 if drain else 0.05
-    try:
-        update = updates.get(timeout=wait)
-    except queue.Empty:
-        return
-    on_progress(update.percent, update.message)
-    if drain:
-        while not updates.empty():
-            update = updates.get_nowait()
-            on_progress(update.percent, update.message)
-
-
-def _start_push_process(
-    command: list[str], cwd: str
-) -> subprocess.Popen[str]:
-    return subprocess.Popen(
-        command,
+) -> PushProcessResult:
+    process = await asyncio.create_subprocess_exec(
+        *command,
         cwd=cwd,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
+    stdout_chunks: list[str] = []
+    stderr_chunks: list[str] = []
+    stdout_reader = asyncio.create_task(
+        _read_plain_stream(process.stdout, stdout_chunks)
+    )
+    stderr_reader = asyncio.create_task(
+        _read_progress_stream(process.stderr, stderr_chunks, on_progress)
+    )
+    timed_out = False
+    try:
+        await asyncio.wait_for(process.wait(), timeout=timeout)
+    except TimeoutError:
+        timed_out = True
+        process.kill()
+        await process.wait()
+    await asyncio.gather(stdout_reader, stderr_reader)
+    stdout = "".join(stdout_chunks)
+    stderr = "".join(stderr_chunks)
+    if timed_out:
+        return PushProcessResult(
+            False,
+            stdout,
+            f"操作超时（{timeout}秒），可能是网络问题或仓库过大",
+        )
+    return PushProcessResult(process.returncode == 0, stdout, stderr)
 
 
 def run_git_push_with_progress(
@@ -241,39 +213,7 @@ def run_git_push_with_progress(
 ) -> PushProcessResult:
     """执行 push 并实时回传 Git stderr 中的确定进度。"""
     try:
-        process = _start_push_process(command, cwd)
-    except (OSError, subprocess.SubprocessError) as exc:
+        return asyncio.run(_run_git_push(command, cwd, timeout, on_progress))
+    except (OSError, subprocess.SubprocessError, RuntimeError) as exc:
         logger.exception(f"启动 Git push 失败: {' '.join(command)}")
         return PushProcessResult(False, "", str(exc))
-
-    stdout_chunks: list[str] = []
-    stderr_chunks: list[str] = []
-    updates: queue.Queue[PushProgress] = queue.Queue()
-    readers = _start_reader_threads(process, stdout_chunks, stderr_chunks, updates)
-    timed_out = _monitor_process(process, readers, updates, timeout, on_progress)
-    stdout = "".join(stdout_chunks)
-    stderr = "".join(stderr_chunks)
-    if timed_out:
-        return PushProcessResult(
-            False, stdout, f"操作超时（{timeout}秒），可能是网络问题或仓库过大"
-        )
-    return PushProcessResult(process.returncode == 0, stdout, stderr)
-
-
-class GitPushWorker(QThread):
-    """只用于 Git push，避免改变其他异步 Git 命令的成熟路径。"""
-
-    progress = Signal(int, str)
-    finished = Signal(bool, str, str)
-
-    def __init__(self, command: list[str], cwd: str, timeout: int, parent=None):
-        super().__init__(parent)
-        self.command = command
-        self.cwd = cwd
-        self.timeout = timeout
-
-    def run(self) -> None:
-        result = run_git_push_with_progress(
-            self.command, self.cwd, self.timeout, self.progress.emit
-        )
-        self.finished.emit(result.success, result.stdout, result.stderr)

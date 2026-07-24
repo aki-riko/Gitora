@@ -71,22 +71,20 @@ Item {
         }
     }
 
-    function _op(res) {
-        if (res[0]) {
-            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
-        }
+    function _op(task) {
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (result && result[0]) root.reload()
+        })
     }
 
-    function _setOutput(result, target) {
-        if (result[0]) {
+    function _setOutput(task, target) {
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (!result || !result[0]) return
             if (target === "lfs") root._lfsOutput = result[1] || ""
             else root._bisectOutput = result[1] || ""
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", result[1] || "操作失败")
-        }
+        })
     }
 
     Connections {

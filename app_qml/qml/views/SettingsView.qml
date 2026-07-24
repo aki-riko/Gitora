@@ -265,9 +265,7 @@ Item {
             Fluent.NotificationManager.desktop.warning("提示", "请先打开一个 Git 仓库")
             return
         }
-        var res = GitBridge.clean(true)
-        if (res[0]) Fluent.NotificationManager.desktop.success("清理完成", res[1] || "")
-        else Fluent.NotificationManager.desktop.error("清理失败", res[1] || "")
+        GitBridge.clean(true)
     }
 
     function _runGc() {
@@ -280,11 +278,12 @@ Item {
 
     function _loadGitUserInfo() {
         if (!GitBridge) return
-        var res = GitBridge.getGlobalUserInfo()
-        if (res && res.length >= 2) {
-            root._gitUserName = res[0] || ""
-            root._gitUserEmail = res[1] || ""
-        }
+        var task = GitBridge.getGlobalUserInfo()
+        task.succeeded.connect(function(result) {
+            if (!result || result.length < 2) return
+            root._gitUserName = result[0] || ""
+            root._gitUserEmail = result[1] || ""
+        })
     }
 
     function _saveGitUserInfo() {
@@ -299,14 +298,12 @@ Item {
             return
         }
 
-        var res = GitBridge.setUserInfo(name, email, true)
-        if (res[0]) {
+        var task = GitBridge.setUserInfo(name, email, true)
+        task.succeeded.connect(function(result) {
+            if (!result || !result[0]) return
             root._gitUserName = name
             root._gitUserEmail = email
-            Fluent.NotificationManager.desktop.success("已保存 Git 用户", name + " <" + email + ">")
-        } else {
-            Fluent.NotificationManager.desktop.error("保存失败", res[1] || "")
-        }
+        })
     }
 
     // ==================== 自动更新 ====================

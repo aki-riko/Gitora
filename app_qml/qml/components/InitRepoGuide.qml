@@ -24,11 +24,12 @@ GuideShell {
     // 进入用户信息页时预填全局配置
     onPageChanged: function(index) {
         if (index === 1 && guide.userName === "" && GitBridge) {
-            var info = GitBridge.getUserInfo()
-            if (info && info.length >= 2) {
+            var task = GitBridge.getUserInfo()
+            task.succeeded.connect(function(info) {
+                if (!info || info.length < 2) return
                 guide.userName = info[0] || ""
                 guide.userEmail = info[1] || ""
-            }
+            })
         }
     }
 

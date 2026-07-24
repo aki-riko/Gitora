@@ -209,21 +209,26 @@ Item {
         }
     }
 
-    function _op(res) {
-        if (res[0]) {
-            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
-        }
+    function _op(task) {
+        // 反馈由全局 Git 任务提示统一显示；TaskHandle 由 PrismQML 管理。
     }
 
     function _openCherryPickDialog() {
         if (!root.selectedCommit || !GitBridge || !GitBridge.repoPath) return
         root.cherryPickRequestRepoPath = GitBridge.repoPath
-        root.cherryPickCurrentBranch = GitBridge.getCurrentBranch()
+        root.cherryPickCurrentBranch = ""
         root.cherryPickBranches = []
         root.cherryPickTargetBranch = ""
         cherryPickDialog.open()
+        var branchTask = GitBridge.getCurrentBranch()
+        branchTask.succeeded.connect(function(branch) {
+            if (!GitBridge || root.cherryPickRequestRepoPath !== GitBridge.repoPath)
+                return
+            root.cherryPickCurrentBranch = branch || ""
+            var targetIndex = root.cherryPickBranches.indexOf(root.cherryPickCurrentBranch)
+            if (targetIndex >= 0)
+                root.cherryPickTargetBranch = root.cherryPickBranches[targetIndex]
+        })
         GitBridge.requestBranches()
     }
 

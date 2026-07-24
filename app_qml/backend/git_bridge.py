@@ -3,22 +3,24 @@
 GitBridge - GitService 的 QML 对接壳
 
 设计原则(只重构对接层):
-- 不改 GitService 任何 git 命令逻辑,组合持有一个 GitService 实例。
+- 组合持有一个 GitService 实例，不复制 Git 命令逻辑。
 - 负责 dataclass(FileChange/CommitInfo/...) -> QML 可消费的 dict/list 转换。
-- 把同步方法用 @Slot 暴露;阻塞型操作转发已有的 statusChanged/operationFinished 信号。
+- 阻塞型查询和操作统一提交到 PrismQML 任务池；QML 只接收 TaskHandle 或完成信号。
 """
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
+from collections.abc import Callable
+from typing import Any, Optional
 
-from PySide6.QtCore import QObject, Slot, Signal, Property, Qt
+from PySide6.QtCore import QObject, Slot, Signal, Property
 
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
     WorktreeInfo, SubmoduleInfo, DiffFile,
 )
 from app.common.logger import get_logger
+from app.common.prism_task import submit_to_pool
 from app_qml.backend.file_change_model import FileChangeListModel
 
 logger = get_logger("GitBridge")
@@ -172,6 +174,7 @@ class GitBridge(QObject):
     tagsReady = Signal(str, "QVariantList")              # (repoPath, 标签列表)
     fileHistoryReady = Signal(str, str, "QVariantList")  # (repoPath, path, 提交列表)
     conflictsReady = Signal(str, "QVariantList")         # (repoPath, 冲突文件列表)
+    conflictStateReady = Signal(str, str)                 # (repoPath, 操作类型)
     commitFilesReady = Signal(str, str, "QVariantList")  # (repoPath, hash, 文件列表)
     fileContentReady = Signal(str, str, str, str)        # (repoPath, path, hash, 内容)
     diffBetweenReady = Signal(str, str, str, str, str)   # (repoPath, path, c1, c2, diff)
@@ -179,8 +182,6 @@ class GitBridge(QObject):
     cleanPreviewReady = Signal(str, "QVariantList")      # (repoPath, 待清理文件列表)
     reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
     advancedStateReady = Signal(str, "QVariantList", "QVariantList")  # (repoPath, worktree, submodule)
-    _statusFetched = Signal(str, object, str)             # 工作线程 -> GUI线程
-
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
     _POLL_INTERVAL_MS = 2000
 
@@ -188,10 +189,6 @@ class GitBridge(QObject):
         super().__init__(parent)
         self._svc = GitService(self)
         self._file_change_model = FileChangeListModel(self)
-        self._statusFetched.connect(
-            self._apply_status_result,
-            Qt.ConnectionType.QueuedConnection,
-        )
         # ---- 外部变化轮询 ----
         # 定期计算仓库状态指纹,变了就 emit statusChanged,让所有视图统一刷新。
         # 内部 Git 操作本身也会发 statusChanged；每次内部信号都让旧基线失效，
@@ -210,6 +207,7 @@ class GitBridge(QObject):
         self._search_request_serial = 0
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
+        self._open_request_serial = 0
 
         # 指纹计算放后台线程(跑 git 命令,不能阻塞主线程);
         # 用 _poll_busy 防重入,避免上一轮未完又起一轮。
@@ -219,6 +217,61 @@ class GitBridge(QObject):
         self._poll_timer.setInterval(self._POLL_INTERVAL_MS)
         self._poll_timer.timeout.connect(self._poll_tick)
         self._poll_timer.start()
+
+    def _submit_query(
+        self,
+        function: Callable[[], Any],
+        *,
+        label: str,
+        on_success: Callable[[Any], None] | None = None,
+        on_failure: Callable[[BaseException], None] | None = None,
+    ):
+        """把只读查询提交给 PrismQML；所有回调都由引擎排回主线程。"""
+        def failed(exc: BaseException) -> None:
+            logger.warning(f"{label}失败: {type(exc).__name__}: {exc}")
+            if on_failure is not None:
+                on_failure(exc)
+
+        return submit_to_pool(
+            function,
+            on_success=on_success,
+            on_failure=failed,
+        )
+
+    def _submit_operation(
+        self,
+        description: str,
+        function: Callable[[], tuple[bool, str]],
+        *,
+        publish: bool = True,
+    ):
+        """提交一个返回 ``(成功, 消息)`` 的 Git 操作。"""
+        if publish:
+            self.operationStarted.emit(description)
+
+        def succeeded(result: object) -> None:
+            try:
+                ok, message = result
+            except (TypeError, ValueError):
+                logger.error(f"Git 后台操作返回值无效: {result!r}")
+                if publish:
+                    self.operationFinished.emit(False, "Git 操作返回值无效")
+                return
+            if publish:
+                self.operationFinished.emit(bool(ok), str(message))
+
+        def failed(exc: BaseException) -> None:
+            logger.warning(
+                f"Git 后台操作异常: {type(exc).__name__}: {exc}"
+            )
+            if publish:
+                self.operationFinished.emit(False, str(exc) or "Git 操作失败")
+
+        return submit_to_pool(
+            function,
+            on_success=succeeded,
+            on_failure=failed,
+        )
 
     def _reset_poll_baseline(self):
         """使当前基线失效；下一轮只建新基线，不重复发刷新。"""
@@ -233,30 +286,26 @@ class GitBridge(QObject):
         self.statusChanged.emit()
 
     def _poll_tick(self):
-        """定时器回调(主线程):把指纹计算丢到后台线程,防重入。"""
+        """定时器回调(主线程):把指纹计算交给 PrismQML 线程池。"""
         repo = self._svc.repo_path or ""
         if not repo or self._poll_busy:
             return
         self._poll_busy = True
         self._poll_repo = repo
         generation = self._poll_generation
-        import threading
-
-        def work():
-            try:
-                fp = self._svc.compute_state_fingerprint(repo)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"计算状态指纹失败: {e}")
-                fp = ""
-            # 回主线程处理结果(排队信号语义:直接在 work 里读写 _poll_* 有竞争,
-            # 但这些字段只被本轮 work 与主线程 tick 触碰,且 tick 靠 _poll_busy 互斥,
-            # 故此处仅比较+emit,状态回写留给下一次 tick 前;emit 本身跨线程安全)
-            self._on_fingerprint_ready(repo, fp, generation)
-
-        threading.Thread(target=work, daemon=True).start()
+        self._submit_query(
+            lambda: self._svc.compute_state_fingerprint(repo),
+            label="计算状态指纹",
+            on_success=lambda fp: self._on_fingerprint_ready(
+                repo, str(fp), generation
+            ),
+            on_failure=lambda _exc: self._on_fingerprint_ready(
+                repo, "", generation
+            ),
+        )
 
     def _on_fingerprint_ready(self, repo: str, fp: str, generation: int):
-        """指纹算完(后台线程调用):与基线比较,变化则 emit statusChanged。"""
+        """指纹算完（主线程回调）：与基线比较并刷新。"""
         # 仓库已切走或内部操作已使基线换代 → 丢弃过期结果。
         if (
             generation != self._poll_generation
@@ -273,7 +322,7 @@ class GitBridge(QObject):
             self._poll_fingerprint = fp
         elif fp != self._poll_fingerprint:
             self._poll_fingerprint = fp
-            self.statusChanged.emit()  # 跨线程 emit 安全:排队到主线程
+            self.statusChanged.emit()
         self._poll_busy = False
 
     # ==================== 属性 ====================
@@ -296,8 +345,8 @@ class GitBridge(QObject):
         return self._POLL_INTERVAL_MS
 
     # ==================== 仓库 ====================
-    @Slot(str, result=bool)
     def setRepoPath(self, path: str) -> bool:
+        """仅供 Python 测试/内部启动使用；QML 必须调用 ``openRepoAsync``。"""
         ok = self._svc.set_repo_path(path, emit_status=False)
         if ok:
             from app.common.recent_repos import recentReposManager
@@ -309,25 +358,28 @@ class GitBridge(QObject):
     @Slot(str)
     def openRepoAsync(self, path: str):
         """后台打开仓库,不阻塞主线程;成功时由 repoPathChanged 驱动各视图刷新。"""
-        import threading
+        self._open_request_serial += 1
+        request_serial = self._open_request_serial
 
-        def work():
-            try:
-                ok = self._svc.set_repo_path(path, emit_status=False)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"打开仓库失败 {path}: {e}")
-                ok = False
+        def completed(ok: object) -> None:
+            if request_serial != self._open_request_serial:
+                return
             if ok:
+                self._svc.activate_repo_path(path, emit_status=False)
                 from app.common.recent_repos import recentReposManager
                 recentReposManager.add(self._svc.repo_path or path)
                 self._reset_poll_baseline()
-                # 信号跨线程 emit 是线程安全的(排队到主线程)
                 self.repoPathChanged.emit(self._svc.repo_path or "")
                 self.repoOpened.emit(True, self._svc.repo_path or path)
             else:
                 self.repoOpened.emit(False, path)
 
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: self._svc.validate_repo_path(path),
+            label=f"打开仓库 {path}",
+            on_success=completed,
+            on_failure=lambda _exc: completed(False),
+        )
 
     @Slot(result="QVariantList")
     def getRecentRepos(self) -> list:
@@ -359,44 +411,47 @@ class GitBridge(QObject):
     @Slot()
     def requestStatus(self):
         """后台获取状态，回到 GUI 线程批量刷新 fileChangeModel。"""
-        import threading
         repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: (
+                self._svc.get_status_at(repo),
+                self._svc.get_current_branch_at(repo),
+            ),
+            label="获取仓库状态",
+            on_success=lambda result: self._apply_status_result(
+                repo, result[0], result[1]
+            ),
+            on_failure=lambda _exc: self._apply_status_result(repo, [], ""),
+        )
 
-        def work():
-            try:
-                changes = self._svc.get_status_at(repo)
-                branch = self._svc.get_current_branch_at(repo)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取状态失败: {e}")
-                changes, branch = [], ""
-            self._statusFetched.emit(repo, changes, branch)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    @Slot(result=str)
-    def getCurrentBranch(self) -> str:
-        return self._svc.get_current_branch()
+    @Slot(result=QObject)
+    def getCurrentBranch(self):
+        """异步读取当前分支，返回 PrismQML ``TaskHandle``。"""
+        repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: self._svc.get_current_branch_at(repo),
+            label="获取当前分支",
+        )
 
     # ==================== 仓库维护 ====================
     @Slot()
     def requestCleanPreview(self):
         """后台预览待清理文件,完成发 cleanPreviewReady(repoPath,list)。"""
-        import threading
         repo = self._svc.repo_path or ""
+        return self._submit_query(
+            self._svc.clean_preview,
+            label="预览待清理文件",
+            on_success=lambda data: self.cleanPreviewReady.emit(repo, data),
+            on_failure=lambda _exc: self.cleanPreviewReady.emit(repo, []),
+        )
 
-        def work():
-            try:
-                data = self._svc.clean_preview()
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"预览清理失败: {e}"); data = []
-            self.cleanPreviewReady.emit(repo, data)
-        threading.Thread(target=work, daemon=True).start()
-
-    @Slot(bool, result="QVariantList")
-    def clean(self, include_directories: bool) -> list:
-        """清理未跟踪文件,返回 [成功, 消息]"""
-        ok, msg = self._svc.clean(include_directories=include_directories)
-        return [ok, msg]
+    @Slot(bool, result=QObject)
+    def clean(self, include_directories: bool):
+        """异步清理未跟踪文件。"""
+        return self._submit_operation(
+            "正在清理未跟踪文件...",
+            lambda: self._svc.clean(include_directories=include_directories),
+        )
 
     @Slot()
     def gc(self):
@@ -407,157 +462,181 @@ class GitBridge(QObject):
     @Slot()
     def requestAdvancedState(self):
         """后台读取 worktree/submodule，避免切仓库时阻塞 QML 主线程。"""
-        import threading
         repo = self._svc.repo_path or ""
         self._advanced_request_serial += 1
         request_serial = self._advanced_request_serial
 
         def work():
-            try:
-                worktrees = [
+            return (
+                [
                     _worktree_to_dict(w) for w in self._svc.list_worktrees_at(repo)
-                ]
-                submodules = [
+                ],
+                [
                     _submodule_to_dict(s) for s in self._svc.list_submodules_at(repo)
-                ]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取高级仓库状态失败: {e}")
-                worktrees, submodules = [], []
+                ],
+            )
+
+        def completed(result: object) -> None:
             if request_serial != self._advanced_request_serial:
                 return
             if repo != (self._svc.repo_path or ""):
                 return
+            worktrees, submodules = result
             self.advancedStateReady.emit(repo, worktrees, submodules)
 
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            work,
+            label="获取高级仓库状态",
+            on_success=completed,
+            on_failure=lambda _exc: completed(([], [])),
+        )
 
-    @Slot(result="QVariantList")
     def getWorktrees(self) -> list:
         return [_worktree_to_dict(w) for w in self._svc.list_worktrees()]
 
-    @Slot(str, str, bool, result="QVariantList")
-    def addWorktree(self, path: str, branch: str, create_branch: bool) -> list:
-        ok, msg = self._svc.add_worktree(path, branch, create_branch)
-        return [ok, msg]
+    @Slot(str, str, bool, result=QObject)
+    def addWorktree(self, path: str, branch: str, create_branch: bool):
+        return self._submit_operation(
+            "正在添加工作树...",
+            lambda: self._svc.add_worktree(path, branch, create_branch),
+        )
 
-    @Slot(str, bool, result="QVariantList")
-    def removeWorktree(self, path: str, force: bool) -> list:
-        ok, msg = self._svc.remove_worktree(path, force)
-        return [ok, msg]
+    @Slot(str, bool, result=QObject)
+    def removeWorktree(self, path: str, force: bool):
+        return self._submit_operation(
+            "正在移除工作树...",
+            lambda: self._svc.remove_worktree(path, force),
+        )
 
-    @Slot(result="QVariantList")
-    def pruneWorktrees(self) -> list:
-        ok, msg = self._svc.prune_worktrees()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def pruneWorktrees(self):
+        return self._submit_operation(
+            "正在清理失效工作树...", self._svc.prune_worktrees
+        )
 
-    @Slot(result="QVariantList")
     def getSubmodules(self) -> list:
         return [_submodule_to_dict(s) for s in self._svc.list_submodules()]
 
-    @Slot(bool, bool, result="QVariantList")
-    def submoduleUpdate(self, init: bool, recursive: bool) -> list:
-        ok, msg = self._svc.submodule_update(init, recursive)
-        return [ok, msg]
+    @Slot(bool, bool, result=QObject)
+    def submoduleUpdate(self, init: bool, recursive: bool):
+        return self._submit_operation(
+            "正在更新子模块...",
+            lambda: self._svc.submodule_update(init, recursive),
+        )
 
-    @Slot(bool, result="QVariantList")
-    def submoduleSync(self, recursive: bool) -> list:
-        ok, msg = self._svc.submodule_sync(recursive)
-        return [ok, msg]
+    @Slot(bool, result=QObject)
+    def submoduleSync(self, recursive: bool):
+        return self._submit_operation(
+            "正在同步子模块配置...",
+            lambda: self._svc.submodule_sync(recursive),
+        )
 
-    @Slot(result="QVariantList")
-    def lfsStatus(self) -> list:
-        ok, msg = self._svc.lfs_status()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def lfsStatus(self):
+        return self._submit_operation("正在读取 Git LFS 状态...", self._svc.lfs_status)
 
     @Slot()
     def lfsPull(self):
-        import threading
-        self.operationStarted.emit("正在拉取 Git LFS 对象...")
-        def work():
-            try:
-                ok, msg = self._svc.lfs_pull()
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"Git LFS pull 失败: {e}"); ok, msg = False, str(e)
-            self.operationFinished.emit(ok, msg)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_operation(
+            "正在拉取 Git LFS 对象...", self._svc.lfs_pull
+        )
 
     @Slot(str, str)
     def lfsPush(self, remote: str, branch: str):
-        import threading
-        self.operationStarted.emit(f"正在推送 Git LFS 对象到 {remote} {branch}...")
-        def work():
-            try:
-                ok, msg = self._svc.lfs_push(remote, branch)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"Git LFS push 失败: {e}"); ok, msg = False, str(e)
-            self.operationFinished.emit(ok, msg)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_operation(
+            f"正在推送 Git LFS 对象到 {remote} {branch}...",
+            lambda: self._svc.lfs_push(remote, branch),
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def bisectStart(self, good_rev: str, bad_rev: str) -> list:
-        ok, msg = self._svc.bisect_start(good_rev, bad_rev)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def bisectStart(self, good_rev: str, bad_rev: str):
+        return self._submit_operation(
+            "正在开始二分定位...",
+            lambda: self._svc.bisect_start(good_rev, bad_rev),
+        )
 
-    @Slot(str, result="QVariantList")
-    def bisectGood(self, rev: str) -> list:
-        ok, msg = self._svc.bisect_good(rev)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def bisectGood(self, rev: str):
+        return self._submit_operation(
+            "正在标记正常提交...", lambda: self._svc.bisect_good(rev)
+        )
 
-    @Slot(str, result="QVariantList")
-    def bisectBad(self, rev: str) -> list:
-        ok, msg = self._svc.bisect_bad(rev)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def bisectBad(self, rev: str):
+        return self._submit_operation(
+            "正在标记异常提交...", lambda: self._svc.bisect_bad(rev)
+        )
 
-    @Slot(str, result="QVariantList")
-    def bisectSkip(self, rev: str) -> list:
-        ok, msg = self._svc.bisect_skip(rev)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def bisectSkip(self, rev: str):
+        return self._submit_operation(
+            "正在跳过二分提交...", lambda: self._svc.bisect_skip(rev)
+        )
 
-    @Slot(result="QVariantList")
-    def bisectReset(self) -> list:
-        ok, msg = self._svc.bisect_reset()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def bisectReset(self):
+        return self._submit_operation(
+            "正在结束二分定位...", self._svc.bisect_reset
+        )
 
-    @Slot(result="QVariantList")
-    def bisectLog(self) -> list:
-        ok, msg = self._svc.bisect_log()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def bisectLog(self):
+        return self._submit_operation("正在读取二分记录...", self._svc.bisect_log)
 
     # ==================== 暂存 / 取消暂存 ====================
-    @Slot(str, result=bool)
-    def stageFile(self, path: str) -> bool:
-        return self._svc.stage_file(path)
+    @Slot(str, result=QObject)
+    def stageFile(self, path: str):
+        def work() -> tuple[bool, str]:
+            ok = self._svc.stage_file(path)
+            return ok, f"已暂存 {path}" if ok else f"暂存失败: {path}"
 
-    @Slot(str, result=bool)
-    def unstageFile(self, path: str) -> bool:
-        return self._svc.unstage_file(path)
+        return self._submit_operation("正在暂存文件...", work)
 
-    @Slot(result=bool)
-    def stageAll(self) -> bool:
-        return self._svc.stage_all()
+    @Slot(str, result=QObject)
+    def unstageFile(self, path: str):
+        def work() -> tuple[bool, str]:
+            ok = self._svc.unstage_file(path)
+            return ok, f"已取消暂存 {path}" if ok else f"取消暂存失败: {path}"
 
-    @Slot(result=bool)
-    def unstageAll(self) -> bool:
-        return self._svc.unstage_all()
+        return self._submit_operation("正在取消暂存文件...", work)
 
-    @Slot(str, result=bool)
-    def discardFile(self, path: str) -> bool:
-        return self._svc.discard_file(path)
+    @Slot(result=QObject)
+    def stageAll(self):
+        def work() -> tuple[bool, str]:
+            ok = self._svc.stage_all()
+            return ok, "已暂存全部改动" if ok else "暂存全部改动失败"
+
+        return self._submit_operation("正在暂存全部改动...", work)
+
+    @Slot(result=QObject)
+    def unstageAll(self):
+        def work() -> tuple[bool, str]:
+            ok = self._svc.unstage_all()
+            return ok, "已取消全部暂存" if ok else "取消全部暂存失败"
+
+        return self._submit_operation("正在取消全部暂存...", work)
+
+    @Slot(str, result=QObject)
+    def discardFile(self, path: str):
+        def work() -> tuple[bool, str]:
+            ok = self._svc.discard_file(path)
+            return ok, f"已丢弃 {path}" if ok else f"丢弃失败: {path}"
+
+        return self._submit_operation("正在丢弃文件改动...", work)
 
     # ==================== 差异 ====================
     @Slot(str, bool)
     def requestDiff(self, path: str, staged: bool):
         """后台获取文件差异,完成发 diffReady(repoPath, path, staged, content)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = self._svc.get_diff(path, staged)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取 diff 失败: {e}"); data = ""
-            self.diffReady.emit(repo, path, staged, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: self._svc.get_diff(path, staged),
+            label="获取 diff",
+            on_success=lambda data: self.diffReady.emit(
+                repo, path, staged, str(data)
+            ),
+            on_failure=lambda _exc: self.diffReady.emit(repo, path, staged, ""),
+        )
 
     @Slot(str, result="QVariantList")
     def parseDiffFiles(self, raw_diff: str) -> list:
@@ -570,20 +649,25 @@ class GitBridge(QObject):
         return GitService.filter_unified_diff(raw_diff, path)
 
     # ==================== 提交 ====================
-    @Slot(str, result="QVariantList")
-    def commit(self, message: str) -> list:
-        ok, msg = self._svc.commit(message)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def commit(self, message: str):
+        return self._submit_operation(
+            "正在提交变更...", lambda: self._svc.commit(message)
+        )
 
-    @Slot(str, result="QVariantList")
-    def amendCommit(self, message: str) -> list:
-        ok, msg = self._svc.amend_commit(message)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def amendCommit(self, message: str):
+        return self._submit_operation(
+            "正在修补上次提交...", lambda: self._svc.amend_commit(message)
+        )
 
-    @Slot(result=bool)
-    def isHeadPushed(self) -> bool:
-        """最近提交是否已推送到上游(供前端 amend 前判断是否需告警)。"""
-        return self._svc.is_head_pushed()
+    @Slot(result=QObject)
+    def isHeadPushed(self):
+        """异步判断最近提交是否已推送到上游。"""
+        return self._submit_query(
+            self._svc.is_head_pushed,
+            label="检查提交推送状态",
+        )
 
     # ==================== 远程同步(异步,经 operationFinished 回传) ====================
     @Slot()
@@ -642,13 +726,18 @@ class GitBridge(QObject):
             callback=lambda ok, msg: self.quickCommitPushFinished.emit(ok, msg),
         )
 
-    @Slot(result="QVariantList")
-    def getRemoteInfo(self) -> list:
-        """远程列表 -> [{name, url}, ...]"""
-        return [{"name": name, "url": url} for name, url in self._svc.get_remote_info()]
+    @Slot(result=QObject)
+    def getRemoteInfo(self):
+        """异步读取远程列表，返回 PrismQML ``TaskHandle``。"""
+        return self._submit_query(
+            lambda: [
+                {"name": name, "url": url}
+                for name, url in self._svc.get_remote_info()
+            ],
+            label="获取远程列表",
+        )
 
     # ==================== 提交历史 ====================
-    @Slot(int, int, bool, result="QVariantList")
     def getLog(self, count: int, skip: int, fast_mode: bool) -> list:
         """提交历史(分页) -> [{hash, shortHash, author, ...}, ...]"""
         return [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast_mode)]
@@ -656,388 +745,410 @@ class GitBridge(QObject):
     @Slot(int, int, bool)
     def requestLog(self, count: int, skip: int, include_all_refs: bool = False):
         """后台分页获取提交,完成发 logReady(repoPath, skip, list),不阻塞主线程。"""
-        import threading
         repo = self._svc.repo_path or ""
         self._log_request_serial += 1
         request_serial = self._log_request_serial
 
         def work():
-            try:
-                batch = [
+            return [
                     _commit_to_dict(c)
                     for c in self._svc.get_graph_log_at(
                         repo, count, skip, include_all_refs
                     )
                 ]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取提交历史失败: {e}")
-                batch = []
+
+        def completed(batch: list) -> None:
             if request_serial != self._log_request_serial:
                 return
             if repo != (self._svc.repo_path or ""):
                 return
             self.logReady.emit(repo, skip, batch)
 
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            work,
+            label="获取提交历史",
+            on_success=completed,
+            on_failure=lambda _exc: completed([]),
+        )
 
     @Slot(str, str, bool)
     def requestSearch(
         self, query: str, search_type: str, include_all_refs: bool = False
     ):
         """后台搜索提交,完成发 searchReady(repoPath, list)。"""
-        import threading
         repo = self._svc.repo_path or ""
         self._search_request_serial += 1
         request_serial = self._search_request_serial
 
         def work():
-            try:
-                results = [
+            return [
                     _commit_to_dict(c)
                     for c in self._svc.search_commits_at(
                         repo, query, search_type, 100, include_all_refs
                     )
                 ]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"搜索提交失败: {e}")
-                results = []
+
+        def completed(results: list) -> None:
             if request_serial != self._search_request_serial:
                 return
             if repo != (self._svc.repo_path or ""):
                 return
             self.searchReady.emit(repo, results)
 
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            work,
+            label="搜索提交",
+            on_success=completed,
+            on_failure=lambda _exc: completed([]),
+        )
 
-    @Slot(result=bool)
     def isLargeRepo(self) -> bool:
         return self._svc.is_large_repo()
 
-    @Slot(str, str, int, result="QVariantList")
     def searchCommits(self, query: str, search_type: str, count: int) -> list:
         return [_commit_to_dict(c) for c in self._svc.search_commits(query, search_type, count)]
 
-    @Slot(str, result=int)
     def getCommitCountAfter(self, commit_hash: str) -> int:
         return self._svc.get_commit_count_after(commit_hash)
 
-    @Slot(str, result="QVariantList")
-    def checkoutCommit(self, commit_hash: str) -> list:
-        ok, msg = self._svc.checkout_branch(commit_hash)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def checkoutCommit(self, commit_hash: str):
+        return self._submit_operation(
+            "正在检出提交...", lambda: self._svc.checkout_branch(commit_hash)
+        )
 
-    @Slot(str, result="QVariantList")
-    def revertCommit(self, commit_hash: str) -> list:
-        ok, msg = self._svc.revert_commit(commit_hash)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def revertCommit(self, commit_hash: str):
+        return self._submit_operation(
+            "正在撤销提交...", lambda: self._svc.revert_commit(commit_hash)
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def resetToCommit(self, commit_hash: str, mode: str) -> list:
-        ok, msg = self._svc.reset_to_commit(commit_hash, mode)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def resetToCommit(self, commit_hash: str, mode: str):
+        return self._submit_operation(
+            "正在回滚到指定提交...",
+            lambda: self._svc.reset_to_commit(commit_hash, mode),
+        )
 
-    @Slot(str, result="QVariantList")
-    def cherryPick(self, commit_hash: str) -> list:
-        ok, msg = self._svc.cherry_pick(commit_hash)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def cherryPick(self, commit_hash: str):
+        return self._submit_operation(
+            "正在 Cherry-pick 提交...",
+            lambda: self._svc.cherry_pick(commit_hash),
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def cherryPickToBranch(self, commit_hash: str, target_branch: str) -> list:
-        ok, msg = self._svc.cherry_pick_to_branch(commit_hash, target_branch)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def cherryPickToBranch(self, commit_hash: str, target_branch: str):
+        return self._submit_operation(
+            f"正在将提交应用到 {target_branch}...",
+            lambda: self._svc.cherry_pick_to_branch(commit_hash, target_branch),
+        )
 
     # ==================== 分支 ====================
     @Slot()
     def requestBranches(self):
         """后台获取分支列表,完成发 branchesReady(repoPath,list)。"""
-        import threading
         repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: [_branch_to_dict(b) for b in self._svc.get_branches()],
+            label="获取分支列表",
+            on_success=lambda data: self.branchesReady.emit(repo, data),
+            on_failure=lambda _exc: self.branchesReady.emit(repo, []),
+        )
 
-        def work():
-            try:
-                data = [_branch_to_dict(b) for b in self._svc.get_branches()]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取分支失败: {e}"); data = []
-            self.branchesReady.emit(repo, data)
-        threading.Thread(target=work, daemon=True).start()
+    @Slot(str, bool, result=QObject)
+    def createBranch(self, branch: str, checkout: bool):
+        return self._submit_operation(
+            "正在创建分支...",
+            lambda: self._svc.create_branch(branch, checkout),
+        )
 
-    @Slot(str, bool, result="QVariantList")
-    def createBranch(self, branch: str, checkout: bool) -> list:
-        ok, msg = self._svc.create_branch(branch, checkout)
-        return [ok, msg]
-
-    @Slot(str, str, bool, result="QVariantList")
+    @Slot(str, str, bool, result=QObject)
     def createBranchAt(
         self, branch: str, start_point: str, checkout: bool
-    ) -> list:
-        ok, msg = self._svc.create_branch(
-            branch, checkout=checkout, start_point=start_point
+    ):
+        return self._submit_operation(
+            "正在创建分支...",
+            lambda: self._svc.create_branch(
+                branch, checkout=checkout, start_point=start_point
+            ),
+            publish=False,
         )
-        return [ok, msg]
 
-    @Slot(str, result="QVariantList")
-    def checkoutBranch(self, branch: str) -> list:
-        ok, msg = self._svc.checkout_branch(branch)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def checkoutBranch(self, branch: str):
+        return self._submit_operation(
+            f"正在切换到分支 {branch}...",
+            lambda: self._svc.checkout_branch(branch),
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def checkoutRemoteBranch(self, remote_branch: str, local_branch: str) -> list:
-        ok, msg = self._svc.checkout_remote_branch(remote_branch, local_branch)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def checkoutRemoteBranch(self, remote_branch: str, local_branch: str):
+        return self._submit_operation(
+            "正在检出远程分支...",
+            lambda: self._svc.checkout_remote_branch(
+                remote_branch, local_branch
+            ),
+        )
 
-    @Slot(str, bool, result="QVariantList")
-    def deleteBranch(self, branch: str, force: bool) -> list:
-        ok, msg = self._svc.delete_branch(branch, force)
-        return [ok, msg]
+    @Slot(str, bool, result=QObject)
+    def deleteBranch(self, branch: str, force: bool):
+        return self._submit_operation(
+            f"正在删除分支 {branch}...",
+            lambda: self._svc.delete_branch(branch, force),
+        )
 
     @Slot(str)
     def deleteRemoteBranch(self, remote_branch: str):
         """后台删除远程分支；本地分支不会被删除。"""
-        import threading
+        return self._submit_operation(
+            f"正在删除远程分支 {remote_branch}...",
+            lambda: self._svc.delete_remote_branch(remote_branch),
+        )
 
-        self.operationStarted.emit(f"正在删除远程分支 {remote_branch}...")
+    @Slot(str, str, result=QObject)
+    def renameBranch(self, old_name: str, new_name: str):
+        return self._submit_operation(
+            "正在重命名分支...",
+            lambda: self._svc.rename_branch(old_name, new_name),
+        )
 
-        def work():
-            try:
-                ok, msg = self._svc.delete_remote_branch(remote_branch)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"删除远程分支失败: {exc}")
-                ok, msg = False, str(exc)
-            self.operationFinished.emit(ok, msg)
-
-        threading.Thread(target=work, daemon=True).start()
-
-    @Slot(str, str, result="QVariantList")
-    def renameBranch(self, old_name: str, new_name: str) -> list:
-        ok, msg = self._svc.rename_branch(old_name, new_name)
-        return [ok, msg]
-
-    @Slot(str, str, str, result="QVariantList")
-    def setUpstream(self, local_branch: str, remote: str, remote_branch: str) -> list:
-        ok, msg = self._svc.set_upstream(local_branch, remote, remote_branch)
-        return [ok, msg]
+    @Slot(str, str, str, result=QObject)
+    def setUpstream(self, local_branch: str, remote: str, remote_branch: str):
+        return self._submit_operation(
+            "正在设置上游分支...",
+            lambda: self._svc.set_upstream(local_branch, remote, remote_branch),
+        )
 
     @Slot(str)
     def mergeBranch(self, branch: str):
         """合并分支(异步);结果经 operationFinished 回传"""
         self._svc.merge_branch(branch)
 
-    @Slot(str, result="QVariantList")
-    def rebaseOnto(self, branch: str) -> list:
-        ok, msg = self._svc.rebase_onto(branch)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def rebaseOnto(self, branch: str):
+        return self._submit_operation(
+            f"正在 Rebase 到 {branch}...",
+            lambda: self._svc.rebase_onto(branch),
+        )
 
-    @Slot(result="QVariantList")
-    def pruneRemote(self) -> list:
-        ok, msg = self._svc.prune_remote()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def pruneRemote(self):
+        return self._submit_operation(
+            "正在清理远程分支引用...", self._svc.prune_remote
+        )
 
     # ==================== 冲突 ====================
-    @Slot(result=bool)
     def isMerging(self) -> bool:
         return self._svc.is_merging()
 
-    @Slot(result=str)
     def getConflictOperation(self) -> str:
         return self._svc.get_operation_state()
 
     @Slot()
     def requestConflicts(self):
         """后台获取冲突文件,完成发 conflictsReady(repoPath,list)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = [_conflict_to_dict(c) for c in self._svc.get_conflicts()]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取冲突失败: {e}"); data = []
+        def completed(result: object) -> None:
+            operation, data = result
+            self.conflictStateReady.emit(repo, operation)
             self.conflictsReady.emit(repo, data)
-        threading.Thread(target=work, daemon=True).start()
 
-    @Slot(str, result="QVariantList")
-    def resolveWithOurs(self, path: str) -> list:
-        ok, msg = self._svc.resolve_conflict_with_ours(path)
-        return [ok, msg]
+        return self._submit_query(
+            lambda: (
+                self._svc.get_operation_state(),
+                [_conflict_to_dict(c) for c in self._svc.get_conflicts()],
+            ),
+            label="获取冲突状态",
+            on_success=completed,
+            on_failure=lambda _exc: completed(("", [])),
+        )
 
-    @Slot(str, result="QVariantList")
-    def resolveWithTheirs(self, path: str) -> list:
-        ok, msg = self._svc.resolve_conflict_with_theirs(path)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def resolveWithOurs(self, path: str):
+        return self._submit_operation(
+            "正在使用当前分支版本解决冲突...",
+            lambda: self._svc.resolve_conflict_with_ours(path),
+        )
 
-    @Slot(result="QVariantList")
-    def abortMerge(self) -> list:
-        ok, msg = self._svc.abort_merge()
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def resolveWithTheirs(self, path: str):
+        return self._submit_operation(
+            "正在使用对方分支版本解决冲突...",
+            lambda: self._svc.resolve_conflict_with_theirs(path),
+        )
 
-    @Slot(result="QVariantList")
-    def continueRebase(self) -> list:
-        ok, msg = self._svc.continue_rebase()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def abortMerge(self):
+        return self._submit_operation("正在中止合并...", self._svc.abort_merge)
 
-    @Slot(result="QVariantList")
-    def abortRebase(self) -> list:
-        ok, msg = self._svc.abort_rebase()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def continueRebase(self):
+        return self._submit_operation("正在继续 Rebase...", self._svc.continue_rebase)
 
-    @Slot(result="QVariantList")
-    def skipRebase(self) -> list:
-        ok, msg = self._svc.skip_rebase()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def abortRebase(self):
+        return self._submit_operation("正在中止 Rebase...", self._svc.abort_rebase)
 
-    @Slot(result="QVariantList")
-    def continueCherryPick(self) -> list:
-        ok, msg = self._svc.continue_cherry_pick()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def skipRebase(self):
+        return self._submit_operation("正在跳过 Rebase 提交...", self._svc.skip_rebase)
 
-    @Slot(result="QVariantList")
-    def abortCherryPick(self) -> list:
-        ok, msg = self._svc.abort_cherry_pick()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def continueCherryPick(self):
+        return self._submit_operation(
+            "正在继续 Cherry-pick...", self._svc.continue_cherry_pick
+        )
 
-    @Slot(result="QVariantList")
-    def continueRevert(self) -> list:
-        ok, msg = self._svc.continue_revert()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def abortCherryPick(self):
+        return self._submit_operation(
+            "正在中止 Cherry-pick...", self._svc.abort_cherry_pick
+        )
 
-    @Slot(result="QVariantList")
-    def abortRevert(self) -> list:
-        ok, msg = self._svc.abort_revert()
-        return [ok, msg]
+    @Slot(result=QObject)
+    def continueRevert(self):
+        return self._submit_operation("正在继续 Revert...", self._svc.continue_revert)
+
+    @Slot(result=QObject)
+    def abortRevert(self):
+        return self._submit_operation("正在中止 Revert...", self._svc.abort_revert)
 
     # ==================== Stash ====================
     @Slot()
     def requestStashList(self):
         """后台获取 stash 列表,完成发 stashListReady(repoPath,list)。"""
-        import threading
         repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: [
+                {"id": sid, "message": msg}
+                for sid, msg in self._svc.stash_list()
+            ],
+            label="获取 Stash 列表",
+            on_success=lambda data: self.stashListReady.emit(repo, data),
+            on_failure=lambda _exc: self.stashListReady.emit(repo, []),
+        )
 
-        def work():
-            try:
-                data = [{"id": sid, "message": msg} for sid, msg in self._svc.stash_list()]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取 stash 失败: {e}"); data = []
-            self.stashListReady.emit(repo, data)
-        threading.Thread(target=work, daemon=True).start()
+    @Slot(str, bool, bool, result=QObject)
+    def stashSave(self, message: str, include_untracked: bool, keep_index: bool):
+        return self._submit_operation(
+            "正在保存 Stash...",
+            lambda: self._svc.stash_save(
+                message, include_untracked, keep_index
+            ),
+        )
 
-    @Slot(str, bool, bool, result="QVariantList")
-    def stashSave(self, message: str, include_untracked: bool, keep_index: bool) -> list:
-        ok, msg = self._svc.stash_save(message, include_untracked, keep_index)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def stashPop(self, stash_id: str):
+        return self._submit_operation(
+            "正在恢复并删除 Stash...", lambda: self._svc.stash_pop(stash_id)
+        )
 
-    @Slot(str, result="QVariantList")
-    def stashPop(self, stash_id: str) -> list:
-        ok, msg = self._svc.stash_pop(stash_id)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def stashApply(self, stash_id: str):
+        return self._submit_operation(
+            "正在应用 Stash...", lambda: self._svc.stash_apply(stash_id)
+        )
 
-    @Slot(str, result="QVariantList")
-    def stashApply(self, stash_id: str) -> list:
-        ok, msg = self._svc.stash_apply(stash_id)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def stashDrop(self, stash_id: str):
+        return self._submit_operation(
+            "正在删除 Stash...", lambda: self._svc.stash_drop(stash_id)
+        )
 
-    @Slot(str, result="QVariantList")
-    def stashDrop(self, stash_id: str) -> list:
-        ok, msg = self._svc.stash_drop(stash_id)
-        return [ok, msg]
+    @Slot(result=QObject)
+    def stashClear(self):
+        return self._submit_operation("正在清空 Stash...", self._svc.stash_clear)
 
-    @Slot(result="QVariantList")
-    def stashClear(self) -> list:
-        ok, msg = self._svc.stash_clear()
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def stashShow(self, stash_id: str):
+        return self._submit_query(
+            lambda: self._svc.stash_show(stash_id),
+            label="查看 Stash",
+        )
 
-    @Slot(str, result="QVariantList")
-    def stashShow(self, stash_id: str) -> list:
-        ok, msg = self._svc.stash_show(stash_id)
-        return [ok, msg]
-
-    @Slot(str, str, result="QVariantList")
-    def stashBranch(self, branch: str, stash_id: str) -> list:
-        ok, msg = self._svc.stash_branch(branch, stash_id)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def stashBranch(self, branch: str, stash_id: str):
+        return self._submit_operation(
+            "正在从 Stash 创建分支...",
+            lambda: self._svc.stash_branch(branch, stash_id),
+        )
 
     # ==================== Tag ====================
     @Slot()
     def requestTags(self):
         """后台获取标签列表,完成发 tagsReady(repoPath,list)。"""
-        import threading
         repo = self._svc.repo_path or ""
         self._tags_request_serial += 1
         request_serial = self._tags_request_serial
 
         def work():
-            try:
-                data = [
+            return [
                     {"name": n, "hash": h, "message": m}
                     for n, h, m in self._svc.get_tags_at(repo)
                 ]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取标签失败: {e}"); data = []
+
+        def completed(data: list) -> None:
             if request_serial != self._tags_request_serial:
                 return
             self.tagsReady.emit(repo, data)
-        threading.Thread(target=work, daemon=True).start()
 
-    @Slot(str, str, bool, result="QVariantList")
-    def createTag(self, name: str, message: str, annotated: bool) -> list:
-        ok, msg = self._svc.create_tag(name, message, annotated=annotated)
-        return [ok, msg]
+        return self._submit_query(
+            work,
+            label="获取标签列表",
+            on_success=completed,
+            on_failure=lambda _exc: completed([]),
+        )
 
-    @Slot(str, result="QVariantList")
-    def deleteTag(self, name: str) -> list:
-        ok, msg = self._svc.delete_tag(name)
-        return [ok, msg]
+    @Slot(str, str, bool, result=QObject)
+    def createTag(self, name: str, message: str, annotated: bool):
+        return self._submit_operation(
+            "正在创建标签...",
+            lambda: self._svc.create_tag(name, message, annotated=annotated),
+        )
+
+    @Slot(str, result=QObject)
+    def deleteTag(self, name: str):
+        return self._submit_operation(
+            f"正在删除标签 {name}...", lambda: self._svc.delete_tag(name)
+        )
 
     @Slot(str)
     def pushTag(self, name: str):
         """后台推送标签到远程(网络操作);结果经 operationStarted/Finished 回传。"""
-        import threading
-        self.operationStarted.emit(f"正在推送标签 {name}...")
         self.progressUpdated.emit(0, "正在准备推送标签")
-        def work():
-            try:
-                ok, msg = self._svc.push_tag(name)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"推送标签失败: {e}"); ok, msg = False, str(e)
-            self.operationFinished.emit(ok, msg)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_operation(
+            f"正在推送标签 {name}...", lambda: self._svc.push_tag(name)
+        )
 
     @Slot()
     def pushAllTags(self):
         """后台推送所有标签(网络操作);结果经 operationStarted/Finished 回传。"""
-        import threading
-        self.operationStarted.emit("正在推送所有标签...")
         self.progressUpdated.emit(0, "正在准备推送标签")
-        def work():
-            try:
-                ok, msg = self._svc.push_all_tags()
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"推送标签失败: {e}"); ok, msg = False, str(e)
-            self.operationFinished.emit(ok, msg)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_operation(
+            "正在推送所有标签...", self._svc.push_all_tags
+        )
 
     @Slot(str, str)
     def deleteRemoteTag(self, name: str, remote: str):
         """后台删除远程标签(网络操作);本地 tag 不会被删除。"""
-        import threading
-        self.operationStarted.emit(f"正在删除远程标签 {remote}/{name}...")
-        def work():
-            try:
-                ok, msg = self._svc.delete_remote_tag(name, remote)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"删除远程标签失败: {e}"); ok, msg = False, str(e)
-            self.operationFinished.emit(ok, msg)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_operation(
+            f"正在删除远程标签 {remote}/{name}...",
+            lambda: self._svc.delete_remote_tag(name, remote),
+        )
 
-    @Slot(str, result="QVariantList")
-    def checkoutTag(self, name: str) -> list:
-        ok, msg = self._svc.checkout_tag(name)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def checkoutTag(self, name: str):
+        return self._submit_operation(
+            f"正在检出标签 {name}...", lambda: self._svc.checkout_tag(name)
+        )
 
     # ==================== 初始化 / 克隆 ====================
-    @Slot(str, result="QVariantList")
-    def initRepo(self, path: str) -> list:
-        ok, msg = self._svc.init(path)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def initRepo(self, path: str):
+        return self._submit_operation(
+            "正在初始化 Git 仓库...", lambda: self._svc.init(path)
+        )
 
     @Slot(str, str)
     def clone(self, url: str, path: str):
@@ -1045,44 +1156,55 @@ class GitBridge(QObject):
         self._svc.clone(url, path)
 
     # ==================== 用户信息 / 远程 ====================
-    @Slot(result="QVariantList")
-    def getUserInfo(self) -> list:
+    @Slot(result=QObject)
+    def getUserInfo(self):
         """当前仓库生效的用户配置 -> [name, email]"""
-        name, email = self._svc.get_user_info()
-        return [name, email]
+        return self._submit_query(
+            lambda: list(self._svc.get_user_info()),
+            label="获取仓库用户信息",
+        )
 
-    @Slot(result="QVariantList")
-    def getGlobalUserInfo(self) -> list:
+    @Slot(result=QObject)
+    def getGlobalUserInfo(self):
         """全局用户配置 -> [name, email]"""
-        name, email = self._svc.get_user_info(True)
-        return [name, email]
+        return self._submit_query(
+            lambda: list(self._svc.get_user_info(True)),
+            label="获取全局 Git 用户信息",
+        )
 
-    @Slot(str, str, bool, result="QVariantList")
-    def setUserInfo(self, name: str, email: str, global_scope: bool) -> list:
-        ok, msg = self._svc.set_user_info(name, email, global_scope)
-        return [ok, msg]
+    @Slot(str, str, bool, result=QObject)
+    def setUserInfo(self, name: str, email: str, global_scope: bool):
+        return self._submit_operation(
+            "正在保存 Git 用户信息...",
+            lambda: self._svc.set_user_info(name, email, global_scope),
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def addRemote(self, name: str, url: str) -> list:
-        ok, msg = self._svc.add_remote(name, url)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def addRemote(self, name: str, url: str):
+        return self._submit_operation(
+            "正在添加远程仓库...", lambda: self._svc.add_remote(name, url)
+        )
 
-    @Slot(str, result="QVariantList")
-    def removeRemote(self, name: str) -> list:
-        ok, msg = self._svc.remove_remote(name)
-        return [ok, msg]
+    @Slot(str, result=QObject)
+    def removeRemote(self, name: str):
+        return self._submit_operation(
+            "正在删除远程仓库...", lambda: self._svc.remove_remote(name)
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def setRemoteUrl(self, name: str, url: str) -> list:
-        ok, msg = self._svc.set_remote_url(name, url)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def setRemoteUrl(self, name: str, url: str):
+        return self._submit_operation(
+            "正在更新远程仓库地址...",
+            lambda: self._svc.set_remote_url(name, url),
+        )
 
-    @Slot(str, str, result="QVariantList")
-    def renameRemote(self, old_name: str, new_name: str) -> list:
-        ok, msg = self._svc.rename_remote(old_name, new_name)
-        return [ok, msg]
+    @Slot(str, str, result=QObject)
+    def renameRemote(self, old_name: str, new_name: str):
+        return self._submit_operation(
+            "正在重命名远程仓库...",
+            lambda: self._svc.rename_remote(old_name, new_name),
+        )
 
-    @Slot(str, result=str)
     def getRemoteUrl(self, name: str) -> str:
         return self._svc.get_remote_url(name)
 
@@ -1090,93 +1212,106 @@ class GitBridge(QObject):
     @Slot(str, int)
     def requestFileHistory(self, path: str, count: int):
         """后台获取文件历史,完成发 fileHistoryReady(repoPath, path, list)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = [_commit_to_dict(c) for c in self._svc.get_file_history(path, count)]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取文件历史失败: {e}"); data = []
-            self.fileHistoryReady.emit(repo, path, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: [
+                _commit_to_dict(c)
+                for c in self._svc.get_file_history(path, count)
+            ],
+            label="获取文件历史",
+            on_success=lambda data: self.fileHistoryReady.emit(repo, path, data),
+            on_failure=lambda _exc: self.fileHistoryReady.emit(repo, path, []),
+        )
 
     @Slot(str, str)
     def requestFileContentAtCommit(self, path: str, commit_hash: str):
         """后台获取文件在某提交的内容,完成发 fileContentReady(repoPath, path, hash, content)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = self._svc.get_file_content_at_commit(path, commit_hash)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取文件内容失败: {e}"); data = ""
-            self.fileContentReady.emit(repo, path, commit_hash, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: self._svc.get_file_content_at_commit(path, commit_hash),
+            label="获取提交中的文件内容",
+            on_success=lambda data: self.fileContentReady.emit(
+                repo, path, commit_hash, str(data)
+            ),
+            on_failure=lambda _exc: self.fileContentReady.emit(
+                repo, path, commit_hash, ""
+            ),
+        )
 
     @Slot(str, str, str)
     def requestDiffBetween(self, path: str, c1: str, c2: str):
         """后台对比文件两提交差异,完成发 diffBetweenReady(repoPath, path, c1, c2, diff)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = self._svc.diff_file_between_commits(path, c1, c2)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"对比文件失败: {e}"); data = ""
-            self.diffBetweenReady.emit(repo, path, c1, c2, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: self._svc.diff_file_between_commits(path, c1, c2),
+            label="对比文件提交差异",
+            on_success=lambda data: self.diffBetweenReady.emit(
+                repo, path, c1, c2, str(data)
+            ),
+            on_failure=lambda _exc: self.diffBetweenReady.emit(
+                repo, path, c1, c2, ""
+            ),
+        )
 
     # ==================== 提交详情 ====================
-    @Slot(str, result="QVariantMap")
-    def getCommitDetail(self, commit_hash: str) -> dict:
-        c = self._svc.get_commit_detail(commit_hash)
-        return _commit_to_dict(c) if c else {}
+    @Slot(str, result=QObject)
+    def getCommitDetail(self, commit_hash: str):
+        return self._submit_query(
+            lambda: (
+                _commit_to_dict(c)
+                if (c := self._svc.get_commit_detail(commit_hash))
+                else {}
+            ),
+            label="获取提交详情",
+        )
 
     @Slot(str)
     def requestCommitFiles(self, commit_hash: str):
         """后台获取提交变更文件,完成发 commitFilesReady(repoPath, hash, list)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = [_file_change_to_dict(fc) for fc in self._svc.get_commit_files(commit_hash)]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取提交文件失败: {e}"); data = []
-            self.commitFilesReady.emit(repo, commit_hash, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: [
+                _file_change_to_dict(fc)
+                for fc in self._svc.get_commit_files(commit_hash)
+            ],
+            label="获取提交文件",
+            on_success=lambda data: self.commitFilesReady.emit(
+                repo, commit_hash, data
+            ),
+            on_failure=lambda _exc: self.commitFilesReady.emit(
+                repo, commit_hash, []
+            ),
+        )
 
     @Slot(str)
     def requestCommitDiff(self, commit_hash: str):
         """后台获取提交 diff,完成发 commitDiffReady(repoPath, hash, diff)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = self._svc.get_commit_diff(commit_hash)
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取提交 diff 失败: {e}"); data = ""
-            self.commitDiffReady.emit(repo, commit_hash, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: self._svc.get_commit_diff(commit_hash),
+            label="获取提交 diff",
+            on_success=lambda data: self.commitDiffReady.emit(
+                repo, commit_hash, str(data)
+            ),
+            on_failure=lambda _exc: self.commitDiffReady.emit(
+                repo, commit_hash, ""
+            ),
+        )
 
     # ==================== Reflog ====================
     @Slot(int)
     def requestReflog(self, count: int):
         """后台获取 reflog,完成发 reflogReady(repoPath,list)。"""
-        import threading
         repo = self._svc.repo_path or ""
-
-        def work():
-            try:
-                data = [{"hash": h, "ref": r, "message": m} for h, r, m in self._svc.get_reflog(count)]
-            except Exception as e:  # noqa: BLE001
-                logger.warning(f"获取 reflog 失败: {e}"); data = []
-            self.reflogReady.emit(repo, data)
-        threading.Thread(target=work, daemon=True).start()
+        return self._submit_query(
+            lambda: [
+                {"hash": h, "ref": r, "message": m}
+                for h, r, m in self._svc.get_reflog(count)
+            ],
+            label="获取 Reflog",
+            on_success=lambda data: self.reflogReady.emit(repo, data),
+            on_failure=lambda _exc: self.reflogReady.emit(repo, []),
+        )
 
     # ==================== 冲突文件内容 ====================
     @Slot(str, result=str)

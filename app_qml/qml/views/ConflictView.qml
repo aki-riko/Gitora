@@ -23,8 +23,6 @@ Item {
     function reload() {
         if (!GitBridge || !GitBridge.repoPath) { clearModel(); return }
         root._conflictsRequestRepoPath = GitBridge.repoPath
-        root.operation = GitBridge.getConflictOperation()
-        root.merging = root.operation.length > 0
         GitBridge.requestConflicts()  // 异步,结果经 conflictsReady 回传
     }
 
@@ -36,13 +34,11 @@ Item {
         return ""
     }
 
-    function _op(res) {
-        if (res[0]) {
-            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
-        }
+    function _op(task) {
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (result && result[0]) root.reload()
+        })
     }
 
     function _continueOperation() {
@@ -68,6 +64,12 @@ Item {
         function onRepoPathChanged(path) {
             root.clearModel()
             root.reload()
+        }
+        function onConflictStateReady(repoPath, operation) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || repoPath !== root._conflictsRequestRepoPath) return
+            root.operation = operation || ""
+            root.merging = root.operation.length > 0
         }
         function onConflictsReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._conflictsRequestRepoPath) return

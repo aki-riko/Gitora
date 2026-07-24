@@ -29,6 +29,7 @@ from app.common.ai_commit_schema import (
 from app.common.ai_commit_settings import AiCommitSettings, AiCommitSettingsError
 from app.common.git_service import GitService
 from app.common.logger import get_logger
+from app.common.prism_task import submit_to_pool
 from app_qml.backend.ai_commit_plan_model import AiCommitPlanModel
 from app_qml.backend.ai_commit_auto_flow import AiCommitAutoFlowMixin
 from app_qml.backend.ai_commit_plan_request_state import (
@@ -144,53 +145,62 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
         # AI 提交入口固定分析整个工作区，避免旧版 staged 配置漏掉未暂存/未跟踪改动。
         include_unstaged = True
 
-        def work() -> None:
-            try:
-                snapshot = ChangeContextCollector(
-                    self._git, settings.limits
-                ).collect(repo, include_unstaged=include_unstaged)
-                if not snapshot.changes:
-                    scope = "工作区" if include_unstaged else "暂存区"
-                    raise SnapshotCollectionError(f"{scope}没有可规划的改动")
-                request = PlannerRequest(
-                    snapshot,
-                    "plan",
-                    level,
-                    settings.generate_body,
-                    normalize_output_language(output_language),
-                )
-                request_id = f"plan-{level}-{serial}-{snapshot.snapshot_id[:16]}"
-                prepared = PreparedPlanRequest(
-                    request_id,
-                    repo,
-                    snapshot,
-                    request,
-                    settings,
-                    settings.provider != "ollama"
-                    or endpoint_requires_remote_consent(settings.local_endpoint),
-                )
-                if not self._request_state.store_prepared_if_current(
-                    serial, repo, cancel_event, prepared
-                ):
-                    return
-                scope_summary = "分析已暂存、未暂存和未跟踪改动"
+        def work() -> tuple[PreparedPlanRequest, int, int]:
+            snapshot = ChangeContextCollector(
+                self._git, settings.limits
+            ).collect(repo, include_unstaged=include_unstaged)
+            if not snapshot.changes:
+                scope = "工作区" if include_unstaged else "暂存区"
+                raise SnapshotCollectionError(f"{scope}没有可规划的改动")
+            request = PlannerRequest(
+                snapshot,
+                "plan",
+                level,
+                settings.generate_body,
+                normalize_output_language(output_language),
+            )
+            request_id = f"plan-{level}-{serial}-{snapshot.snapshot_id[:16]}"
+            prepared = PreparedPlanRequest(
+                request_id,
+                repo,
+                snapshot,
+                request,
+                settings,
+                settings.provider != "ollama"
+                or endpoint_requires_remote_consent(settings.local_endpoint),
+            )
+            return (
+                prepared,
+                len(snapshot.expected_ids(level)),
+                len(build_user_input(request)),
+            )
+
+        def succeeded(result: object) -> None:
+            prepared, change_count, character_count = result
+            if self._request_state.store_prepared_if_current(
+                serial, repo, cancel_event, prepared
+            ):
                 self.contextPrepared.emit(
-                    request_id,
+                    prepared.request_id,
                     prepared.is_remote,
-                    len(snapshot.expected_ids(level)),
-                    len(build_user_input(request)),
-                    scope_summary,
+                    change_count,
+                    character_count,
+                    "分析已暂存、未暂存和未跟踪改动",
                 )
-            except (SnapshotCollectionError, AiCommitSettingsError) as exc:
+            self._set_busy_if_current(serial, False)
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, (SnapshotCollectionError, AiCommitSettingsError)):
                 logger.warning(f"准备 {level} 规划失败: {type(exc).__name__}")
                 self._emit_error_if_current(serial, str(exc))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"准备 {level} 规划异常: {type(exc).__name__}")
+            else:
+                logger.error(
+                    f"准备 {level} 规划异常: {type(exc).__name__}: {exc}"
+                )
                 self._emit_error_if_current(serial, "准备提交规划上下文失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+            self._set_busy_if_current(serial, False)
 
-        threading.Thread(target=work, daemon=True).start()
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot(str, bool)
     def generatePrepared(self, request_id: str, remote_consent: bool) -> None:
@@ -204,66 +214,72 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
 
         serial, cancel_event = self._start_request(clear_prepared=False)
 
-        def work() -> None:
-            try:
-                collector = ChangeContextCollector(self._git, prepared.settings.limits)
+        def work() -> CommitPlan:
+            collector = ChangeContextCollector(self._git, prepared.settings.limits)
+            ensure_plan_fingerprint(collector, prepared)
+            provider = self._runtime.create_provider_for(prepared.settings)
+            raw_plan = provider.generate_plan(prepared.request, cancel_event)
+            plan = CommitPlan.from_mapping(raw_plan)
+            issues = granularity_issues(
+                prepared.request,
+                [len(group.change_ids) for group in plan.groups],
+            )
+            if issues:
+                logger.warning(
+                    "模型计划违反固定拆分粒度，发起重试: %s",
+                    "；".join(issues),
+                )
                 ensure_plan_fingerprint(collector, prepared)
-                provider = self._runtime.create_provider_for(prepared.settings)
-                raw_plan = provider.generate_plan(prepared.request, cancel_event)
+                retry_request = replace(prepared.request, mode="plan_retry")
+                raw_plan = provider.generate_plan(retry_request, cancel_event)
                 plan = CommitPlan.from_mapping(raw_plan)
                 issues = granularity_issues(
                     prepared.request,
                     [len(group.change_ids) for group in plan.groups],
                 )
-                if issues:
-                    logger.warning(
-                        "模型计划违反固定拆分粒度，发起重试: %s",
-                        "；".join(issues),
-                    )
-                    ensure_plan_fingerprint(collector, prepared)
-                    retry_request = replace(prepared.request, mode="plan_retry")
-                    raw_plan = provider.generate_plan(retry_request, cancel_event)
-                    plan = CommitPlan.from_mapping(raw_plan)
-                    issues = granularity_issues(
-                        prepared.request,
-                        [len(group.change_ids) for group in plan.groups],
-                    )
-                if issues:
-                    raise PlanProtocolError(
-                        f"模型未按固定拆分粒度规划，请重新生成：{'；'.join(issues)}"
-                    )
-                result = self._validator.validate(
-                    plan,
-                    prepared.snapshot,
-                    expected_level=prepared.request.level,
+            if issues:
+                raise PlanProtocolError(
+                    f"模型未按固定拆分粒度规划，请重新生成：{'；'.join(issues)}"
                 )
-                if not result.valid:
-                    details = "；".join(issue.message for issue in result.issues)
-                    raise PlanProtocolError(details or "模型计划校验失败")
-                ensure_plan_fingerprint(collector, prepared)
-                if not self._is_current(serial, prepared.repo_path, cancel_event):
-                    return
-                self._resolved.emit(
+            result = self._validator.validate(
+                plan,
+                prepared.snapshot,
+                expected_level=prepared.request.level,
+            )
+            if not result.valid:
+                details = "；".join(issue.message for issue in result.issues)
+                raise PlanProtocolError(details or "模型计划校验失败")
+            ensure_plan_fingerprint(collector, prepared)
+            return plan
+
+        def succeeded(plan: object) -> None:
+            if self._is_current(serial, prepared.repo_path, cancel_event):
+                self._apply_resolved(
                     serial, prepared.repo_path, plan, prepared.snapshot
                 )
-            except ProviderCancelledError:
+            self._set_busy_if_current(serial, False)
+
+        def failed(exc: BaseException) -> None:
+            if isinstance(exc, ProviderCancelledError):
+                self._set_busy_if_current(serial, False)
                 return
-            except (
+            if isinstance(exc, (
                 AiCommitSettingsError,
                 PlanProtocolError,
                 SnapshotCollectionError,
                 RuntimeError,
                 ValueError,
-            ) as exc:
+            )):
                 logger.warning(f"生成文件级规划失败: {type(exc).__name__}")
                 self._emit_error_if_current(serial, str(exc))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"生成文件级规划异常: {type(exc).__name__}")
+            else:
+                logger.error(
+                    f"生成文件级规划异常: {type(exc).__name__}: {exc}"
+                )
                 self._emit_error_if_current(serial, "生成文件级规划失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+            self._set_busy_if_current(serial, False)
 
-        threading.Thread(target=work, daemon=True).start()
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot(str)
     def cancelPrepared(self, request_id: str) -> None:
@@ -299,17 +315,17 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
         repo = self._git.repo_path or ""
         expected = snapshot.workspace_fingerprint
 
-        def work() -> None:
-            try:
-                current = ChangeContextCollector(
-                    self._git, settings.limits
-                ).workspace_fingerprint(repo)
-            except Exception as exc:  # noqa: BLE001
-                logger.warning(f"复验规划工作区失败: {type(exc).__name__}")
-                current = ""
-            self._workspaceChecked.emit(repo, expected, current)
-
-        threading.Thread(target=work, daemon=True).start()
+        submit_to_pool(
+            lambda: ChangeContextCollector(
+                self._git, settings.limits
+            ).workspace_fingerprint(repo),
+            on_success=lambda current: self._workspace_checked(
+                repo, expected, str(current)
+            ),
+            on_failure=lambda exc: self._workspace_check_failed(
+                repo, expected, exc
+            ),
+        )
 
     @Slot(str)
     def invalidateRepo(self, _path: str) -> None:
@@ -330,11 +346,7 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
         self._applied = None
         if applied_to_restore is not None:
             self._execution_guard = True
-            threading.Thread(
-                target=self._restore_discarded_apply,
-                args=(applied_to_restore,),
-                daemon=True,
-            ).start()
+            self._submit_restore_discarded_apply(applied_to_restore)
 
     @Slot()
     def clearPlan(self) -> None:
@@ -383,43 +395,46 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
         self._execution_guard = True
         repo = self._git.repo_path or ""
 
-        def work() -> None:
-            try:
-                if plan.level == "hunk":
-                    applied = self._hunk_executor.apply_next(
-                        repo,
-                        snapshot,
-                        plan,
-                        validation,
-                        stale,
-                        settings.limits,
-                        settings.timeout_seconds,
-                    )
-                else:
-                    applied = self._executor.apply_next(
-                        repo,
-                        snapshot,
-                        plan,
-                        validation,
-                        stale,
-                        settings.limits,
-                    )
-                if self._is_current(serial, repo, cancel_event):
-                    self._applyFinished.emit(serial, applied)
-                else:
-                    self._restore_discarded_apply(applied)
-            except PlanExecutionError as exc:
-                logger.warning(f"应用文件级计划失败: {type(exc).__name__}")
-                self._execution_guard = False
-                self._emit_error_if_current(serial, str(exc))
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"应用文件级计划异常: {type(exc).__name__}")
-                self._execution_guard = False
-                self._emit_error_if_current(serial, "应用下一提交组失败")
-            finally:
-                self._set_busy_if_current(serial, False)
+        def work() -> AppliedFileGroup:
+            if plan.level == "hunk":
+                return self._hunk_executor.apply_next(
+                    repo,
+                    snapshot,
+                    plan,
+                    validation,
+                    stale,
+                    settings.limits,
+                    settings.timeout_seconds,
+                )
+            return self._executor.apply_next(
+                repo,
+                snapshot,
+                plan,
+                validation,
+                stale,
+                settings.limits,
+            )
 
-        threading.Thread(target=work, daemon=True).start()
+        def succeeded(applied: object) -> None:
+            self._set_busy_if_current(serial, False)
+            if self._is_current(serial, repo, cancel_event):
+                self._apply_finished(serial, applied)
+            else:
+                self._submit_restore_discarded_apply(applied)
+
+        def failed(exc: BaseException) -> None:
+            self._execution_guard = False
+            if isinstance(exc, PlanExecutionError):
+                logger.warning(f"应用文件级计划失败: {type(exc).__name__}")
+                self._emit_error_if_current(serial, str(exc))
+            else:
+                logger.error(
+                    f"应用文件级计划异常: {type(exc).__name__}: {exc}"
+                )
+                self._emit_error_if_current(serial, "应用下一提交组失败")
+            self._set_busy_if_current(serial, False)
+
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot()
     def notifyCommitSucceeded(self) -> None:
@@ -431,32 +446,40 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
         serial, cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
 
-        def work() -> None:
-            try:
-                ok, message = self._executor.verify_committed_group(applied)
-                fresh_snapshot = None
-                if ok:
-                    fresh_snapshot = ChangeContextCollector(
-                        self._git, applied.limits
-                    ).collect(applied.repo_path, include_unstaged=True)
-                if self._is_current(serial, applied.repo_path, cancel_event):
-                    self._commitChecked.emit(serial, ok, message, fresh_snapshot)
-                else:
-                    self._execution_guard = False
-            except Exception as exc:  # noqa: BLE001
-                logger.exception(f"推进提交计划失败: {type(exc).__name__}")
-                self._execution_guard = False
-                if self._is_current(serial, applied.repo_path, cancel_event):
-                    self._commitChecked.emit(
-                        serial,
-                        False,
-                        "提交成功，但无法建立剩余改动快照，请重新规划",
-                        None,
-                    )
-            finally:
-                self._set_busy_if_current(serial, False)
+        def work() -> tuple[bool, str, ChangeSnapshot | None]:
+            ok, message = self._executor.verify_committed_group(applied)
+            fresh_snapshot = None
+            if ok:
+                fresh_snapshot = ChangeContextCollector(
+                    self._git, applied.limits
+                ).collect(applied.repo_path, include_unstaged=True)
+            return ok, message, fresh_snapshot
 
-        threading.Thread(target=work, daemon=True).start()
+        def succeeded(result: object) -> None:
+            self._set_busy_if_current(serial, False)
+            if self._is_current(serial, applied.repo_path, cancel_event):
+                ok, message, fresh_snapshot = result
+                self._commit_checked(
+                    serial, ok, message, fresh_snapshot
+                )
+            else:
+                self._execution_guard = False
+
+        def failed(exc: BaseException) -> None:
+            logger.error(
+                f"推进提交计划失败: {type(exc).__name__}: {exc}"
+            )
+            self._execution_guard = False
+            if self._is_current(serial, applied.repo_path, cancel_event):
+                self._commit_checked(
+                    serial,
+                    False,
+                    "提交成功，但无法建立剩余改动快照，请重新规划",
+                    None,
+                )
+            self._set_busy_if_current(serial, False)
+
+        submit_to_pool(work, on_success=succeeded, on_failure=failed)
 
     @Slot(int, str, object, object)
     def _apply_resolved(
@@ -489,6 +512,14 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
         if not current_fingerprint or current_fingerprint != expected_fingerprint:
             self._model.markStale()
 
+    def _workspace_check_failed(
+        self, repo: str, expected_fingerprint: str, exc: BaseException
+    ) -> None:
+        logger.warning(
+            f"复验规划工作区失败: {type(exc).__name__}: {exc}"
+        )
+        self._workspace_checked(repo, expected_fingerprint, "")
+
     def _start_request(self, clear_prepared: bool) -> tuple[int, threading.Event]:
         return self._request_state.start(clear_prepared)
 
@@ -509,13 +540,30 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
     ) -> bool:
         return self._request_state.is_current(serial, repo, event)
 
-    def _restore_discarded_apply(self, applied: AppliedFileGroup) -> None:
+    def _restore_discarded_apply(
+        self, applied: AppliedFileGroup
+    ) -> tuple[bool, str]:
+        """恢复暂存区；只执行 Git/文件工作，不修改 QObject 状态。"""
         try:
-            ok, message = self._executor.restore_uncommitted_group(applied)
+            return self._executor.restore_uncommitted_group(applied)
         except Exception as exc:  # noqa: BLE001
             logger.exception(f"恢复被丢弃的 AI 暂存结果异常: {type(exc).__name__}")
-            ok = False
-            message = "恢复暂存区时发生异常，请立即检查 git status"
+            return False, "恢复暂存区时发生异常，请立即检查 git status"
+
+    def _submit_restore_discarded_apply(
+        self, applied: AppliedFileGroup
+    ) -> None:
+        submit_to_pool(
+            self._restore_discarded_apply,
+            applied,
+            on_success=self._restore_discarded_apply_finished,
+            on_failure=lambda exc: self._restore_discarded_apply_finished(
+                (False, f"恢复暂存区时发生异常: {exc}")
+            ),
+        )
+
+    def _restore_discarded_apply_finished(self, result: object) -> None:
+        ok, message = result
         if ok:
             logger.warning("已恢复切仓库前的 AI 计划暂存区")
         else:

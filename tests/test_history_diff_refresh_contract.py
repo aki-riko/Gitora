@@ -28,7 +28,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         status_handler = source.split("function onStatusChanged()", 1)[1].split(
             "function onRepoPathChanged", 1
         )[0]
-        operation_handler = source.split("function _op(res)", 1)[1].split(
+        operation_handler = source.split("function _op(", 1)[1].split(
             "function _askReset", 1
         )[0]
 

@@ -1,5 +1,5 @@
 // 远程仓库管理面板:列出所有远程,支持添加 / 修改 URL / 删除。
-// 数据源 GitBridge.getRemoteInfo() → [{name, url}, ...];增删改后即时刷新列表。
+// 数据源 GitBridge.getRemoteInfo() 的 PrismQML TaskHandle；增删改后异步刷新。
 import QtQuick
 import QtQuick.Layouts
 
@@ -31,10 +31,15 @@ Fluent.DialogBoxCore {
 
     // 载入远程列表(打开面板时调用)
     function refresh() {
-        dlg._remotes = GitBridge.getRemoteInfo()
+        dlg._remotes = []
         remoteModel.clear()
-        for (var i = 0; i < dlg._remotes.length; i++)
-            remoteModel.append({ "rName": dlg._remotes[i].name, "rUrl": dlg._remotes[i].url })
+        var task = GitBridge.getRemoteInfo()
+        task.succeeded.connect(function(remotes) {
+            dlg._remotes = remotes || []
+            remoteModel.clear()
+            for (var i = 0; i < dlg._remotes.length; i++)
+                remoteModel.append({ "rName": dlg._remotes[i].name, "rUrl": dlg._remotes[i].url })
+        })
     }
 
     // 刷新列表并打开面板(不覆盖基类 open,避免遮蔽其弹出定位逻辑)
@@ -147,15 +152,15 @@ Fluent.DialogBoxCore {
             style: Fluent.Enums.button.style_primary
             enabled: addNameInput.text.length > 0 && addUrlInput.text.length > 0
             onClicked: {
-                var res = GitBridge.addRemote(addNameInput.text, addUrlInput.text)
-                if (res[0]) {
-                    Fluent.NotificationManager.desktop.success("已添加远程", addNameInput.text)
-                    dlg.remoteRequested(addNameInput.text, addUrlInput.text)
+                var name = addNameInput.text
+                var url = addUrlInput.text
+                var task = GitBridge.addRemote(name, url)
+                task.succeeded.connect(function(result) {
+                    if (!result || !result[0]) return
+                    dlg.remoteRequested(name, url)
                     addNameInput.text = ""; addUrlInput.text = ""
                     dlg.refresh()
-                } else {
-                    Fluent.NotificationManager.desktop.error("添加失败", res[1] || "")
-                }
+                })
             }
         }
     }
@@ -168,13 +173,11 @@ Fluent.DialogBoxCore {
         confirmText: "删除"
         cancelText: "取消"
         onAccepted: {
-            var res = GitBridge.removeRemote(dlg._pendingDelete)
-            if (res[0]) {
-                Fluent.NotificationManager.desktop.success("已删除远程", dlg._pendingDelete)
-                dlg.refresh()
-            } else {
-                Fluent.NotificationManager.desktop.error("删除失败", res[1] || "")
-            }
+            var name = dlg._pendingDelete
+            var task = GitBridge.removeRemote(name)
+            task.succeeded.connect(function(result) {
+                if (result && result[0]) dlg.refresh()
+            })
             dlg._pendingDelete = ""
         }
     }
@@ -186,13 +189,12 @@ Fluent.DialogBoxCore {
         confirmText: "保存"
         cancelText: "取消"
         onAccepted: {
-            var res = GitBridge.setRemoteUrl(dlg._editTarget, editUrlInput.text)
-            if (res[0]) {
-                Fluent.NotificationManager.desktop.success("已更新 URL", dlg._editTarget)
-                dlg.refresh()
-            } else {
-                Fluent.NotificationManager.desktop.error("更新失败", res[1] || "")
-            }
+            var name = dlg._editTarget
+            var url = editUrlInput.text
+            var task = GitBridge.setRemoteUrl(name, url)
+            task.succeeded.connect(function(result) {
+                if (result && result[0]) dlg.refresh()
+            })
         }
         ColumnLayout {
             width: 400
@@ -218,13 +220,12 @@ Fluent.DialogBoxCore {
         cancelText: "取消"
         function validate() { return renameRemoteInput.text.trim().length > 0 }
         onAccepted: {
-            var res = GitBridge.renameRemote(dlg._renameTarget, renameRemoteInput.text)
-            if (res[0]) {
-                Fluent.NotificationManager.desktop.success("已重命名远程", res[1] || "")
-                dlg.refresh()
-            } else {
-                Fluent.NotificationManager.desktop.error("重命名失败", res[1] || "")
-            }
+            var oldName = dlg._renameTarget
+            var newName = renameRemoteInput.text
+            var task = GitBridge.renameRemote(oldName, newName)
+            task.succeeded.connect(function(result) {
+                if (result && result[0]) dlg.refresh()
+            })
             dlg._renameTarget = ""
             renameRemoteInput.text = ""
         }

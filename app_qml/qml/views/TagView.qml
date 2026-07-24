@@ -13,11 +13,13 @@ Item {
     property string _pendingLocalDelete: ""
     property string _pendingRemoteDelete: ""
     property string _pendingRemoteName: ""
+    property var _remotes: []
     ListModel { id: tagModel }
 
     function clearModel() {
         root._tagsRequestRepoPath = ""
         root._tagsRequesting = false
+        root._remotes = []
         tagModel.clear()
     }
 
@@ -39,20 +41,24 @@ Item {
         root._tagsRequesting = true
         root._reloadPending = false
         root._tagsRequestRepoPath = GitBridge.repoPath
+        var requestRepo = GitBridge.repoPath
+        var remoteTask = GitBridge.getRemoteInfo()
+        remoteTask.succeeded.connect(function(remotes) {
+            if (GitBridge && GitBridge.repoPath === requestRepo)
+                root._remotes = remotes || []
+        })
         GitBridge.requestTags()  // 异步,结果经 tagsReady 回传
     }
 
-    function _op(res) {
-        if (res[0]) {
-            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
-        }
+    function _op(task) {
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (result && result[0]) root.reload()
+        })
     }
 
     function _defaultRemoteName() {
-        var remotes = GitBridge ? GitBridge.getRemoteInfo() : []
+        var remotes = root._remotes
         if (!remotes || remotes.length === 0) return ""
         for (var i = 0; i < remotes.length; i++) {
             if (remotes[i].name === "origin") return "origin"

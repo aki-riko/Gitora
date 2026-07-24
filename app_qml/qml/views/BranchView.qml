@@ -14,11 +14,13 @@ Item {
     property string _remoteCheckoutTarget: ""
     property string _remoteDeleteTarget: ""
     property string _branchesRequestRepoPath: ""
+    property var _remotes: []
     ListModel { id: localModel }
     ListModel { id: remoteModel }
 
     function clearModels() {
         root.currentBranch = ""
+        root._remotes = []
         root._branchesRequestRepoPath = ""
         localModel.clear()
         remoteModel.clear()
@@ -30,21 +32,28 @@ Item {
             return
         }
         root._branchesRequestRepoPath = GitBridge.repoPath
-        root.currentBranch = GitBridge.getCurrentBranch()
+        var branchTask = GitBridge.getCurrentBranch()
+        branchTask.succeeded.connect(function(branch) {
+            if (GitBridge && root._branchesRequestRepoPath === GitBridge.repoPath)
+                root.currentBranch = branch || ""
+        })
+        var remoteTask = GitBridge.getRemoteInfo()
+        remoteTask.succeeded.connect(function(remotes) {
+            if (GitBridge && root._branchesRequestRepoPath === GitBridge.repoPath)
+                root._remotes = remotes || []
+        })
         GitBridge.requestBranches()  // 异步,结果经 branchesReady 回传
     }
 
-    function _op(res) {
-        if (res[0]) {
-            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
-        }
+    function _op(task) {
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (result && result[0]) root.reload()
+        })
     }
 
     function _defaultRemoteName() {
-        var remotes = GitBridge ? GitBridge.getRemoteInfo() : []
+        var remotes = root._remotes
         if (!remotes || remotes.length === 0) return "origin"
         for (var i = 0; i < remotes.length; i++) {
             if (remotes[i].name === "origin") return "origin"

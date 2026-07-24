@@ -24,13 +24,11 @@ Item {
         GitBridge.requestStashList()  // 异步,结果经 stashListReady 回传
     }
 
-    function _op(res) {
-        if (res[0]) {
-            Fluent.NotificationManager.desktop.success("成功", res[1] || "操作完成")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", res[1] || "操作失败")
-        }
+    function _op(task) {
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (result && result[0]) root.reload()
+        })
     }
 
     function _openBranchDialog(stashId) {
@@ -160,14 +158,14 @@ Item {
                             text: "查看"
                             style: Fluent.Enums.button.style_transparent
                             onClicked: {
-                                var res = GitBridge.stashShow(model.id)
-                                if (res[0]) {
-                                    root._showTitle = model.id
-                                    stashShowText.text = res[1] || ""
+                                var task = GitBridge.stashShow(model.id)
+                                var stashId = model.id
+                                task.succeeded.connect(function(result) {
+                                    if (!result || !result[0]) return
+                                    root._showTitle = stashId
+                                    stashShowText.text = result[1] || ""
                                     stashShowDialog.open()
-                                } else {
-                                    Fluent.NotificationManager.desktop.error("失败", res[1] || "查看 stash 失败")
-                                }
+                                })
                             }
                         }
                         Fluent.Button { text: "应用"; style: Fluent.Enums.button.style_transparent; onClicked: root._op(GitBridge.stashApply(model.id)) }

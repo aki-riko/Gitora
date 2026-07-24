@@ -44,11 +44,21 @@ Fluent.DialogBoxCore {
     function openFor(hash) {
         dlg.commitHash = hash
         dlg._requestRepoPath = (GitBridge && GitBridge.repoPath) ? GitBridge.repoPath : ""
-        var d = GitBridge.getCommitDetail(hash) || ({})
-        msgLabel.text = d.message || ""
-        dlg._author = d.author || ""
-        dlg._shortHash = d.shortHash || ""
-        dlg._date = d.date || ""
+        msgLabel.text = "加载中..."
+        dlg._author = ""
+        dlg._shortHash = ""
+        dlg._date = ""
+        var detailTask = GitBridge.getCommitDetail(hash)
+        var requestRepo = dlg._requestRepoPath
+        detailTask.succeeded.connect(function(detail) {
+            if (!GitBridge || GitBridge.repoPath !== requestRepo
+                    || dlg.commitHash !== hash) return
+            var d = detail || ({})
+            msgLabel.text = d.message || ""
+            dlg._author = d.author || ""
+            dlg._shortHash = d.shortHash || ""
+            dlg._date = d.date || ""
+        })
         dlg._rawDiff = ""
         dlg._selectedFilePath = ""
         filesModel.clear()

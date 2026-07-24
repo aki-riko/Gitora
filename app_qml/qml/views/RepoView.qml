@@ -24,6 +24,8 @@ Item {
     property string _quickCommitPushRepoPath: ""
     property string _aiPreparedRequestId: ""
     property bool _aiResultPending: false
+    property var _remoteInfo: []
+    property string _currentBranch: ""
 
     FontMetrics {
         id: repoPathFontMetrics
@@ -41,6 +43,8 @@ Item {
     // ==================== 数据加载 ====================
     function _resetRepoUi() {
         branchLabel.text = ""
+        root._currentBranch = ""
+        root._remoteInfo = []
         if (changeModel) changeModel.clear()
         root._changeListActive = false
         root.selectedPath = ""
@@ -67,6 +71,12 @@ Item {
         root._reloadPending = false
         root._statusRequestRepoPath = GitBridge.repoPath
         GitBridge.requestStatus()
+        var remoteTask = GitBridge.getRemoteInfo()
+        var requestRepo = GitBridge.repoPath
+        remoteTask.succeeded.connect(function(remotes) {
+            if (GitBridge && GitBridge.repoPath === requestRepo)
+                root._remoteInfo = remotes || []
+        })
     }
 
     function _commitMessage() {
@@ -95,14 +105,16 @@ Item {
             return
         }
         var message = root._commitMessage()
-        var res = GitBridge.commit(message)
-        if (res[0]) {
-            root._clearCommitMessage()
-            Fluent.NotificationManager.desktop.success("提交成功", res[1] || "")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("提交失败", res[1] || "")
-        }
+        var repoPath = GitBridge.repoPath
+        var task = GitBridge.commit(message)
+        task.succeeded.connect(function(result) {
+            if (!result || !result[0]) return
+            if (GitBridge && GitBridge.repoPath === repoPath
+                    && root._commitMessage() === message)
+                root._clearCommitMessage()
+            if (AiCommitPlanBridge && AiCommitPlanBridge.awaitingCommit)
+                AiCommitPlanBridge.notifyCommitSucceeded()
+        })
     }
 
     function _requestAmend() {
@@ -111,10 +123,11 @@ Item {
             )
             return
         }
-        if (GitBridge.isHeadPushed())
-            amendDanger.start()
-        else
-            root.doAmend()
+        var task = GitBridge.isHeadPushed()
+        task.succeeded.connect(function(pushed) {
+            if (pushed) amendDanger.start()
+            else root.doAmend()
+        })
     }
 
     function _quickCommitPush(message) {
@@ -138,14 +151,15 @@ Item {
 
     // 修补上次提交:用标题和可选正文重写 HEAD 的提交消息(git commit --amend)
     function doAmend() {
-        var res = GitBridge.amendCommit(root._commitMessage())
-        if (res[0]) {
-            root._clearCommitMessage()
-            Fluent.NotificationManager.desktop.success("已修补提交", res[1] || "")
-            root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("修补失败", res[1] || "")
-        }
+        var message = root._commitMessage()
+        var repoPath = GitBridge.repoPath
+        var task = GitBridge.amendCommit(message)
+        task.succeeded.connect(function(result) {
+            if (result && result[0] && GitBridge
+                    && GitBridge.repoPath === repoPath
+                    && root._commitMessage() === message)
+                root._clearCommitMessage()
+        })
     }
 
     function _finishStatusRequest(repoPath) {
@@ -169,7 +183,7 @@ Item {
     }
 
     function _defaultRemoteName() {
-        var remotes = GitBridge ? GitBridge.getRemoteInfo() : []
+        var remotes = root._remoteInfo
         if (!remotes || remotes.length === 0) return "origin"
         for (var i = 0; i < remotes.length; i++) {
             if (remotes[i].name === "origin") return "origin"
@@ -178,7 +192,7 @@ Item {
     }
 
     function _defaultBranchName() {
-        var branch = GitBridge ? GitBridge.getCurrentBranch() : ""
+        var branch = root._currentBranch
         return branch === "HEAD" ? "" : branch
     }
 
@@ -221,6 +235,7 @@ Item {
         }
         function onBranchReady(repoPath, branch) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
+            root._currentBranch = branch || ""
             branchLabel.text = branch
         }
         function onOperationFinished(ok, msg) {
@@ -677,15 +692,14 @@ Item {
         title: "选择要初始化的目录"
         onAccepted: {
             var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
-            var res = GitBridge.initRepo(path)
-            if (res[0]) {
+            var task = GitBridge.initRepo(path)
+            task.succeeded.connect(function(result) {
+                if (!result || !result[0]) return
                 GitBridge.openRepoAsync(path)
                 initGuide.repoPath = path
                 initGuide.currentIndex = 0
                 initGuide.show()
-            } else {
-                console.warn("初始化失败:", res[1])
-            }
+            })
         }
     }
 
@@ -890,11 +904,7 @@ Item {
         countdown: 3
         property string _path: ""
         onConfirmed: {
-            var ok = GitBridge.discardFile(_path)
-            if (ok)
-                Fluent.NotificationManager.desktop.success("已丢弃", _path)
-            else
-                Fluent.NotificationManager.desktop.error("失败", "丢弃失败: " + _path)
+            GitBridge.discardFile(_path)
         }
     }
 
