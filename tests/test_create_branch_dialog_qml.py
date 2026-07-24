@@ -81,6 +81,10 @@ def _probe_environment() -> dict[str, str]:
             "PYTHONUTF8": "1",
         }
     )
+    windows_root = environment.get("WINDIR", "").strip()
+    font_directory = Path(windows_root) / "Fonts"
+    if os.name == "nt" and font_directory.is_dir():
+        environment["QT_QPA_FONTDIR"] = str(font_directory)
     return environment
 
 
@@ -174,6 +178,8 @@ def test_dialog_creates_from_selected_commit_without_switching() -> None:
         diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         assert result.returncode == 0, diagnostic
         assert OPERATION_PROBE_MARKER in result.stdout, diagnostic
+        assert "[WARNING]" not in result.stdout, diagnostic
+        assert "[ERROR]" not in result.stdout, diagnostic
         assert result.stderr == "", diagnostic
         assert (
             run_git(repo, "rev-parse", "refs/heads/qml-from-base").stdout.strip()
@@ -235,8 +241,11 @@ def _dialog_geometry(root):
 def _render_probe(output: Path) -> int:
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
-    from prismqml import register_types
+    from prismqml import configure_qml_environment, register_types
+    from prismqml.python.core import install_qt_message_handler
 
+    configure_qml_environment()
+    install_qt_message_handler()
     app = QApplication([str(Path(__file__))])
     engine = QQmlApplicationEngine()
     register_types(engine)
@@ -264,10 +273,13 @@ def _operation_probe(repo: Path, start_point: str) -> int:
     from PySide6.QtCore import QObject, QMetaObject, Qt
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
-    from prismqml import register_types
+    from prismqml import configure_qml_environment, register_types
+    from prismqml.python.core import install_qt_message_handler
 
     from app_qml.backend.git_bridge import GitBridge
 
+    configure_qml_environment()
+    install_qt_message_handler()
     app = QApplication([str(Path(__file__))])
     engine = QQmlApplicationEngine()
     register_types(engine)
