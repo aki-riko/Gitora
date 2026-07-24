@@ -303,6 +303,48 @@ class GitServiceCoreTest(unittest.TestCase):
             clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
         self.assertEqual(upstream, "upstream/feature")
 
+    def test_pull_conflict_uses_merge_output_instead_of_fetch_summary(self) -> None:
+        remote = init_bare_repo(self.root / "conflict-remote.git")
+        seed = init_repo(self.root / "conflict-seed")
+        write_file(seed, "tracked.txt", "base\n")
+        commit_all(seed, "base")
+        run_git(seed, "remote", "add", "upstream", str(remote))
+        run_git(seed, "push", "-u", "upstream", "master")
+
+        clone = clone_repo(remote, self.root / "conflict-clone")
+        write_file(seed, "tracked.txt", "remote\n")
+        commit_all(seed, "remote")
+        run_git(seed, "push", "upstream", "master")
+        write_file(clone, "tracked.txt", "local\n")
+        commit_all(clone, "local")
+        service = self.service_for(clone)
+
+        ok, message = self.wait_operation(
+            service, lambda: service.pull("origin", "master")
+        )
+
+        self.assertFalse(ok)
+        self.assertEqual(message, "拉取产生合并冲突,请到「冲突」页解决")
+
+    def test_merge_conflict_uses_stdout_conflict_output(self) -> None:
+        repo = init_repo(self.root / "merge-conflict")
+        write_file(repo, "conflict.txt", "base\n")
+        commit_all(repo, "base")
+        run_git(repo, "checkout", "-b", "feature")
+        write_file(repo, "conflict.txt", "feature\n")
+        commit_all(repo, "feature")
+        run_git(repo, "checkout", "master")
+        write_file(repo, "conflict.txt", "master\n")
+        commit_all(repo, "master")
+        service = self.service_for(repo)
+
+        ok, message = self.wait_operation(
+            service, lambda: service.merge_branch("feature")
+        )
+
+        self.assertFalse(ok)
+        self.assertEqual(message, "当前存在未解决的合并冲突，请先解决冲突后再继续。")
+
     def test_push_emits_real_monotonic_git_progress(self) -> None:
         remote = init_bare_repo(self.root / "progress-remote.git")
         repo = init_repo(self.root / "progress-repo")

@@ -1555,7 +1555,9 @@ class GitService(QObject):
                 self.statusChanged.emit()
                 msg = "拉取成功"
             else:
-                detail = (stderr or stdout or "").strip()
+                detail = "\n".join(
+                    part.strip() for part in (stdout, stderr) if part and part.strip()
+                )
                 # 合并冲突:git 把 CONFLICT/Automatic merge failed 输出到 stdout
                 if "CONFLICT" in detail or "Automatic merge failed" in detail:
                     msg = "拉取产生合并冲突,请到「冲突」页解决"
@@ -1874,7 +1876,14 @@ class GitService(QObject):
             msg = (
                 f"已合并分支 {branch}"
                 if success
-                else self._friendly_git_error(stderr, "合并分支失败")
+                else self._friendly_git_error(
+                    "\n".join(
+                        part.strip()
+                        for part in (stdout, stderr)
+                        if part and part.strip()
+                    ),
+                    "合并分支失败",
+                )
             )
             self.operationFinished.emit(success, msg)
             if callback:
