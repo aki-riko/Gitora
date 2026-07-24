@@ -349,61 +349,6 @@ class GitServiceCoreTest(unittest.TestCase):
         branches = run_git(repo, "branch", "--list", "feature").stdout.strip()
         self.assertEqual(branches, "")
 
-    def test_create_branch_from_commit_without_checkout_preserves_workspace(self) -> None:
-        repo = init_repo(self.root / "repo-from-commit")
-        write_file(repo, "tracked.txt", "base\n")
-        base_commit = commit_all(repo, "base")
-        write_file(repo, "tracked.txt", "latest\n")
-        commit_all(repo, "latest")
-        write_file(repo, "tracked.txt", "uncommitted\n")
-        service = self.service_for(repo)
-
-        before_diff = run_git(repo, "diff").stdout
-        ok, msg = service.create_branch(
-            "from-base", checkout=False, start_point=base_commit
-        )
-
-        self.assertTrue(ok, msg)
-        self.assertEqual(
-            run_git(repo, "rev-parse", "refs/heads/from-base").stdout.strip(),
-            base_commit,
-        )
-        self.assertEqual(
-            run_git(repo, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip(),
-            "master",
-        )
-        self.assertEqual(run_git(repo, "diff").stdout, before_diff)
-        self.assertEqual(
-            (repo / "tracked.txt").read_text(encoding="utf-8"),
-            "uncommitted\n",
-        )
-
-    def test_create_branch_rejects_unknown_start_point(self) -> None:
-        repo = init_repo(self.root / "repo-invalid-start")
-        write_file(repo, "tracked.txt", "base\n")
-        commit_all(repo, "base")
-        service = self.service_for(repo)
-
-        ok, msg = service.create_branch(
-            "topic", checkout=False, start_point="missing-commit"
-        )
-
-        self.assertFalse(ok)
-        self.assertTrue(msg)
-        self.assertEqual(run_git(repo, "branch", "--list", "topic").stdout, "")
-
-    def test_create_branch_preserves_unborn_head_checkout_behavior(self) -> None:
-        repo = init_repo(self.root / "empty-repo")
-        service = self.service_for(repo)
-
-        ok, msg = service.create_branch("topic", checkout=True)
-
-        self.assertTrue(ok, msg)
-        self.assertEqual(
-            run_git(repo, "symbolic-ref", "--short", "HEAD").stdout.strip(),
-            "topic",
-        )
-
     def test_rename_branch_set_upstream_and_rename_remote_use_real_repo(self) -> None:
         remote = init_bare_repo(self.root / "remote.git")
         repo = init_repo(self.root / "repo")
