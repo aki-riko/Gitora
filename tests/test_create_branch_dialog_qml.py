@@ -141,6 +141,14 @@ def test_branch_and_history_views_expose_complete_create_flow() -> None:
     assert "Fluent.MessageBox {\n        id: createDialog" not in branch_source
 
 
+def test_create_branch_dialog_uses_specific_error_title() -> None:
+    dialog_source = (
+        ROOT / "app_qml" / "qml" / "components" / "CreateBranchDialog.qml"
+    ).read_text(encoding="utf-8")
+
+    assert 'desktop.error("无法创建分支", result[1]' in dialog_source
+
+
 def test_create_branch_dialog_renders_fields_without_overlap() -> None:
     with tempfile.TemporaryDirectory(prefix="gitora-create-branch-qml-") as temp_dir:
         output = Path(temp_dir) / "create-branch-dialog.png"

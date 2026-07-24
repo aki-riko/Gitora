@@ -386,7 +386,9 @@ class GitService(QObject):
         )
 
     @staticmethod
-    def _friendly_git_error(error: str, fallback: str) -> str:
+    def _friendly_git_error(
+        error: str, fallback: str, *, branch_name: str = ""
+    ) -> str:
         """把需要用户处理的常见 Git 错误转换为可执行的中文提示。"""
         detail = (error or "").strip()
         if GitService._is_index_lock_error("", detail):
@@ -394,6 +396,13 @@ class GitService(QObject):
                 "仓库正被另一个 Git 操作占用，本次操作未执行。"
                 "请等待其他 Git 操作结束后重试；若确认没有 Git 操作在运行，"
                 "请关闭相关 Git 工具，删除仓库中的 .git/index.lock 后再重试。"
+            )
+        if branch_name and re.search(
+            r"\bbranch named .+ already exists\b", detail, re.IGNORECASE
+        ):
+            return (
+                f"分支“{branch_name}”已存在，请换一个名称，"
+                "或直接使用已有分支。"
             )
         return detail or fallback
 
@@ -1699,7 +1708,9 @@ class GitService(QObject):
                 if success:
                     self.statusChanged.emit()
                     return True, f"已创建并切换到分支 {branch}（空仓库）"
-                return False, stderr or "创建分支失败"
+                return False, self._friendly_git_error(
+                    stderr, "创建分支失败", branch_name=branch
+                )
             return False, error or f"分支起点不存在或不是提交: {start_point}"
         commit_hash = commit_hash.strip()
         if not commit_hash:
@@ -1718,7 +1729,9 @@ class GitService(QObject):
             self.statusChanged.emit()
             action = "已创建并切换到" if checkout else "已创建"
             return True, f"{action}分支 {branch}（起点 {start_point}）"
-        return False, stderr or "创建分支失败"
+        return False, self._friendly_git_error(
+            stderr, "创建分支失败", branch_name=branch
+        )
 
     def delete_branch(self, branch: str, force: bool = False) -> tuple[bool, str]:
         """删除分支"""

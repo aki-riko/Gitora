@@ -65,6 +65,24 @@ class GitBranchCreationTest(unittest.TestCase):
         self.assertTrue(msg)
         self.assertEqual(run_git(repo, "branch", "--list", "topic").stdout, "")
 
+    def test_duplicate_branch_returns_actionable_chinese_message(self) -> None:
+        repo = init_repo(self.root / "repo-duplicate-branch")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        service = self.service_for(repo)
+        branch = "codex/cherry-pick-85d001f"
+        first_ok, first_msg = service.create_branch(branch, checkout=False)
+        self.assertTrue(first_ok, first_msg)
+
+        ok, msg = service.create_branch(branch, checkout=False)
+
+        self.assertFalse(ok)
+        self.assertEqual(
+            msg,
+            f"分支“{branch}”已存在，请换一个名称，或直接使用已有分支。",
+        )
+        self.assertNotIn("fatal:", msg)
+
     def test_create_preserves_unborn_head_checkout_behavior(self) -> None:
         repo = init_repo(self.root / "empty-repo")
         service = self.service_for(repo)

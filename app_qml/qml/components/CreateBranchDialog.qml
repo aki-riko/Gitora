@@ -94,6 +94,6 @@ Fluent.MessageBox {
         if (result[0])
             Fluent.NotificationManager.desktop.success("成功", result[1] || "分支已创建")
         else
-            Fluent.NotificationManager.desktop.error("失败", result[1] || "创建分支失败")
+            Fluent.NotificationManager.desktop.error("无法创建分支", result[1] || "创建分支失败")
     }
 }
