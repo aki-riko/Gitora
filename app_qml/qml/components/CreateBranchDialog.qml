@@ -68,6 +68,7 @@ Fluent.MessageBox {
         }
 
         Text {
+            objectName: "createBranchBehaviorHint"
             Layout.fillWidth: true
             text: "不切换时只创建引用，不会改动当前分支或工作区。"
             color: Fluent.Enums.textColor.tertiary
