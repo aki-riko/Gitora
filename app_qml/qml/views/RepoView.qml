@@ -313,62 +313,46 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
-            RowLayout {
-                id: openButtonGroup
-                objectName: "repositoryOpenButtonGroup"
-                spacing: -Fluent.Enums.border.thin
+            Fluent.Button {
+                id: openButton
+                objectName: "repositoryOpenButton"
+                text: "打开"
+                icon: Fluent.Enums.icon.folder
+                feature: Fluent.Enums.button.feature_split
+                menu: repositorySearchMenu
+                toolTipText: "搜索并打开仓库"
+                property var pathList: []
 
-                Fluent.Button {
-                    id: openButton
-                    objectName: "repositoryOpenButton"
-                    text: "打开"
-                    icon: Fluent.Enums.icon.folder
-                    // 主按钮选择目录；相邻箭头打开可搜索的最近/扫描仓库列表。
-                    property var pathList: []
-
-                    function rebuildList() {
-                        var seen = ({})
-                        var merged = []
-                        var recent = GitBridge ? GitBridge.getRecentRepos() : []
-                        var scanned = (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner.getResults() : []
-                        var all = recent.concat(scanned)
-                        for (var i = 0; i < all.length; i++) {
-                            var p = all[i]
-                            if (!seen[p]) { seen[p] = true; merged.push(p) }
-                        }
-                        pathList = merged
+                function rebuildList() {
+                    var seen = ({})
+                    var merged = []
+                    var recent = GitBridge ? GitBridge.getRecentRepos() : []
+                    var scanned = (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner.getResults() : []
+                    var all = recent.concat(scanned)
+                    for (var i = 0; i < all.length; i++) {
+                        var p = all[i]
+                        if (!seen[p]) { seen[p] = true; merged.push(p) }
                     }
-
-                    Component.onCompleted: rebuildList()
-                    onClicked: folderDialog.open()
-
-                    Connections {
-                        target: (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner : null
-                        function onScanFinished(n) {
-                            openButton.rebuildList()
-                            if (repositorySearchMenu.isOpen) {
-                                repositorySearchMenu.loading = false
-                                repositorySearchMenu.setPaths(openButton.pathList)
-                            }
-                        }
-                    }
+                    pathList = merged
                 }
 
-                Fluent.Button {
-                    id: openMenuButton
-                    objectName: "repositoryOpenMenuButton"
-                    icon: Fluent.Enums.icon.chevron_down
-                    toolTipText: "搜索并打开仓库"
-                    Layout.preferredWidth: Fluent.Enums.controlSize.splitButtonArrowWidth
-                    Layout.minimumWidth: Fluent.Enums.controlSize.splitButtonArrowWidth
-                    onHoveredChanged: {
-                        if (hovered) repositorySearchMenu.prewarm()
-                    }
-                    onClicked: {
+                Component.onCompleted: rebuildList()
+                onClicked: folderDialog.open()
+                onMenuAboutToOpen: {
+                    rebuildList()
+                    repositorySearchMenu.loading = (typeof RepoScanner !== "undefined")
+                        && RepoScanner !== null && RepoScanner.scanning
+                    repositorySearchMenu.prepareForOpen(pathList)
+                }
+
+                Connections {
+                    target: (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner : null
+                    function onScanFinished(n) {
                         openButton.rebuildList()
-                        repositorySearchMenu.loading = (typeof RepoScanner !== "undefined")
-                            && RepoScanner !== null && RepoScanner.scanning
-                        repositorySearchMenu.openFor(openButtonGroup, openButton.pathList)
+                        if (repositorySearchMenu.isOpen) {
+                            repositorySearchMenu.loading = false
+                            repositorySearchMenu.setPaths(openButton.pathList)
+                        }
                     }
                 }
             }

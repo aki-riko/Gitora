@@ -51,10 +51,9 @@ Fluent.PopupWindowCore {
         paths = _normalizedPaths(values)
     }
 
-    function openFor(target, values) {
+    function prepareForOpen(values) {
         searchInput.text = ""
         setPaths(values)
-        openAtControl(target)
         focusTimer.restart()
     }
 

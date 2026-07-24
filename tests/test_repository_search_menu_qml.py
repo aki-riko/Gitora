@@ -14,7 +14,6 @@ RENDER_MARKER = "[REPOSITORY_SEARCH_MENU_RENDER]"
 BEHAVIOR_MARKER = "[REPOSITORY_SEARCH_MENU_BEHAVIOR]"
 PROBE_SOURCE = """
 import QtQuick
-import QtQuick.Layouts
 import QtQuick.Window
 import PrismQML as Fluent
 import "components"
@@ -25,24 +24,25 @@ Window {
     height: 620
     visible: true
     color: Fluent.Enums.backgroundColor
+    property int mainClickCount: 0
 
-    RowLayout {
+    Fluent.Button {
         id: trigger
         objectName: "repositoryMenuTrigger"
         x: Fluent.Enums.spacing.xl
         y: Fluent.Enums.spacing.xl
-        spacing: -Fluent.Enums.border.thin
-
-        Fluent.Button {
-            text: "打开"
-            icon: Fluent.Enums.icon.folder
-        }
-
-        Fluent.Button {
-            icon: Fluent.Enums.icon.chevron_down
-            Layout.preferredWidth: Fluent.Enums.controlSize.splitButtonArrowWidth
-            Layout.minimumWidth: Fluent.Enums.controlSize.splitButtonArrowWidth
-        }
+        width: 180
+        text: "打开"
+        icon: Fluent.Enums.icon.folder
+        feature: Fluent.Enums.button.feature_split
+        menu: menu
+        onClicked: root.mainClickCount += 1
+        onMenuAboutToOpen: menu.prepareForOpen([
+            "D:/MinecraftProject/mojin",
+            "D:/API/kiro_rs",
+            "D:/PrismQML/Gitora",
+            "B:/Minecraft/Addons和modApi/已完成作品(新)/LuckyWorld"
+        ])
     }
 
     RepositorySearchMenu {
@@ -53,14 +53,6 @@ Window {
         pathFormatter: function(path) { return path }
     }
 
-    Component.onCompleted: Qt.callLater(function() {
-        menu.openFor(trigger, [
-            "D:/MinecraftProject/mojin",
-            "D:/API/kiro_rs",
-            "D:/PrismQML/Gitora",
-            "B:/Minecraft/Addons和modApi/已完成作品(新)/LuckyWorld"
-        ])
-    })
 }
 """.encode("utf-8")
 
@@ -173,6 +165,30 @@ def _filtered_paths(menu) -> list[str]:
     return [str(path) for path in paths]
 
 
+def _trigger(root):
+    from PySide6.QtCore import QObject
+
+    trigger = root.findChild(QObject, "repositoryMenuTrigger")
+    if trigger is None:
+        raise AssertionError("missing repository split trigger")
+    return trigger
+
+
+def _click_trigger(root, trigger, arrow: bool) -> None:
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtTest import QTest
+
+    x = trigger.width() - 16 if arrow else 36
+    point = trigger.mapToScene(QPointF(x, trigger.height() / 2)).toPoint()
+    QTest.mouseClick(
+        root,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        point,
+    )
+    _pump(100)
+
+
 def _render_probe(output: Path) -> int:
     from PySide6.QtCore import QPointF
     from PySide6.QtQml import QQmlApplicationEngine
@@ -183,7 +199,10 @@ def _render_probe(output: Path) -> int:
     engine = QQmlApplicationEngine()
     register_types(engine)
     component, root = _create_scene(engine, use_in_window_popup=True)
-    _pump(800)
+    root.requestActivate()
+    _pump(100)
+    _click_trigger(root, _trigger(root), arrow=True)
+    _pump(700)
     menu, search_input, search_box, result_area, _ = _scene_objects(root)
     search_input.setProperty("text", "prismqml")
     _pump(200)
@@ -223,8 +242,17 @@ def _behavior_probe() -> int:
     engine = QQmlApplicationEngine()
     register_types(engine)
     component, root = _create_scene(engine, use_in_window_popup=False)
-    _pump(200)
+    root.requestActivate()
+    _pump(100)
     menu, search_input, _, _, empty_state = _scene_objects(root)
+    trigger = _trigger(root)
+
+    _click_trigger(root, trigger, arrow=False)
+    if root.property("mainClickCount") != 1 or menu.property("isOpen"):
+        raise AssertionError("split main action opened the repository menu")
+    _click_trigger(root, trigger, arrow=True)
+    if root.property("mainClickCount") != 1 or not menu.property("isOpen"):
+        raise AssertionError("split arrow did not open the repository menu")
 
     original_paths = _filtered_paths(menu)
     if len(original_paths) != 4:

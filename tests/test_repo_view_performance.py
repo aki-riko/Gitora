@@ -55,9 +55,13 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("Text.ElideMiddle", source)
         self.assertIn("pathFormatter: root._displayRepoPath", source)
         self.assertIn(
-            "repositorySearchMenu.openFor(openButtonGroup, openButton.pathList)",
+            "repositorySearchMenu.prepareForOpen(pathList)",
             source,
         )
+        self.assertIn("feature: Fluent.Enums.button.feature_split", source)
+        self.assertIn("menu: repositorySearchMenu", source)
+        self.assertNotIn("repositoryOpenButtonGroup", source)
+        self.assertNotIn("repositoryOpenMenuButton", source)
         self.assertIn("GitBridge.openRepoAsync(path)", source)
         self.assertIn("if (repositorySearchMenu.isOpen)", source)
         self.assertIn("repositorySearchMenu.setPaths(openButton.pathList)", source)
