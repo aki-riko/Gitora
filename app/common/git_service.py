@@ -386,24 +386,73 @@ class GitService(QObject):
         )
 
     @staticmethod
+    def _friendly_git_state_error(lower_detail: str) -> str:
+        patterns = (
+            (("nothing to commit", "no changes added"), "暂存区为空，请先暂存文件再提交。"),
+            (("please tell me who you are", "user.name", "user.email"), "请先配置 Git 用户信息（用户名和邮箱）。"),
+            (("not a git repository",), "当前路径不是有效的 Git 仓库，请先打开或初始化仓库。"),
+            (("would be overwritten by checkout", "would be overwritten by merge", "commit your changes or stash them", "cannot rebase: you have unstaged changes"), "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。"),
+            (("you have unmerged paths", "fix conflicts and then commit", "needs merge", "automatic merge failed", "conflict"), "当前存在未解决的合并冲突，请先解决冲突后再继续。"),
+            (("no stash entries found", "no stash found"), "当前没有可用的 stash 记录。"),
+            (("no local changes to save",), "当前没有可保存的工作区修改。"),
+        )
+        for needles, message in patterns:
+            if any(needle in lower_detail for needle in needles):
+                return message
+        return ""
+
+    @staticmethod
+    def _friendly_git_remote_error(lower_detail: str) -> str:
+        patterns = (
+            (("repository not found",), "远程仓库不存在或当前账号无权访问，请检查远程地址和权限。"),
+            (("non-fast-forward", "fetch first", "updates were rejected"), "推送被拒绝：远程有本地没有的提交，请先拉取并合并后再推送。"),
+            (("no upstream branch", "has no upstream branch", "no upstream configured"), "当前分支未设置上游，请先设置跟踪分支后再同步。"),
+            (("authentication failed", "permission denied (publickey)", "could not read username"), "远程认证失败，请检查账号、访问令牌或 SSH 密钥配置。"),
+            (("could not resolve host", "failed to connect", "network is unreachable", "connection timed out"), "无法连接远程仓库，请检查网络和远程地址。"),
+        )
+        for needles, message in patterns:
+            if any(needle in lower_detail for needle in needles):
+                return message
+        if "remote" in lower_detail and "already exists" in lower_detail:
+            return "远程仓库名称已存在，请换一个名称。"
+        return ""
+
+    @staticmethod
+    def _friendly_git_reference_error(lower_detail: str) -> str:
+        if "pathspec" in lower_detail and "did not match" in lower_detail:
+            return "找不到指定的分支、标签或文件，请检查名称是否正确。"
+        if "src refspec" in lower_detail and "does not match any" in lower_detail:
+            return "找不到要推送的本地分支或提交，请先确认当前分支和提交状态。"
+        if "remote ref" in lower_detail and "does not exist" in lower_detail:
+            return "远程分支或标签不存在，请刷新远程信息后重试。"
+        if any(token in lower_detail for token in ("unknown revision", "bad object", "needed a single revision")):
+            return "找不到指定的提交或引用，请检查哈希、分支或标签名称。"
+        if "already checked out at" in lower_detail:
+            return "该分支已在其他工作树中检出，不能重复检出。"
+        if "would clobber existing tag" in lower_detail or re.search(r"\btag\b.*\balready exists\b", lower_detail):
+            return "该标签已存在，请换一个标签名称。"
+        if "refusing to merge unrelated histories" in lower_detail:
+            return "两个仓库历史没有共同起点，不能直接合并；请确认后再选择允许合并无关历史。"
+        return ""
+
+    @staticmethod
     def _friendly_git_error(
         error: str, fallback: str, *, branch_name: str = ""
     ) -> str:
         """把需要用户处理的常见 Git 错误转换为可执行的中文提示。"""
         detail = (error or "").strip()
+        lower_detail = detail.lower()
         if GitService._is_index_lock_error("", detail):
-            return (
-                "仓库正被另一个 Git 操作占用，本次操作未执行。"
-                "请等待其他 Git 操作结束后重试；若确认没有 Git 操作在运行，"
-                "请关闭相关 Git 工具，删除仓库中的 .git/index.lock 后再重试。"
-            )
-        if branch_name and re.search(
-            r"\bbranch named .+ already exists\b", detail, re.IGNORECASE
+            return "仓库正被另一个 Git 操作占用，本次操作未执行。请等待其他 Git 操作结束后重试；若确认没有 Git 操作在运行，请关闭相关 Git 工具，删除仓库中的 .git/index.lock 后再重试。"
+        if branch_name and re.search(r"\bbranch named .+ already exists\b", detail, re.IGNORECASE):
+            return f"分支“{branch_name}”已存在，请换一个名称，或直接使用已有分支。"
+        for message in (
+            GitService._friendly_git_state_error(lower_detail),
+            GitService._friendly_git_remote_error(lower_detail),
+            GitService._friendly_git_reference_error(lower_detail),
         ):
-            return (
-                f"分支“{branch_name}”已存在，请换一个名称，"
-                "或直接使用已有分支。"
-            )
+            if message:
+                return message
         return detail or fallback
 
     def _run_git_async(
@@ -1330,7 +1379,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "修改提交成功"
-        return False, stderr or "修改提交失败"
+        return False, self._friendly_git_error(stderr, "修改提交失败")
 
     def is_head_pushed(self) -> bool:
         """最近一次提交(HEAD)是否已推送到上游。
@@ -1409,7 +1458,7 @@ class GitService(QObject):
             if success:
                 self.progressUpdated.emit(100, "推送完成")
                 self.statusChanged.emit()
-            msg = "推送成功" if success else (stderr or "推送失败")
+            msg = "推送成功" if success else self._friendly_git_error(stderr, "推送失败")
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
@@ -1430,7 +1479,7 @@ class GitService(QObject):
             if success:
                 self.progressUpdated.emit(100, "推送完成")
                 self.statusChanged.emit()
-            msg = "推送成功" if success else (stderr or "推送失败")
+            msg = "推送成功" if success else self._friendly_git_error(stderr, "推送失败")
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
@@ -1463,7 +1512,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已设置 {local_branch} 跟踪 {remote}/{remote_branch}"
-        return False, stderr or "设置上游分支失败"
+        return False, self._friendly_git_error(stderr, "设置上游分支失败")
 
     def pull(self, remote: str = "origin", branch: str = "", rebase: bool = False, callback: Callable[[bool, str], None] = None):
         """拉取远程变更（异步）
@@ -1503,17 +1552,17 @@ class GitService(QObject):
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
                 self.statusChanged.emit()
-                self.operationFinished.emit(True, "拉取成功")
+                msg = "拉取成功"
             else:
                 detail = (stderr or stdout or "").strip()
                 # 合并冲突:git 把 CONFLICT/Automatic merge failed 输出到 stdout
                 if "CONFLICT" in detail or "Automatic merge failed" in detail:
                     msg = "拉取产生合并冲突,请到「冲突」页解决"
                 else:
-                    msg = detail or "拉取失败"
-                self.operationFinished.emit(False, msg)
+                    msg = self._friendly_git_error(detail, "拉取失败")
+            self.operationFinished.emit(success, msg)
             if callback:
-                callback(success, stdout if success else (stderr or stdout))
+                callback(success, msg)
 
         self._run_git_async(args, on_finished)
 
@@ -1532,7 +1581,7 @@ class GitService(QObject):
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
                 self.statusChanged.emit()
-            msg = "获取成功" if success else (stderr or "获取失败")
+            msg = "获取成功" if success else self._friendly_git_error(stderr, "获取失败")
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
@@ -1553,7 +1602,11 @@ class GitService(QObject):
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
                 self.statusChanged.emit()
-            msg = "全部远程更新获取成功" if success else (stderr or stdout or "获取全部远程更新失败")
+            msg = (
+                "全部远程更新获取成功"
+                if success
+                else self._friendly_git_error(stderr or stdout, "获取全部远程更新失败")
+            )
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
@@ -1596,17 +1649,19 @@ class GitService(QObject):
 
         success, _, stderr = self._run_git_sync(['fetch', remote], timeout=60)
         if not success:
-            return False, stderr or "获取远程更新失败"
+            return False, self._friendly_git_error(stderr, "获取远程更新失败")
 
         success, _, stderr = self._run_git_sync(['rev-parse', '--verify', '@{u}'])
         if not success:
-            return False, stderr or f"上游分支不可用: {upstream}"
+            return False, self._friendly_git_error(
+                stderr, f"上游分支不可用: {upstream}"
+            )
 
         success, _, stderr = self._run_git_sync(['reset', '--hard', '@{u}'])
         if success:
             self.statusChanged.emit()
             return True, f"已用上游 {upstream} 覆盖本地"
-        return False, stderr or "远程覆盖本地失败"
+        return False, self._friendly_git_error(stderr, "远程覆盖本地失败")
 
     def force_reset_to_upstream(self, callback: Callable[[bool, str], None] = None):
         """异步执行远程覆盖本地。"""
@@ -1662,7 +1717,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已切换到分支 {branch}"
-        return False, stderr or "切换分支失败"
+        return False, self._friendly_git_error(stderr, "切换分支失败")
 
     def checkout_remote_branch(self, remote_branch: str, local_branch: str = "") -> tuple[bool, str]:
         """从远程分支创建本地跟踪分支并切换过去。"""
@@ -1679,7 +1734,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已检出 {remote_branch} 为本地分支 {local_branch}"
-        return False, stderr or "检出远程分支失败"
+        return False, self._friendly_git_error(stderr, "检出远程分支失败")
 
     def create_branch(
         self,
@@ -1744,7 +1799,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已删除分支 {branch}"
-        return False, stderr or "删除分支失败"
+        return False, self._friendly_git_error(stderr, "删除分支失败")
 
     def rename_branch(self, old_name: str, new_name: str) -> tuple[bool, str]:
         """重命名本地分支。"""
@@ -1756,7 +1811,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已重命名分支 {old_name} -> {new_name}"
-        return False, stderr or "重命名分支失败"
+        return False, self._friendly_git_error(stderr, "重命名分支失败")
 
     def rebase_onto(self, branch: str) -> tuple[bool, str]:
         """将当前分支 rebase 到目标分支。"""
@@ -1769,8 +1824,11 @@ class GitService(QObject):
             return True, f"已 rebase 到 {branch}"
         if self.get_operation_state() == "rebase":
             self.statusChanged.emit()
-            return False, (stderr or "Rebase 产生冲突") + "\n请在冲突页解决后继续、跳过或中止 rebase"
-        return False, stderr or "Rebase 失败"
+            return False, (
+                self._friendly_git_error(stderr, "Rebase 产生冲突")
+                + "\n请在冲突页解决后继续、跳过或中止 rebase"
+            )
+        return False, self._friendly_git_error(stderr, "Rebase 失败")
 
     def merge_branch(self, branch: str, callback: Callable[[bool, str], None] = None):
         """合并分支（异步）"""
@@ -1784,7 +1842,11 @@ class GitService(QObject):
         def on_finished(success: bool, stdout: str, stderr: str):
             if success:
                 self.statusChanged.emit()
-            msg = f"已合并分支 {branch}" if success else (stderr or "合并分支失败")
+            msg = (
+                f"已合并分支 {branch}"
+                if success
+                else self._friendly_git_error(stderr, "合并分支失败")
+            )
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
@@ -1807,8 +1869,11 @@ class GitService(QObject):
             return True, f"已撤销提交 {commit_hash[:7]}（创建了新的撤销提交）"
         if self.get_operation_state() == "revert":
             self.statusChanged.emit()
-            return False, (stderr or "Revert 产生冲突") + "\n请在冲突页解决后继续或中止 revert"
-        return False, stderr or "撤销提交失败"
+            return False, (
+                self._friendly_git_error(stderr, "Revert 产生冲突")
+                + "\n请在冲突页解决后继续或中止 revert"
+            )
+        return False, self._friendly_git_error(stderr, "撤销提交失败")
 
     def reset_to_commit(self, commit_hash: str, mode: str = "mixed") -> tuple[bool, str]:
         """回滚到指定提交（危险操作，会修改历史）
@@ -1836,7 +1901,7 @@ class GitService(QObject):
                 "hard": "已完全回滚,丢弃所有改动"
             }
             return True, f"已回滚到 {commit_hash[:7]}（{mode_desc[mode]}）"
-        return False, stderr or "回滚失败"
+        return False, self._friendly_git_error(stderr, "回滚失败")
 
     def get_commit_count_after(self, commit_hash: str) -> int:
         """获取指定提交之后的提交数量"""
@@ -1915,7 +1980,7 @@ class GitService(QObject):
                 else:
                     return True, "推送成功（无新提交）"
             else:
-                return False, f"推送失败: {stderr or '未知错误'}"
+                return False, f"推送失败: {self._friendly_git_error(stderr, '未知错误')}"
         
         # 异步执行
         def on_finished(success: bool, stdout: str, stderr: str):
@@ -2009,7 +2074,7 @@ class GitService(QObject):
             # 标记为已解决（添加到暂存区）
             self.stage_file(file_path)
             return True, f"已采用本地版本: {file_path}"
-        return False, stderr or "解决冲突失败"
+        return False, self._friendly_git_error(stderr, "解决冲突失败")
 
     def resolve_conflict_with_theirs(self, file_path: str) -> tuple[bool, str]:
         """采用远程版本解决冲突(--theirs)"""
@@ -2018,7 +2083,7 @@ class GitService(QObject):
             # 标记为已解决（添加到暂存区）
             self.stage_file(file_path)
             return True, f"已采用远程版本: {file_path}"
-        return False, stderr or "解决冲突失败"
+        return False, self._friendly_git_error(stderr, "解决冲突失败")
 
     def abort_merge(self) -> tuple[bool, str]:
         """中止合并操作"""
@@ -2026,7 +2091,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "已中止合并"
-        return False, stderr or "中止合并失败"
+        return False, self._friendly_git_error(stderr, "中止合并失败")
 
     def _git_path(self, name: str) -> str:
         """返回 Git 内部路径,兼容 worktree 的 .git 文件形态。"""
@@ -2065,7 +2130,7 @@ class GitService(QObject):
         self.statusChanged.emit()
         if success:
             return True, success_msg
-        return False, stderr or failure_msg
+        return False, self._friendly_git_error(stderr, failure_msg)
 
     def continue_rebase(self) -> tuple[bool, str]:
         """继续 rebase。"""
@@ -2156,7 +2221,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "已暂存变更到stash"
-        return False, stderr or "暂存失败"
+        return False, self._friendly_git_error(stderr, "暂存失败")
 
     def stash_list(self) -> list[tuple[str, str]]:
         """获取stash列表
@@ -2190,7 +2255,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已恢复stash: {stash_id}"
-        return False, stderr or "恢复stash失败"
+        return False, self._friendly_git_error(stderr, "恢复stash失败")
 
     def stash_apply(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """恢复stash但不删除"""
@@ -2202,7 +2267,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已应用stash: {stash_id}"
-        return False, stderr or "应用stash失败"
+        return False, self._friendly_git_error(stderr, "应用stash失败")
 
     def stash_drop(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """删除指定stash"""
@@ -2212,7 +2277,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已删除stash: {stash_id}"
-        return False, stderr or "删除stash失败"
+        return False, self._friendly_git_error(stderr, "删除stash失败")
 
     def stash_clear(self) -> tuple[bool, str]:
         """清空所有stash"""
@@ -2220,7 +2285,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "已清空所有stash"
-        return False, stderr or "清空stash失败"
+        return False, self._friendly_git_error(stderr, "清空stash失败")
 
     def stash_show(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """查看 stash 内容(diffstat + patch)。"""
@@ -2234,7 +2299,7 @@ class GitService(QObject):
             if len(stdout) > max_size:
                 stdout = stdout[:max_size] + "\n\n[内容过大,已截断]"
             return True, stdout or "该 stash 没有可显示的内容"
-        return False, stderr or "查看 stash 失败"
+        return False, self._friendly_git_error(stderr, "查看 stash 失败")
 
     def stash_branch(self, branch: str, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """从 stash 创建并切换到新分支。"""
@@ -2247,7 +2312,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已从 {stash_id} 创建分支 {branch}"
-        return False, stderr or "从 stash 创建分支失败"
+        return False, self._friendly_git_error(stderr, "从 stash 创建分支失败")
 
     # ==================== 文件历史 ====================
 
@@ -2363,7 +2428,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(args)
         if success:
             return True, f"已创建Tag: {name}"
-        return False, stderr or "创建Tag失败"
+        return False, self._friendly_git_error(stderr, "创建Tag失败")
 
     def delete_tag(self, name: str) -> tuple[bool, str]:
         """删除本地Tag"""
@@ -2372,7 +2437,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(['tag', '-d', name])
         if success:
             return True, f"已删除Tag: {name}"
-        return False, stderr or "删除Tag失败"
+        return False, self._friendly_git_error(stderr, "删除Tag失败")
 
     def delete_remote_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
         """删除远程Tag"""
@@ -2383,7 +2448,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(['push', remote, '--delete', f'refs/tags/{name}'])
         if success:
             return True, f"已删除远程Tag: {name}"
-        return False, stderr or "删除远程Tag失败"
+        return False, self._friendly_git_error(stderr, "删除远程Tag失败")
 
     def push_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
         """推送Tag到远程"""
@@ -2397,7 +2462,7 @@ class GitService(QObject):
         if success:
             self.progressUpdated.emit(100, "推送标签完成")
             return True, f"已推送Tag: {name}"
-        return False, stderr or "推送Tag失败"
+        return False, self._friendly_git_error(stderr, "推送Tag失败")
 
     def push_all_tags(self, remote: str = "origin") -> tuple[bool, str]:
         """推送所有Tag到远程"""
@@ -2409,7 +2474,7 @@ class GitService(QObject):
         if success:
             self.progressUpdated.emit(100, "推送标签完成")
             return True, "已推送所有Tag"
-        return False, stderr or "推送Tag失败"
+        return False, self._friendly_git_error(stderr, "推送Tag失败")
 
     def checkout_tag(self, name: str) -> tuple[bool, str]:
         """切换到Tag（分离头指针状态）"""
@@ -2419,7 +2484,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已切换到Tag: {name}"
-        return False, stderr or "切换Tag失败"
+        return False, self._friendly_git_error(stderr, "切换Tag失败")
 
     # ==================== 高级 Git 功能 ====================
 
@@ -2505,7 +2570,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已添加 worktree: {path}"
-        return False, stderr or "添加 worktree 失败"
+        return False, self._friendly_git_error(stderr, "添加 worktree 失败")
 
     def remove_worktree(self, path: str, force: bool = False) -> tuple[bool, str]:
         """移除 worktree。"""
@@ -2520,7 +2585,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已移除 worktree: {path}"
-        return False, stderr or "移除 worktree 失败"
+        return False, self._friendly_git_error(stderr, "移除 worktree 失败")
 
     def prune_worktrees(self) -> tuple[bool, str]:
         """清理失效 worktree 记录。"""
@@ -2528,7 +2593,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "已清理失效 worktree 记录"
-        return False, stderr or "清理 worktree 失败"
+        return False, self._friendly_git_error(stderr, "清理 worktree 失败")
 
     def list_submodules(self) -> list[SubmoduleInfo]:
         """列出 submodule 状态。"""
@@ -2577,7 +2642,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "Submodule 已更新"
-        return False, stderr or "更新 submodule 失败"
+        return False, self._friendly_git_error(stderr, "更新 submodule 失败")
 
     def submodule_sync(self, recursive: bool = True) -> tuple[bool, str]:
         """同步 submodule URL 配置。"""
@@ -2587,14 +2652,16 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(args, timeout=120)
         if success:
             return True, "Submodule URL 已同步"
-        return False, stderr or "同步 submodule 失败"
+        return False, self._friendly_git_error(stderr, "同步 submodule 失败")
 
     def lfs_status(self) -> tuple[bool, str]:
         """获取 Git LFS 状态。"""
         success, stdout, stderr = self._run_git_sync(['lfs', 'status'])
         if success:
             return True, "Git LFS status:\n" + (stdout or "当前没有 LFS 状态输出")
-        return False, stderr or "Git LFS 不可用或当前仓库未初始化 LFS"
+        return False, self._friendly_git_error(
+            stderr, "Git LFS 不可用或当前仓库未初始化 LFS"
+        )
 
     def lfs_pull(self) -> tuple[bool, str]:
         """拉取 Git LFS 对象。"""
@@ -2602,7 +2669,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, stdout or "Git LFS pull 完成"
-        return False, stderr or "Git LFS pull 失败"
+        return False, self._friendly_git_error(stderr, "Git LFS pull 失败")
 
     def lfs_push(self, remote: str = "origin", branch: str = "HEAD") -> tuple[bool, str]:
         """推送 Git LFS 对象。"""
@@ -2615,7 +2682,7 @@ class GitService(QObject):
         success, stdout, stderr = self._run_git_sync(['lfs', 'push', remote, branch], timeout=300)
         if success:
             return True, stdout or "Git LFS push 完成"
-        return False, stderr or "Git LFS push 失败"
+        return False, self._friendly_git_error(stderr, "Git LFS push 失败")
 
     def is_bisecting(self) -> bool:
         return self._git_marker_exists('BISECT_LOG')
@@ -2630,7 +2697,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, stdout or "Bisect 已开始"
-        return False, stderr or "开始 bisect 失败"
+        return False, self._friendly_git_error(stderr, "开始 bisect 失败")
 
     def bisect_good(self, rev: str = "") -> tuple[bool, str]:
         return self._bisect_mark("good", rev)
@@ -2654,7 +2721,7 @@ class GitService(QObject):
         self.statusChanged.emit()
         if success:
             return True, stdout or f"Bisect {mark} 已记录"
-        return False, stderr or f"Bisect {mark} 失败"
+        return False, self._friendly_git_error(stderr, f"Bisect {mark} 失败")
 
     def bisect_reset(self) -> tuple[bool, str]:
         """结束 bisect 并回到原分支。"""
@@ -2662,7 +2729,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, stdout or "Bisect 已结束"
-        return False, stderr or "结束 bisect 失败"
+        return False, self._friendly_git_error(stderr, "结束 bisect 失败")
 
     def bisect_log(self) -> tuple[bool, str]:
         """读取 bisect 日志。"""
@@ -2671,7 +2738,7 @@ class GitService(QObject):
         success, stdout, stderr = self._run_git_sync(['bisect', 'log'])
         if success:
             return True, stdout or "Bisect 日志为空"
-        return False, stderr or "读取 bisect 日志失败"
+        return False, self._friendly_git_error(stderr, "读取 bisect 日志失败")
 
     # ==================== 远程仓库管理 ====================
 
@@ -2702,7 +2769,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(['remote', 'add', name, url])
         if success:
             return True, f"已添加远程仓库: {name}"
-        return False, stderr or "添加远程仓库失败"
+        return False, self._friendly_git_error(stderr, "添加远程仓库失败")
 
     def remove_remote(self, name: str) -> tuple[bool, str]:
         """删除远程仓库"""
@@ -2711,7 +2778,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(['remote', 'remove', name])
         if success:
             return True, f"已删除远程仓库: {name}"
-        return False, stderr or "删除远程仓库失败"
+        return False, self._friendly_git_error(stderr, "删除远程仓库失败")
 
     def set_remote_url(self, name: str, url: str) -> tuple[bool, str]:
         """修改远程URL"""
@@ -2722,7 +2789,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_sync(['remote', 'set-url', name, url])
         if success:
             return True, f"已修改远程URL: {name}"
-        return False, stderr or "修改远程URL失败"
+        return False, self._friendly_git_error(stderr, "修改远程URL失败")
 
     def rename_remote(self, old_name: str, new_name: str) -> tuple[bool, str]:
         """重命名远程仓库配置。"""
@@ -2734,7 +2801,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, f"已重命名远程 {old_name} -> {new_name}"
-        return False, stderr or "重命名远程失败"
+        return False, self._friendly_git_error(stderr, "重命名远程失败")
 
     def get_remote_url(self, name: str) -> str:
         """获取远程URL"""
@@ -2821,8 +2888,11 @@ class GitService(QObject):
             return True, f"已应用提交 {commit_hash[:7]}"
         if self.get_operation_state() == "cherry-pick":
             self.statusChanged.emit()
-            return False, (stderr or "Cherry-pick 产生冲突") + "\n请在冲突页解决后继续或中止 cherry-pick"
-        return False, stderr or "Cherry-pick失败"
+            return False, (
+                self._friendly_git_error(stderr, "Cherry-pick 产生冲突")
+                + "\n请在冲突页解决后继续或中止 cherry-pick"
+            )
+        return False, self._friendly_git_error(stderr, "Cherry-pick失败")
 
     # ==================== 克隆仓库 ====================
 
@@ -2855,7 +2925,7 @@ class GitService(QObject):
             if success:
                 msg = f"克隆成功: {path}"
             else:
-                msg = stderr or "克隆失败"
+                msg = self._friendly_git_error(stderr, "克隆失败")
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
@@ -2891,7 +2961,7 @@ class GitService(QObject):
             )
             if result.returncode == 0:
                 return True, f"已初始化Git仓库: {path}"
-            return False, result.stderr or "初始化失败"
+            return False, self._friendly_git_error(result.stderr, "初始化失败")
         except Exception as e:
             return False, str(e)
 
@@ -2945,7 +3015,7 @@ class GitService(QObject):
         if success:
             self.statusChanged.emit()
             return True, "已清理未跟踪文件"
-        return False, stderr or "清理失败"
+        return False, self._friendly_git_error(stderr, "清理失败")
 
     # ==================== Config配置 ====================
 
@@ -2977,7 +3047,7 @@ class GitService(QObject):
         success, _, stderr = self._run_git_config_sync(args, global_scope)
         if success:
             return True, f"已设置 {key} = {value}"
-        return False, stderr or "设置配置失败"
+        return False, self._friendly_git_error(stderr, "设置配置失败")
 
     def get_user_info(self, global_scope: bool = False) -> tuple[str, str]:
         """获取用户信息
@@ -3005,7 +3075,7 @@ class GitService(QObject):
         success, stdout, stderr = self._run_git_sync(['remote', 'prune', remote])
         if success:
             return True, f"已清理远程分支引用: {remote}"
-        return False, stderr or "清理失败"
+        return False, self._friendly_git_error(stderr, "清理失败")
 
     # ==================== 其他实用命令 ====================
 
@@ -3014,7 +3084,11 @@ class GitService(QObject):
         self.operationStarted.emit("正在优化仓库...")
         
         def on_finished(success: bool, stdout: str, stderr: str):
-            msg = "仓库优化完成" if success else (stderr or "优化失败")
+            msg = (
+                "仓库优化完成"
+                if success
+                else self._friendly_git_error(stderr, "优化失败")
+            )
             self.operationFinished.emit(success, msg)
             if callback:
                 callback(success, msg)
