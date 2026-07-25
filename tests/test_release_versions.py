@@ -29,6 +29,11 @@ class ReleaseVersionTest(unittest.TestCase):
         }
         self.assertEqual(len(set(versions.values())), 1, versions)
 
+    def test_windows_release_build_bypasses_unstable_clcache(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        build_script = (root / "build_nuitka.py").read_text(encoding="utf-8")
+        self.assertIn('"--disable-cache=ccache"', build_script)
+
     @staticmethod
     def extract(path: Path, pattern: str) -> str:
         match = re.search(pattern, path.read_text(encoding="utf-8"), re.MULTILINE)

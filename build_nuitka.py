@@ -33,6 +33,9 @@ args = [
     PY, "-m", "nuitka",
     "--standalone",
     "--assume-yes-for-downloads",
+    # clcache 偶发在新模块的预处理阶段中止，但同一生成 C 文件可由 MSVC 直接编译。
+    # 关闭编译缓存以保证 Windows 正式产物可重复构建。
+    "--disable-cache=ccache",
     "--enable-plugin=pyside6",
     "--windows-console-mode=disable",
     "--output-filename=Gitora.exe",
