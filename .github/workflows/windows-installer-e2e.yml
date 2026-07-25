@@ -45,8 +45,13 @@ jobs:
           if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($version)) {
               throw "无法从 app.common.setting 读取版本"
           }
+          $appId = python -c "from pathlib import Path; from prismqml.python.tools.windows_installer import load_manifest; print(load_manifest(Path('prismqml-installer.json')).app_id)"
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($appId)) {
+              throw "无法从 prismqml-installer.json 读取 AppId"
+          }
           $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source
           "GITORA_E2E_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GITORA_E2E_APP_ID=$appId" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           "PRISMQML_ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Run source release gates
@@ -104,18 +109,23 @@ jobs:
               throw "静默安装后 Gitora 被意外自动启动"
           }
 
-          $uninstallRoots = @(
-              "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-              "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+          $uninstallKeyName = "{$env:GITORA_E2E_APP_ID}_is1"
+          $uninstallKeys = @(
+              (Join-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" $uninstallKeyName),
+              (Join-Path "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall" $uninstallKeyName)
           )
-          $entry = Get-ItemProperty -Path $uninstallRoots -ErrorAction SilentlyContinue |
-            Where-Object {
-                $_.DisplayName -eq "Gitora" -and
-                $_.DisplayVersion -eq $env:GITORA_E2E_VERSION
-            } |
+          $entry = $uninstallKeys |
+            Where-Object { Test-Path -LiteralPath $_ } |
+            ForEach-Object { Get-ItemProperty -LiteralPath $_ } |
             Select-Object -First 1
           if ($null -eq $entry -or [string]::IsNullOrWhiteSpace($entry.InstallLocation)) {
               throw "未找到机器级 Gitora 卸载注册信息"
+          }
+          if ($entry.DisplayName -ne "Gitora") {
+              throw "卸载注册信息的应用名不匹配：$($entry.DisplayName)"
+          }
+          if ($entry.DisplayVersion -ne $env:GITORA_E2E_VERSION) {
+              throw "卸载注册信息的版本不匹配：$($entry.DisplayVersion)"
           }
 
           $registeredDir = [IO.Path]::GetFullPath($entry.InstallLocation).TrimEnd('\')
