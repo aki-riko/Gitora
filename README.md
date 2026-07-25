@@ -44,7 +44,7 @@ pip install -r app_qml/requirements.txt
 python app_qml/main_qml.py
 ```
 
-依赖 `prismqml >= 0.2.24`（PrismQML，提供多皮肤 UI 引擎、Timeline 虚拟滚动、单实例 IPC、自动更新等特性）。
+依赖锁定为 `prismqml 0.3.2.9`（PrismQML，提供多皮肤 UI 引擎、Timeline 虚拟滚动、单实例 IPC、自动更新和通用 Windows 安装器流程）。
 
 ## 打包
 
@@ -52,8 +52,13 @@ python app_qml/main_qml.py
 # 1. Nuitka 编译为 standalone exe（产物在 build_dist/main_qml.dist/）
 python build_nuitka.py
 
-# 2. InnoSetup 生成安装包（需安装 Inno Setup 6/7）
-ISCC installer.iss   # 产物在 dist_installer/
+# 2. 从应用清单生成并检查 Inno Setup 脚本
+python -m prismqml.python.tools.windows_installer generate --manifest prismqml-installer.json --version X.Y.Z --output installer.iss
+python -m prismqml.python.tools.windows_installer check --manifest prismqml-installer.json --version X.Y.Z --output installer.iss
+
+# 3. 明确执行安装包编译（只有 compile 会调用 ISCC）
+# 若 ISCC 未加入 PATH，先把 PRISMQML_ISCC 设为 ISCC.exe 的实际路径
+python -m prismqml.python.tools.windows_installer compile --manifest prismqml-installer.json --version X.Y.Z --output installer.iss
 ```
 
 ## 功能

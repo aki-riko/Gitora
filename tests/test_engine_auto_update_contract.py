@@ -7,6 +7,7 @@ import unittest
 from pathlib import Path
 
 import prismqml
+from app.common.setting import _resolve_installer_silent_args
 from prismqml import App
 
 
@@ -57,12 +58,32 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertIn("running: !GitoraSelftestMode", main_source)
         self.assertIn("updater: appUpdater", main_source)
         self.assertIn("silentArgs: AppInfo ? AppInfo.installerSilentArgs", main_source)
-        self.assertIn("autoUpdater.check()", main_source)
+        self.assertIn("autoUpdater.checkSilently()", main_source)
+        self.assertNotIn("autoUpdater.notifyWhenUpToDate", main_source)
         self.assertIn("Window.window.autoUpdaterController", settings_source)
         self.assertIn("root._autoUpdater.check()", settings_source)
         self.assertIn("root._autoUpdater.notifyWhenUpToDate = true", settings_source)
         self.assertNotIn("Updater.checkForUpdate()", settings_source)
         self.assertNotIn("target: typeof Updater", settings_source)
+
+    def test_installed_engine_exposes_in_place_download_feedback(self) -> None:
+        feedback_dir = prismqml.qml_path() / "controls" / "feedback"
+        facade_source = (feedback_dir / "AutoUpdater.qml").read_text(
+            encoding="utf-8"
+        )
+        presenter_source = (
+            feedback_dir / "AutoUpdaterToastPresenter.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("function checkSilently()", facade_source)
+        self.assertIn("root._formatSize(received)", facade_source)
+        self.assertIn("root._formatSize(total)", facade_source)
+        self.assertNotIn("item.show();", presenter_source)
+        self.assertEqual(
+            _resolve_installer_silent_args("nt"),
+            "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
+        )
+        self.assertEqual(_resolve_installer_silent_args("posix"), "")
 
     def test_custom_notification_host_no_longer_owns_update_flow(self) -> None:
         source = (

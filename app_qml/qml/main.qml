@@ -89,10 +89,7 @@ QtObject {
                     interval: Fluent.Enums.duration.toast
                     running: !GitoraSelftestMode
                     repeat: false
-                    onTriggered: {
-                        autoUpdater.notifyWhenUpToDate = false
-                        autoUpdater.check()
-                    }
+                    onTriggered: autoUpdater.checkSilently()
                 }
             }
 

@@ -2,6 +2,7 @@
 """
 Gitora 应用设置
 """
+import os
 from pathlib import Path
 
 # change DEBUG to False if you want to compile the code to exe
@@ -23,14 +24,20 @@ DOC_URL = "https://github.com/aki-riko/Gitora#readme"
 UPDATE_REPO = "aki-riko/Gitora"
 # 从 release assets 中挑安装包的关键词(安装包名形如 Gitora-Setup-x.y.z.exe)
 UPDATE_ASSET_KEYWORD = "Setup"
-# 安装包启动参数:走可见安装向导(用户点下一步),由安装包自身 manifest 触发 UAC 提权。
-# 不用 /VERYSILENT 全静默——静默+提权在部分 UAC 配置下会卡死;可见向导更稳。
-INSTALLER_SILENT_ARGS = ""
+_INNO_SETUP_SILENT_ARGS = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-"
+
+
+def _resolve_installer_silent_args(platform_name: str | None = None) -> str:
+    """仅为 Windows Inno Setup 返回静默安装参数。"""
+    current_platform = platform_name or os.name
+    return _INNO_SETUP_SILENT_ARGS if current_platform == "nt" else ""
+
+
+# 安装包启动参数:Windows 下静默覆盖旧版,不显示向导、不自动重启应用。
+# 机器级安装仍由 Windows 显示不可绕过的 UAC 安全提示。
+INSTALLER_SILENT_ARGS = _resolve_installer_silent_args()
 
 # 使用系统用户数据目录
-import os
-
-
 def _resolve_config_folder(platform_name: str | None = None) -> Path:
     current_platform = platform_name or os.name
     if current_platform == 'nt':  # Windows

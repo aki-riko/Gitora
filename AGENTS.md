@@ -21,12 +21,12 @@
 
 ## 三、版本号规范
 
-语义化版本 `vX.Y.Z`。bugfix 升 Z,功能升 Y。**版本号必须同步四处**(改一处漏其他位置会导致产物版本不一致):
+语义化版本 `vX.Y.Z`。bugfix 升 Z,功能升 Y。**版本号必须同步三处,并用同一版本重新生成安装器脚本**:
 
 1. [app/common/setting.py](app/common/setting.py) 的 `VERSION = "vX.Y.Z"`(带 v 前缀)
 2. [build_nuitka.py](build_nuitka.py) 的 `--product-version=X.Y.Z`(不带 v)
 3. [build_nuitka_mac.py](build_nuitka_mac.py) 的 `--product-version=X.Y.Z`(不带 v)
-4. [installer.iss](installer.iss) 的 `#define MyAppVersion "X.Y.Z"`(不带 v)
+4. `prismqml-installer.json` 只保存稳定应用身份,不保存版本;用 `X.Y.Z` 生成 [installer.iss](installer.iss),禁止手改生成文件
 
 ## 四、升级 PrismQML 引擎依赖
 
@@ -35,7 +35,7 @@
 1. 引擎侧先发版到 PyPI(见 PrismQML 仓库 AGENTS.md 的发版规范)
 2. Gitora venv 升级:`.venv/Scripts/python.exe -m pip install -U "prismqml==X.Y.Z.N"`
 3. 确认:`.venv/Scripts/python.exe -c "import prismqml; print(prismqml.__version__)"`
-4. `app_qml/requirements.txt` 的约束(`prismqml>=X.Y.Z`)若已覆盖新版则无需改
+4. `app_qml/requirements.txt` 必须精确锁定同一正式版,不可只写宽泛下限
 
 ## 五、Windows 打包
 
@@ -44,9 +44,15 @@
    - Nuitka standalone/onedir,产物在 `build_dist/main_qml.dist/Gitora.exe`
    - 验证产物能启动(打安装包前先自检):在 `build_dist/main_qml.dist/` 下
      `GITESS_QML_SELFTEST=1 ./Gitora.exe`,看到 `exit=0` + `[SELFTEST] QML 加载成功,rootObjects = 1` 即通过
-3. 出安装包:`"C:\Program Files\Inno Setup 7\ISCC.exe" installer.iss`
+3. 先生成并检查脚本(以下 `X.Y.Z` 与 `VERSION` 去掉 `v` 后一致):
+   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer generate --manifest prismqml-installer.json --version X.Y.Z --output installer.iss`
+   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer check --manifest prismqml-installer.json --version X.Y.Z --output installer.iss`
+4. 出安装包:
+   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer compile --manifest prismqml-installer.json --version X.Y.Z --output installer.iss`
    - 产物在 `dist_installer/Gitora-Setup-X.Y.Z.exe`
-   - `installer.iss` 的 `MyDistDir` 是相对路径,ISCC 须在仓库根目录运行
+   - ISCC 未加入 `PATH` 时,通过环境变量 `PRISMQML_ISCC` 传入实际 `ISCC.exe` 路径,禁止写死开发机路径
+   - 仅 `compile` 会调用 ISCC;`doctor`、`generate`、`check`、`compile --dry-run` 均无编译副作用
+   - `installer.iss` 由清单确定性生成,路径保持项目相对路径
 
 ## 六、macOS 打包(GitHub Actions)
 
@@ -78,7 +84,7 @@ macOS 的 .app/.dmg **不能在本地(Windows)构建**,必须触发 CI:
 
 ## 八、发版检查清单
 
-- [ ] 版本号四处已同步(setting.py / build_nuitka.py / build_nuitka_mac.py / installer.iss)
+- [ ] 三处版本号已同步,并用同一版本生成且 `check` 通过
 - [ ] 引擎依赖已升级并确认版本
 - [ ] `git push` main/master 到 github + origin **两个**远程
 - [ ] Windows 安装包已出并本地验证能启动

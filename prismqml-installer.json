@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "app_id": "8F3A9C2E-5B1D-4E7A-9C6F-A1B2C3D4E5F6",
+  "name": "Gitora",
+  "publisher": "aki-riko",
+  "executable": "Gitora.exe",
+  "aumid": "PrismQML.Gitora",
+  "install_scope": "machine",
+  "dist_dir": "build_dist/main_qml.dist",
+  "homepage": "https://github.com/aki-riko/Gitora",
+  "icon": "app/resource/images/logo.ico",
+  "chinese_messages_file": "installer/ChineseSimplified.isl",
+  "installer_output_dir": "dist_installer",
+  "output_name": "Gitora-Setup-{version}"
+}

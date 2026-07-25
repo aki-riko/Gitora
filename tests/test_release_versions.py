@@ -5,6 +5,8 @@ import re
 import unittest
 from pathlib import Path
 
+from prismqml.python.tools.windows_installer import check_installer, load_manifest
+
 
 class ReleaseVersionTest(unittest.TestCase):
     def test_release_versions_stay_in_sync(self) -> None:
@@ -24,10 +26,32 @@ class ReleaseVersionTest(unittest.TestCase):
             ),
             "installer.iss": self.extract(
                 root / "installer.iss",
-                r'^#define MyAppVersion "([0-9]+\.[0-9]+\.[0-9]+)"$',
+                r'^#define PrismAppVersion "([0-9]+\.[0-9]+\.[0-9]+)"$',
             ),
         }
         self.assertEqual(len(set(versions.values())), 1, versions)
+
+    def test_generated_windows_installer_stays_current(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        manifest = load_manifest(root / "prismqml-installer.json")
+        version = self.extract(
+            root / "app" / "common" / "setting.py",
+            r'^VERSION = "v([0-9]+\.[0-9]+\.[0-9]+)"$',
+        )
+
+        result = check_installer(manifest, root / "installer.iss", version)
+        installer_source = (root / "installer.iss").read_text(encoding="utf-8")
+
+        self.assertFalse(result.changed)
+        self.assertEqual(
+            manifest.app_id,
+            "8F3A9C2E-5B1D-4E7A-9C6F-A1B2C3D4E5F6",
+        )
+        self.assertEqual(manifest.aumid, "PrismQML.Gitora")
+        self.assertEqual(manifest.install_scope, "machine")
+        self.assertIn("CloseApplications=yes", installer_source)
+        self.assertIn("RestartApplications=no", installer_source)
+        self.assertIn("Flags: nowait postinstall skipifsilent", installer_source)
 
     def test_windows_release_build_bypasses_unstable_clcache(self) -> None:
         root = Path(__file__).resolve().parents[1]
