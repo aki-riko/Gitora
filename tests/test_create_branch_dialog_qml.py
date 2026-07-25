@@ -286,7 +286,7 @@ def _operation_probe(repo: Path, start_point: str) -> int:
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
     from prismqml import configure_qml_environment, register_types
-    from prismqml.python.core import install_qt_message_handler
+    from prismqml.python.core import global_task_pool, install_qt_message_handler
 
     from app_qml.backend.git_bridge import GitBridge
 
@@ -319,7 +319,10 @@ def _operation_probe(repo: Path, start_point: str) -> int:
         dialog, "accept", Qt.ConnectionType.DirectConnection
     ):
         raise AssertionError("failed to submit create-branch dialog")
-    _pump(100)
+    if not global_task_pool().waitForDone(5000):
+        raise AssertionError("create-branch task did not finish before timeout")
+    app.processEvents()
+    app.processEvents()
 
     print(
         f"{OPERATION_PROBE_MARKER} start={start_point} "
