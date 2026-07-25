@@ -4,9 +4,14 @@ name: Windows installer E2E
 # 仅手动触发，避免普通 push 自动执行耗时打包。
 on:
   workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "要附加安装包的草稿 Release tag；留空则只上传 artifact"
+        required: false
+        default: ""
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: windows-installer-e2e-${{ github.ref }}
@@ -164,3 +169,23 @@ jobs:
             ${{ runner.temp }}/gitora-install.log
           if-no-files-found: warn
           retention-days: 3
+
+      - name: Attach installer to Release
+        if: ${{ success() && inputs.release_tag != '' }}
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ inputs.release_tag }}"
+          if ($tag -ne "v$env:GITORA_E2E_VERSION") {
+              throw "Release tag 与应用版本不一致：$tag"
+          }
+          $installer = Get-ChildItem -LiteralPath dist_installer `
+            -Filter "Gitora-Setup-$env:GITORA_E2E_VERSION.exe" |
+            Select-Object -First 1
+          if ($null -eq $installer) {
+              throw "未找到要上传的 Windows 安装包"
+          }
+          gh release upload $tag $installer.FullName `
+            --repo "${{ github.repository }}" --clobber

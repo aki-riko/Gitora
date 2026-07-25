@@ -97,9 +97,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${{ inputs.release_tag }}"
-          VER="${TAG#v}"
+          APP_TAG=$(python -c "from app.common.setting import VERSION; print(VERSION)")
+          if [ "$TAG" != "$APP_TAG" ]; then
+            echo "::error::Release tag 与应用版本不一致: $TAG != $APP_TAG"
+            exit 1
+          fi
           SRC=$(ls build_dist/*.dmg | head -1)
-          DEST="Gitora-macOS-${VER}.dmg"
+          DEST="Gitora-macOS.dmg"
           cp "$SRC" "$DEST"
           echo "上传 $DEST 到 Release $TAG"
           gh release upload "$TAG" "$DEST" --repo "${{ github.repository }}" --clobber

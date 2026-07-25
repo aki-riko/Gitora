@@ -82,6 +82,17 @@ class ReleaseVersionTest(unittest.TestCase):
         self.assertIn('$entry.DisplayName -notlike "Gitora*"', workflow)
         self.assertIn("$entry.InstallLocation", workflow)
         self.assertIn("tools/packaged_ai_connection_selftest.py", workflow)
+        self.assertIn("Attach installer to Release", workflow)
+        self.assertIn("gh release upload", workflow)
+
+    def test_macos_release_keeps_stable_asset_name(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (
+            root / ".github" / "workflows" / "build-macos.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('DEST="Gitora-macOS.dmg"', workflow)
+        self.assertIn("Release tag 与应用版本不一致", workflow)
 
     @staticmethod
     def extract(path: Path, pattern: str) -> str:
