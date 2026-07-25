@@ -1,0 +1,153 @@
+name: Windows installer E2E
+
+# 在一次性 Windows runner 上验证正式 Nuitka + Inno Setup 静默安装链路。
+# 仅手动触发，避免普通 push 自动执行耗时打包。
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-installer-e2e-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  installer-e2e:
+    name: Nuitka, ISCC and silent install
+    runs-on: windows-latest
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install build dependencies
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r app_qml/requirements.txt
+          python -m pip install nuitka
+          choco install innosetup --no-progress --yes
+
+      - name: Resolve version and ISCC
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $version = python -c "from app.common.setting import VERSION; print(VERSION.removeprefix('v'))"
+          if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($version)) {
+              throw "无法从 app.common.setting 读取版本"
+          }
+          $iscc = (Get-Command ISCC.exe -ErrorAction Stop).Source
+          "GITORA_E2E_VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "PRISMQML_ISCC=$iscc" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run source release gates
+        shell: pwsh
+        run: |
+          python -m pytest tests/test_engine_auto_update_contract.py tests/test_release_versions.py
+          python -m prismqml.python.tools.windows_installer check `
+            --manifest prismqml-installer.json `
+            --version $env:GITORA_E2E_VERSION `
+            --output installer.iss
+          python -m prismqml.python.tools.windows_installer doctor `
+            --manifest prismqml-installer.json
+
+      - name: Build Gitora with Nuitka
+        shell: pwsh
+        run: python build_nuitka.py
+
+      - name: Compile installer with ISCC
+        shell: pwsh
+        run: |
+          python -m prismqml.python.tools.windows_installer compile `
+            --manifest prismqml-installer.json `
+            --version $env:GITORA_E2E_VERSION `
+            --output installer.iss
+
+      - name: Silently install and verify installed payload
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $setup = Get-ChildItem -LiteralPath dist_installer `
+            -Filter "Gitora-Setup-$env:GITORA_E2E_VERSION.exe" |
+            Select-Object -First 1
+          if ($null -eq $setup) {
+              throw "未找到 ISCC 生成的 Gitora 安装包"
+          }
+
+          $installDir = Join-Path $env:RUNNER_TEMP "gitora-installed"
+          $installLog = Join-Path $env:RUNNER_TEMP "gitora-install.log"
+          $arguments = @(
+              "/VERYSILENT",
+              "/SUPPRESSMSGBOXES",
+              "/NORESTART",
+              "/SP-",
+              "/DIR=`"$installDir`"",
+              "/LOG=`"$installLog`""
+          )
+          $process = Start-Process -FilePath $setup.FullName `
+            -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0) {
+              throw "静默安装失败，退出码 $($process.ExitCode)"
+          }
+
+          $unexpectedProcess = Get-Process -Name Gitora -ErrorAction SilentlyContinue
+          if ($null -ne $unexpectedProcess) {
+              throw "静默安装后 Gitora 被意外自动启动"
+          }
+
+          $uninstallRoots = @(
+              "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
+              "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
+          )
+          $entry = Get-ItemProperty -Path $uninstallRoots -ErrorAction SilentlyContinue |
+            Where-Object {
+                $_.DisplayName -eq "Gitora" -and
+                $_.DisplayVersion -eq $env:GITORA_E2E_VERSION
+            } |
+            Select-Object -First 1
+          if ($null -eq $entry -or [string]::IsNullOrWhiteSpace($entry.InstallLocation)) {
+              throw "未找到机器级 Gitora 卸载注册信息"
+          }
+
+          $registeredDir = [IO.Path]::GetFullPath($entry.InstallLocation).TrimEnd('\')
+          $expectedDir = [IO.Path]::GetFullPath($installDir).TrimEnd('\')
+          if ($registeredDir -ne $expectedDir) {
+              throw "实际安装目录不匹配：$registeredDir"
+          }
+          $installedExe = Join-Path $registeredDir "Gitora.exe"
+          if (-not (Test-Path -LiteralPath $installedExe -PathType Leaf)) {
+              throw "安装目录中不存在 Gitora.exe"
+          }
+          $productVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
+          if (-not $productVersion.StartsWith($env:GITORA_E2E_VERSION)) {
+              throw "安装后程序版本不匹配：$productVersion"
+          }
+
+          "GITORA_E2E_INSTALLED_EXE=$installedExe" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "GITORA_E2E_INSTALL_LOG=$installLog" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Run SELFTEST from the installed directory
+        shell: pwsh
+        run: |
+          python tools/packaged_ai_connection_selftest.py `
+            --executable $env:GITORA_E2E_INSTALLED_EXE `
+            --timeout-seconds 60
+
+      - name: Upload installer and installation log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: Gitora-Windows-installer-e2e-${{ github.run_id }}
+          path: |
+            dist_installer/*.exe
+            ${{ runner.temp }}/gitora-install.log
+          if-no-files-found: warn
+          retention-days: 3

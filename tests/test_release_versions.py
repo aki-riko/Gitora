@@ -58,6 +58,26 @@ class ReleaseVersionTest(unittest.TestCase):
         build_script = (root / "build_nuitka.py").read_text(encoding="utf-8")
         self.assertIn('"--disable-cache=ccache"', build_script)
 
+    def test_windows_installer_e2e_is_remote_manual_and_checks_real_install(
+        self,
+    ) -> None:
+        root = Path(__file__).resolve().parents[1]
+        workflow = (
+            root / ".github" / "workflows" / "windows-installer-e2e.yml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("workflow_dispatch:", workflow)
+        self.assertNotIn("\n  push:", workflow)
+        self.assertIn("runs-on: windows-latest", workflow)
+        self.assertIn("python build_nuitka.py", workflow)
+        self.assertIn("windows_installer compile", workflow)
+        self.assertIn('"/VERYSILENT"', workflow)
+        self.assertIn('"/SUPPRESSMSGBOXES"', workflow)
+        self.assertIn('"/NORESTART"', workflow)
+        self.assertIn("Get-Process -Name Gitora", workflow)
+        self.assertIn("$entry.InstallLocation", workflow)
+        self.assertIn("tools/packaged_ai_connection_selftest.py", workflow)
+
     @staticmethod
     def extract(path: Path, pattern: str) -> str:
         match = re.search(pattern, path.read_text(encoding="utf-8"), re.MULTILINE)
