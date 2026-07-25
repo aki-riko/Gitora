@@ -69,6 +69,8 @@ class ReleaseVersionTest(unittest.TestCase):
         self.assertIn("workflow_dispatch:", workflow)
         self.assertNotIn("\n  push:", workflow)
         self.assertIn("runs-on: windows-latest", workflow)
+        self.assertIn('PYTHONUTF8: "1"', workflow)
+        self.assertIn('PYTHONIOENCODING: "utf-8"', workflow)
         self.assertIn("python build_nuitka.py", workflow)
         self.assertIn("windows_installer compile", workflow)
         self.assertIn('"/VERYSILENT"', workflow)
