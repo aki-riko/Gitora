@@ -109,11 +109,6 @@ jobs:
               throw "静默安装失败，退出码 $($process.ExitCode)"
           }
 
-          $unexpectedProcess = Get-Process -Name Gitora -ErrorAction SilentlyContinue
-          if ($null -ne $unexpectedProcess) {
-              throw "静默安装后 Gitora 被意外自动启动"
-          }
-
           $uninstallKeyName = "{$env:GITORA_E2E_APP_ID}_is1"
           $uninstallKeys = @(
               (Join-Path "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall" $uninstallKeyName),
@@ -145,6 +140,28 @@ jobs:
           $productVersion = (Get-Item -LiteralPath $installedExe).VersionInfo.ProductVersion
           if (-not $productVersion.StartsWith($env:GITORA_E2E_VERSION)) {
               throw "安装后程序版本不匹配：$productVersion"
+          }
+
+          $expectedExe = [IO.Path]::GetFullPath($installedExe)
+          $launchedProcess = $null
+          for ($attempt = 0; $attempt -lt 30; $attempt++) {
+              $launchedProcess = Get-Process -Name Gitora -ErrorAction SilentlyContinue |
+                Where-Object {
+                    -not [string]::IsNullOrWhiteSpace($_.Path) -and
+                    [IO.Path]::GetFullPath($_.Path) -eq $expectedExe
+                } |
+                Select-Object -First 1
+              if ($null -ne $launchedProcess) {
+                  break
+              }
+              Start-Sleep -Seconds 1
+          }
+          if ($null -eq $launchedProcess) {
+              throw "静默安装后未自动启动新版 Gitora"
+          }
+          Stop-Process -Id $launchedProcess.Id -Force -ErrorAction Stop
+          if (-not $launchedProcess.WaitForExit(10000)) {
+              throw "自动启动的 Gitora 未能在 SELFTEST 前退出"
           }
 
           "GITORA_E2E_INSTALLED_EXE=$installedExe" |

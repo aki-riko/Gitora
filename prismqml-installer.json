@@ -11,5 +11,6 @@
   "icon": "app/resource/images/logo.ico",
   "chinese_messages_file": "installer/ChineseSimplified.isl",
   "installer_output_dir": "dist_installer",
-  "output_name": "Gitora-Setup-{version}"
+  "output_name": "Gitora-Setup-{version}",
+  "launch_after_install": true
 }

@@ -11,7 +11,7 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2025
 AUTHOR = "aki-riko"
-VERSION = "v1.5.2"
+VERSION = "v1.5.3"
 APP_NAME = "Gitora"
 APP_USER_MODEL_ID = "PrismQML.Gitora"
 # 项目地址
@@ -33,7 +33,7 @@ def _resolve_installer_silent_args(platform_name: str | None = None) -> str:
     return _INNO_SETUP_SILENT_ARGS if current_platform == "nt" else ""
 
 
-# 安装包启动参数:Windows 下静默覆盖旧版,不显示向导、不自动重启应用。
+# 安装包启动参数:Windows 下静默覆盖旧版且由安装器启动一次新版，不显示向导。
 # 机器级安装仍由 Windows 显示不可绕过的 UAC 安全提示。
 INSTALLER_SILENT_ARGS = _resolve_installer_silent_args()
 

@@ -49,9 +49,11 @@ class ReleaseVersionTest(unittest.TestCase):
         )
         self.assertEqual(manifest.aumid, "PrismQML.Gitora")
         self.assertEqual(manifest.install_scope, "machine")
+        self.assertTrue(manifest.launch_after_install)
         self.assertIn("CloseApplications=yes", installer_source)
         self.assertIn("RestartApplications=no", installer_source)
-        self.assertIn("Flags: nowait postinstall skipifsilent", installer_source)
+        self.assertIn("Flags: nowait postinstall", installer_source)
+        self.assertNotIn("skipifsilent", installer_source)
 
     def test_windows_release_build_bypasses_unstable_clcache(self) -> None:
         root = Path(__file__).resolve().parents[1]
@@ -77,6 +79,8 @@ class ReleaseVersionTest(unittest.TestCase):
         self.assertIn('"/SUPPRESSMSGBOXES"', workflow)
         self.assertIn('"/NORESTART"', workflow)
         self.assertIn("Get-Process -Name Gitora", workflow)
+        self.assertIn("静默安装后未自动启动新版 Gitora", workflow)
+        self.assertIn("Stop-Process -Id $launchedProcess.Id", workflow)
         self.assertIn("GITORA_E2E_APP_ID", workflow)
         self.assertIn('"{$env:GITORA_E2E_APP_ID}_is1"', workflow)
         self.assertIn('$entry.DisplayName -notlike "Gitora*"', workflow)
