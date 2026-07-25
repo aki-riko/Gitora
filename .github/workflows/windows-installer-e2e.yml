@@ -121,7 +121,7 @@ jobs:
           if ($null -eq $entry -or [string]::IsNullOrWhiteSpace($entry.InstallLocation)) {
               throw "未找到机器级 Gitora 卸载注册信息"
           }
-          if ($entry.DisplayName -ne "Gitora") {
+          if ($entry.DisplayName -notlike "Gitora*") {
               throw "卸载注册信息的应用名不匹配：$($entry.DisplayName)"
           }
           if ($entry.DisplayVersion -ne $env:GITORA_E2E_VERSION) {

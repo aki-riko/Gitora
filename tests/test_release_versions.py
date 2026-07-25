@@ -79,6 +79,7 @@ class ReleaseVersionTest(unittest.TestCase):
         self.assertIn("Get-Process -Name Gitora", workflow)
         self.assertIn("GITORA_E2E_APP_ID", workflow)
         self.assertIn('"{$env:GITORA_E2E_APP_ID}_is1"', workflow)
+        self.assertIn('$entry.DisplayName -notlike "Gitora*"', workflow)
         self.assertIn("$entry.InstallLocation", workflow)
         self.assertIn("tools/packaged_ai_connection_selftest.py", workflow)
 
