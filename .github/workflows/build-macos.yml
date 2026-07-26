@@ -57,7 +57,19 @@ jobs:
           mkdir -p dmg_stage
           cp -R "$APP" dmg_stage/Gitora.app
           ln -s /Applications dmg_stage/Applications
-          hdiutil create -volname "Gitora" -srcfolder dmg_stage -ov -format UDZO "build_dist/Gitora-macOS.dmg"
+          sync
+          for attempt in 1 2 3; do
+            if hdiutil create -volname "Gitora" -srcfolder dmg_stage -ov -format UDZO "build_dist/Gitora-macOS.dmg"; then
+              break
+            fi
+            if [ "$attempt" -eq 3 ]; then
+              echo "::error::hdiutil 连续三次创建 DMG 失败"
+              exit 1
+            fi
+            echo "hdiutil 资源暂时占用，5 秒后重试（$attempt/3）"
+            rm -f "build_dist/Gitora-macOS.dmg"
+            sleep 5
+          done
           echo "=== dmg 产物 ==="; ls -lh build_dist/*.dmg
 
       - name: Packaged AI connection and headless SELFTEST

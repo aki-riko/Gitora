@@ -79,6 +79,8 @@ class ReleaseVersionTest(unittest.TestCase):
         self.assertIn('"/SUPPRESSMSGBOXES"', workflow)
         self.assertIn('"/NORESTART"', workflow)
         self.assertIn("Get-Process -Name Gitora", workflow)
+        self.assertIn("$process.WaitForExit()", workflow)
+        self.assertNotIn("-ArgumentList $arguments -Wait -PassThru", workflow)
         self.assertIn("静默安装后未自动启动新版 Gitora", workflow)
         self.assertIn("Stop-Process -Id $launchedProcess.Id", workflow)
         self.assertIn("GITORA_E2E_APP_ID", workflow)
@@ -97,6 +99,8 @@ class ReleaseVersionTest(unittest.TestCase):
 
         self.assertIn('DEST="Gitora-macOS.dmg"', workflow)
         self.assertIn("Release tag 与应用版本不一致", workflow)
+        self.assertIn("for attempt in 1 2 3", workflow)
+        self.assertIn("hdiutil 连续三次创建 DMG 失败", workflow)
 
     @staticmethod
     def extract(path: Path, pattern: str) -> str:

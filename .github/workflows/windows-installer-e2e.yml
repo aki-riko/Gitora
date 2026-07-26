@@ -104,7 +104,8 @@ jobs:
               "/LOG=`"$installLog`""
           )
           $process = Start-Process -FilePath $setup.FullName `
-            -ArgumentList $arguments -Wait -PassThru
+            -ArgumentList $arguments -PassThru
+          $process.WaitForExit()
           if ($process.ExitCode -ne 0) {
               throw "静默安装失败，退出码 $($process.ExitCode)"
           }
