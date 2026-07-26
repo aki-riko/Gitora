@@ -24,7 +24,7 @@ DOC_URL = "https://github.com/aki-riko/Gitora#readme"
 UPDATE_REPO = "aki-riko/Gitora"
 # 从 release assets 中挑安装包的关键词(安装包名形如 Gitora-Setup-x.y.z.exe)
 UPDATE_ASSET_KEYWORD = "Setup"
-_INNO_SETUP_SILENT_ARGS = "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-"
+_INNO_SETUP_SILENT_ARGS = "/SILENT /SUPPRESSMSGBOXES /NORESTART /SP-"
 
 
 def _resolve_installer_silent_args(platform_name: str | None = None) -> str:
@@ -33,7 +33,7 @@ def _resolve_installer_silent_args(platform_name: str | None = None) -> str:
     return _INNO_SETUP_SILENT_ARGS if current_platform == "nt" else ""
 
 
-# 安装包启动参数:Windows 下静默覆盖旧版且由安装器启动一次新版，不显示向导。
+# 安装包启动参数:Windows 下隐藏向导但显示安装进度，完成后启动一次新版。
 # 机器级安装仍由 Windows 显示不可绕过的 UAC 安全提示。
 INSTALLER_SILENT_ARGS = _resolve_installer_silent_args()
 

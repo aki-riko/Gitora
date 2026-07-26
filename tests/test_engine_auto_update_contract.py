@@ -81,7 +81,7 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertNotIn("item.show();", presenter_source)
         self.assertEqual(
             _resolve_installer_silent_args("nt"),
-            "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
+            "/SILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
         )
         self.assertEqual(_resolve_installer_silent_args("posix"), "")
 

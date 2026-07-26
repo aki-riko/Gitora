@@ -96,7 +96,7 @@ jobs:
           $installDir = Join-Path $env:RUNNER_TEMP "gitora-installed"
           $installLog = Join-Path $env:RUNNER_TEMP "gitora-install.log"
           $arguments = @(
-              "/VERYSILENT",
+              "/SILENT",
               "/SUPPRESSMSGBOXES",
               "/NORESTART",
               "/SP-",
