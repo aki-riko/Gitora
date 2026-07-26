@@ -5,7 +5,7 @@
 ; Source manifest: prismqml-installer.json
 
 #define PrismAppName "Gitora"
-#define PrismAppVersion "1.5.3"
+#define PrismAppVersion "1.5.4"
 #define PrismAppPublisher "aki-riko"
 #define PrismAppExe "Gitora.exe"
 #define PrismAppUserModelID "PrismQML.Gitora"
@@ -28,7 +28,7 @@ DefaultGroupName={#PrismAppName}
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 OutputDir=dist_installer
-OutputBaseFilename=Gitora-Setup-1.5.3
+OutputBaseFilename=Gitora-Setup-1.5.4
 SetupIconFile={#PrismSetupIcon}
 UninstallDisplayIcon={app}\{#PrismAppExe}
 Compression=lzma2
