@@ -1,5 +1,5 @@
 # coding: utf-8
-"""分支强制删除菜单的页内弹层回归测试。"""
+"""分支操作的内建分离按钮菜单回归测试。"""
 from __future__ import annotations
 
 import os
@@ -29,15 +29,15 @@ def _probe_environment() -> dict[str, str]:
     return environment
 
 
-def test_branch_force_delete_uses_in_window_menu() -> None:
+def test_branch_actions_use_builtin_button_menus() -> None:
     source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
         encoding="utf-8"
     )
 
-    assert "Fluent.MenuCore" in source
-    assert "useInWindowPopup: true" in source
-    assert "menu: localBranchActionsMenu" in source
-    assert "onMenuItemClicked" not in source
+    assert "Fluent.MenuCore" not in source
+    assert "menuItems:" in source
+    assert "onMenuItemClicked:" in source
+    assert "menu: localBranchActionsMenu" not in source
 
 
 def test_branch_cards_collapse_secondary_actions_into_split_menus() -> None:
@@ -51,7 +51,8 @@ def test_branch_cards_collapse_secondary_actions_into_split_menus() -> None:
     assert remote_section.count("Fluent.Button {") == 1
     assert 'objectName: "localBranchActionButton"' in local_section
     assert 'objectName: "remoteBranchActionButton"' in remote_section
-    assert local_section.count("feature: Fluent.Enums.button.feature_split") == 1
+    assert "Fluent.Enums.button.feature_dropdown" in local_section
+    assert "Fluent.Enums.button.feature_split" in local_section
     assert remote_section.count("feature: Fluent.Enums.button.feature_split") == 1
 
 
@@ -136,7 +137,6 @@ def _property(item, name):
 def _probe() -> int:
     from PySide6.QtCore import (
         Property,
-        QMetaObject,
         QObject,
         QPointF,
         QTimer,
@@ -252,19 +252,46 @@ def _probe() -> int:
         if item.objectName() == "localBranchActionButton"
         and _property(item, "branchName") == TARGET_BRANCH
     )
-    menu = next(
+    current_button = next(
         item
         for item in items
-        if item.objectName() == "localBranchActionsMenu"
-        and _property(item, "branchName") == TARGET_BRANCH
+        if item.objectName() == "localBranchActionButton"
+        and _property(item, "branchName") == "main"
     )
     danger = root.findChild(QObject, "forceDeleteBranchDanger")
     if danger is None:
         raise AssertionError("force-delete confirmation dialog is missing")
-    if not bool(_property(menu, "useInWindowPopup")):
-        raise AssertionError("force-delete menu is not in-window")
-    if bool(_property(menu, "useQtPopupWindow")):
-        raise AssertionError("force-delete menu still uses a native popup")
+
+    current_button_point = current_button.mapToScene(
+        QPointF(current_button.width() / 2, current_button.height() / 2)
+    ).toPoint()
+    QTest.mouseClick(
+        root,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        current_button_point,
+    )
+    _pump(250)
+    current_popup_windows = [
+        window
+        for window in QApplication.allWindows()
+        if window is not root and window.isVisible()
+    ]
+    current_popup_items = [
+        (window, item)
+        for window in current_popup_windows
+        for item in _visual_items(window.contentItem())
+    ]
+    current_actions = {
+        _property(item, "text")
+        for _, item in current_popup_items
+        if item.height() >= 30 and _property(item, "text")
+    }
+    if current_actions != {"设置上游", "重命名"}:
+        raise AssertionError(f"unexpected current-branch actions: {current_actions}")
+    current_popup_window = current_popup_items[0][0]
+    QTest.keyClick(current_popup_window, Qt.Key.Key_Escape)
+    _pump(150)
 
     arrow = button.mapToScene(
         QPointF(button.width() - 12, button.height() / 2)
@@ -275,25 +302,64 @@ def _probe() -> int:
         Qt.KeyboardModifier.NoModifier,
         arrow,
     )
-    _pump(250)
-    if not bool(_property(menu, "isOpen")):
-        raise AssertionError("force-delete menu did not open")
-
+    frame_delay_ms = int(os.environ.get("GITORA_BRANCH_MENU_FRAME_MS", "250"))
+    _pump(frame_delay_ms)
+    popup_windows = [
+        window
+        for window in QApplication.allWindows()
+        if window is not root and window.isVisible()
+    ]
+    popup_items = [
+        (window, item)
+        for window in popup_windows
+        for item in _visual_items(window.contentItem())
+    ]
+    surface_entry = next(
+        (
+            (window, item)
+            for window, item in popup_items
+            if item.objectName() == "_popupSurface"
+        ),
+        None,
+    )
+    if surface_entry is None:
+        raise AssertionError("built-in branch action menu did not open")
+    popup_window, popup_surface = surface_entry
     action = next(
         item
-        for item in _visual_items(root.contentItem())
-        if item.objectName() == "forceDeleteBranchAction"
-        and _property(item, "text") == "强制删除"
+        for _, item in popup_items
+        if _property(item, "text") == "强制删除"
+        and item.height() >= 30
         and item.isVisible()
     )
-    rendered = root.grabWindow()
+    popup_height = float(_property(popup_surface, "popupHeight") or 0)
+    actions_column = action.parentItem()
+    if actions_column is None or popup_height < actions_column.height():
+        raise AssertionError(
+            "branch action menu is clipped; "
+            f"popup_height={popup_height}; "
+            f"actions_height={actions_column.height() if actions_column else -1}"
+        )
+    print(
+        "[BRANCH_MENU_FRAME] "
+        f"delay_ms={frame_delay_ms} popup_height={popup_height:.1f} "
+        f"actions_height={actions_column.height():.1f}"
+    )
+    rendered = popup_window.grabWindow()
     if rendered.isNull():
         raise AssertionError("branch action menu did not render")
     preview_path = os.environ.get("GITORA_BRANCH_MENU_PREVIEW", "").strip()
     if preview_path and not rendered.save(preview_path):
         raise AssertionError(f"branch action preview could not be saved: {preview_path}")
-    if not QMetaObject.invokeMethod(action, "triggered"):
-        raise AssertionError("force-delete menu action could not be triggered")
+    action_point = action.mapToScene(
+        QPointF(action.width() / 2, action.height() / 2)
+    ).toPoint()
+    QTest.mouseClick(
+        popup_window,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        action_point,
+    )
     _pump(150)
 
     if not bool(_property(danger, "_isOpen")):

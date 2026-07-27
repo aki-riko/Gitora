@@ -133,73 +133,6 @@ Item {
                         property bool isCurrentBranch: model.isCurrent
                         width: parent ? parent.width : 0
                         height: lbRow.implicitHeight + Fluent.Enums.spacing.l * 2
-                        Fluent.MenuCore {
-                            id: localBranchActionsMenu
-                            property string branchName: localBranchCard.branchName
-                            objectName: "localBranchActionsMenu"
-                            useInWindowPopup: true
-                            Fluent.Action {
-                                text: "合并到当前分支"
-                                icon: Fluent.Enums.icon.branch_compare
-                                visible: !localBranchCard.isCurrentBranch
-                                onTriggered: {
-                                    root._mergeTarget = localBranchCard.branchName
-                                    mergeConfirm.open()
-                                }
-                            }
-                            Fluent.Action {
-                                text: "Rebase 到此分支"
-                                icon: Fluent.Enums.icon.arrow_sync
-                                visible: !localBranchCard.isCurrentBranch
-                                onTriggered: {
-                                    root._rebaseTarget = localBranchCard.branchName
-                                    rebaseDanger.start()
-                                }
-                            }
-                            Fluent.MenuSeparator {
-                                visible: !localBranchCard.isCurrentBranch
-                            }
-                            Fluent.Action {
-                                text: "设置上游"
-                                icon: Fluent.Enums.icon.branch_fork_link
-                                onTriggered: {
-                                    upstreamDialog._branch = localBranchCard.branchName
-                                    upstreamRemoteInput.text = root._defaultRemoteName()
-                                    upstreamBranchInput.text = localBranchCard.branchName
-                                    upstreamDialog.open()
-                                }
-                            }
-                            Fluent.Action {
-                                text: "重命名"
-                                icon: Fluent.Enums.icon.rename
-                                onTriggered: {
-                                    renameBranchDialog._oldBranch = localBranchCard.branchName
-                                    renameBranchInput.text = localBranchCard.branchName
-                                    renameBranchDialog.open()
-                                }
-                            }
-                            Fluent.MenuSeparator {
-                                visible: !localBranchCard.isCurrentBranch
-                            }
-                            Fluent.Action {
-                                text: "删除分支"
-                                icon: Fluent.Enums.icon.dismiss_circle
-                                visible: !localBranchCard.isCurrentBranch
-                                onTriggered: root._op(
-                                    GitBridge.deleteBranch(localBranchCard.branchName, false)
-                                )
-                            }
-                            Fluent.Action {
-                                objectName: "forceDeleteBranchAction"
-                                text: "强制删除"
-                                icon: Fluent.Enums.icon.warning
-                                visible: !localBranchCard.isCurrentBranch
-                                onTriggered: {
-                                    forceDeleteBranchDanger._branch = localBranchCard.branchName
-                                    forceDeleteBranchDanger.start()
-                                }
-                            }
-                        }
                         RowLayout {
                             id: lbRow
                             anchors.fill: parent
@@ -239,13 +172,48 @@ Item {
                                 property string branchName: localBranchCard.branchName
                                 objectName: "localBranchActionButton"
                                 text: localBranchCard.isCurrentBranch ? "管理" : "切换"
-                                feature: Fluent.Enums.button.feature_split
-                                menu: localBranchActionsMenu
+                                feature: localBranchCard.isCurrentBranch
+                                    ? Fluent.Enums.button.feature_dropdown
+                                    : Fluent.Enums.button.feature_split
+                                menuItems: localBranchCard.isCurrentBranch ? [
+                                    { "text": "设置上游", "icon": Fluent.Enums.icon.branch_fork_link },
+                                    { "text": "重命名", "icon": Fluent.Enums.icon.rename }
+                                ] : [
+                                    { "text": "合并到当前分支", "icon": Fluent.Enums.icon.branch_compare },
+                                    { "text": "Rebase 到此分支", "icon": Fluent.Enums.icon.arrow_sync },
+                                    "-",
+                                    { "text": "设置上游", "icon": Fluent.Enums.icon.branch_fork_link },
+                                    { "text": "重命名", "icon": Fluent.Enums.icon.rename },
+                                    "-",
+                                    { "text": "删除分支", "icon": Fluent.Enums.icon.dismiss_circle },
+                                    { "text": "强制删除", "icon": Fluent.Enums.icon.warning }
+                                ]
                                 onClicked: {
-                                    if (localBranchCard.isCurrentBranch)
-                                        localBranchActionsMenu.openAtControl(localBranchActionButton)
-                                    else
+                                    if (!localBranchCard.isCurrentBranch)
                                         root._op(GitBridge.checkoutBranch(localBranchCard.branchName))
+                                }
+                                onMenuItemClicked: function(index, actionText) {
+                                    if (actionText === "合并到当前分支") {
+                                        root._mergeTarget = localBranchCard.branchName
+                                        mergeConfirm.open()
+                                    } else if (actionText === "Rebase 到此分支") {
+                                        root._rebaseTarget = localBranchCard.branchName
+                                        rebaseDanger.start()
+                                    } else if (actionText === "设置上游") {
+                                        upstreamDialog._branch = localBranchCard.branchName
+                                        upstreamRemoteInput.text = root._defaultRemoteName()
+                                        upstreamBranchInput.text = localBranchCard.branchName
+                                        upstreamDialog.open()
+                                    } else if (actionText === "重命名") {
+                                        renameBranchDialog._oldBranch = localBranchCard.branchName
+                                        renameBranchInput.text = localBranchCard.branchName
+                                        renameBranchDialog.open()
+                                    } else if (actionText === "删除分支") {
+                                        root._op(GitBridge.deleteBranch(localBranchCard.branchName, false))
+                                    } else if (actionText === "强制删除") {
+                                        forceDeleteBranchDanger._branch = localBranchCard.branchName
+                                        forceDeleteBranchDanger.start()
+                                    }
                                 }
                             }
                         }
@@ -265,21 +233,6 @@ Item {
                         property string branchName: model.name
                         width: parent ? parent.width : 0
                         height: rbRow.implicitHeight + Fluent.Enums.spacing.l * 2
-                        Fluent.MenuCore {
-                            id: remoteBranchActionsMenu
-                            property string branchName: remoteBranchCard.branchName
-                            objectName: "remoteBranchActionsMenu"
-                            useInWindowPopup: true
-                            Fluent.Action {
-                                objectName: "deleteRemoteBranchAction"
-                                text: "删除远程分支"
-                                icon: Fluent.Enums.icon.warning
-                                onTriggered: {
-                                    root._remoteDeleteTarget = remoteBranchCard.branchName
-                                    deleteRemoteBranchDanger.start()
-                                }
-                            }
-                        }
                         RowLayout {
                             id: rbRow
                             anchors.fill: parent
@@ -299,13 +252,21 @@ Item {
                             Fluent.Button {
                                 property string branchName: remoteBranchCard.branchName
                                 objectName: "remoteBranchActionButton"
-                                text: "检出"
+                                text: "获取并检出"
                                 feature: Fluent.Enums.button.feature_split
-                                menu: remoteBranchActionsMenu
+                                menuItems: [
+                                    { "text": "删除远程分支", "icon": Fluent.Enums.icon.warning }
+                                ]
                                 onClicked: {
                                     root._remoteCheckoutTarget = remoteBranchCard.branchName
                                     remoteCheckoutLocalInput.text = root._localNameForRemote(remoteBranchCard.branchName)
                                     remoteCheckoutDialog.open()
+                                }
+                                onMenuItemClicked: function(index, actionText) {
+                                    if (actionText === "删除远程分支") {
+                                        root._remoteDeleteTarget = remoteBranchCard.branchName
+                                        deleteRemoteBranchDanger.start()
+                                    }
                                 }
                             }
                         }
@@ -378,11 +339,11 @@ Item {
         }
     }
 
-    // 从远程分支创建本地跟踪分支
+    // 先获取远程更新，再从远程分支创建本地跟踪分支
     Fluent.MessageBox {
         id: remoteCheckoutDialog
-        title: "检出远程分支"
-        confirmText: "检出"
+        title: "获取并检出远程分支"
+        confirmText: "获取并检出"
         cancelText: "取消"
         function validate() { return remoteCheckoutLocalInput.text.trim().length > 0 }
         ColumnLayout {
@@ -403,7 +364,7 @@ Item {
             }
         }
         onAccepted: {
-            root._op(GitBridge.checkoutRemoteBranch(root._remoteCheckoutTarget, remoteCheckoutLocalInput.text))
+            root._op(GitBridge.fetchAndCheckoutRemoteBranch(root._remoteCheckoutTarget, remoteCheckoutLocalInput.text))
             root._remoteCheckoutTarget = ""
             remoteCheckoutLocalInput.text = ""
         }

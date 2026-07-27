@@ -303,6 +303,82 @@ class GitServiceCoreTest(unittest.TestCase):
             clone, "rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{u}").stdout.strip()
         self.assertEqual(upstream, "upstream/feature")
 
+    def test_pull_auto_tracks_same_named_remote_branch_when_upstream_missing(self) -> None:
+        remote = init_bare_repo(self.root / "auto-pull-remote.git")
+        seed = init_repo(self.root / "auto-pull-seed")
+        write_file(seed, "tracked.txt", "base\n")
+        commit_all(seed, "base")
+        run_git(seed, "remote", "add", "origin", str(remote))
+        run_git(seed, "push", "-u", "origin", "master")
+
+        clone = clone_repo(remote, self.root / "auto-pull-clone")
+        run_git(seed, "checkout", "-b", "fix-netease-pylint")
+        write_file(seed, "remote.txt", "remote branch\n")
+        commit_all(seed, "remote branch")
+        run_git(seed, "push", "origin", "fix-netease-pylint")
+
+        # 本地分支与远程分支同名，但明确禁止 Git 自动建立 tracking。
+        run_git(clone, "checkout", "-b", "fix-netease-pylint", "--no-track")
+        service = self.service_for(clone)
+
+        ok, message = self.wait_operation(
+            service, service.pull
+        )
+
+        self.assertTrue(ok, message)
+        self.assertIn("已自动关联 origin/fix-netease-pylint", message)
+        self.assertEqual(
+            (clone / "remote.txt").read_text(encoding="utf-8"),
+            "remote branch\n",
+        )
+        self.assertEqual(
+            run_git(
+                clone,
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{u}",
+            ).stdout.strip(),
+            "origin/fix-netease-pylint",
+        )
+
+    def test_pull_without_target_uses_configured_non_origin_upstream(self) -> None:
+        upstream = init_bare_repo(self.root / "configured-upstream.git")
+        unrelated = init_bare_repo(self.root / "unrelated-origin.git")
+        seed = init_repo(self.root / "configured-seed")
+        write_file(seed, "tracked.txt", "base\n")
+        commit_all(seed, "base")
+        run_git(seed, "remote", "add", "upstream", str(upstream))
+        run_git(seed, "push", "-u", "upstream", "master")
+
+        clone = clone_repo(upstream, self.root / "configured-clone")
+        run_git(clone, "remote", "rename", "origin", "upstream")
+        run_git(clone, "remote", "add", "origin", str(unrelated))
+        service = self.service_for(clone)
+
+        write_file(seed, "upstream.txt", "configured remote\n")
+        commit_all(seed, "configured remote update")
+        run_git(seed, "push", "upstream", "master")
+
+        ok, message = self.wait_operation(service, service.pull)
+
+        self.assertTrue(ok, message)
+        self.assertEqual(message, "拉取成功")
+        self.assertEqual(
+            (clone / "upstream.txt").read_text(encoding="utf-8"),
+            "configured remote\n",
+        )
+        self.assertEqual(
+            run_git(
+                clone,
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{u}",
+            ).stdout.strip(),
+            "upstream/master",
+        )
+
     def test_pull_conflict_uses_merge_output_instead_of_fetch_summary(self) -> None:
         remote = init_bare_repo(self.root / "conflict-remote.git")
         seed = init_repo(self.root / "conflict-seed")

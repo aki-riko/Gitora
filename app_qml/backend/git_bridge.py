@@ -894,6 +894,17 @@ class GitBridge(QObject):
             ),
         )
 
+    @Slot(str, str, result=QObject)
+    def fetchAndCheckoutRemoteBranch(
+        self, remote_branch: str, local_branch: str
+    ):
+        return self._submit_operation(
+            "正在获取并检出远程分支...",
+            lambda: self._svc.fetch_and_checkout_remote_branch(
+                remote_branch, local_branch
+            ),
+        )
+
     @Slot(str, bool, result=QObject)
     def deleteBranch(self, branch: str, force: bool):
         return self._submit_operation(

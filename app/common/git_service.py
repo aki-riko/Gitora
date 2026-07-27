@@ -1476,86 +1476,85 @@ class GitService(QObject):
 
     # ==================== 推送/拉取操作 ====================
 
+    def _current_branch_without_upstream(self) -> str:
+        """返回没有上游跟踪的当前分支；分离头指针或已有上游时返回空串。"""
+        branch = self.get_current_branch()
+        if not branch or branch == "HEAD":
+            return ""
+        success, upstream, _ = self._run_git_sync(
+            ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']
+        )
+        if success and upstream.strip():
+            return ""
+        return branch
+
     def push(self, remote: str = "origin", branch: str = "", force: bool = False, callback: Callable[[bool, str], None] = None):
-        """推送到远程（异步）
-        
-        Args:
-            remote: 远程仓库名
-            branch: 分支名
-            force: 是否强制推送（危险操作！）
-            callback: 完成回调
-        """
+        """通过 PrismQML 线程池推送到远程。"""
         self.operationStarted.emit("正在推送...")
         remote = (remote or "").strip()
         branch = (branch or "").strip()
 
-        # 边界检查:远程不存在 / 当前无分支(空仓库/分离头)
-        remotes = self.get_remotes()
-        if remote not in remotes:
-            msg = f"未配置远程 '{remote}',请先在「分支」或克隆向导中添加远程仓库" if not remotes else f"远程 '{remote}' 不存在,可用: {', '.join(remotes)}"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
+        self.progressUpdated.emit(0, "正在准备推送")
 
-        # 如果没有指定分支，获取当前分支
-        if not branch:
-            branch = self.get_current_branch()
-        if not branch or branch == "HEAD":
-            msg = "当前没有可推送的分支(空仓库或处于分离头指针状态,请先提交)"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
-        if self._bad_ref(branch):
-            msg = "非法的分支名"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
+        def work() -> tuple[bool, str]:
+            resolved_branch = branch
+            remotes = self.get_remotes()
+            if remote not in remotes:
+                message = (
+                    f"未配置远程 '{remote}',请先在「分支」或克隆向导中添加远程仓库"
+                    if not remotes
+                    else f"远程 '{remote}' 不存在,可用: {', '.join(remotes)}"
+                )
+                return False, message
+            if not resolved_branch:
+                resolved_branch = self.get_current_branch()
+            if not resolved_branch or resolved_branch == "HEAD":
+                return False, "当前没有可推送的分支(空仓库或处于分离头指针状态,请先提交)"
+            if self._bad_ref(resolved_branch):
+                return False, "非法的分支名"
 
-        # 始终使用 -u 设置上游分支（对新分支和已有分支都安全）
-        args = ['push', '--progress', '-u']
-        if force:
-            # --force-with-lease:仅当远端分支仍是本地已知的位置时才覆盖。
-            # 若远端有本地未见的新提交(他人推送)会被拒绝,避免误覆盖他人工作,
-            # 比裸 --force 安全,是主流 Git GUI 的默认强制推送方式。
-            args.append('--force-with-lease')
-        args.append(remote)
-        args.append(branch)
+            args = ['push', '--progress', '-u']
+            if force:
+                args.append('--force-with-lease')
+            args.extend((remote, resolved_branch))
+            task = current_task()
+            success, _stdout, stderr = self._run_git_push_sync(
+                args,
+                timeout=60,
+                on_progress=lambda percent, message: task.report_progress(
+                    (percent, message)
+                ),
+            )
+            return (
+                success,
+                "推送成功"
+                if success
+                else self._friendly_git_error(stderr, "推送失败"),
+            )
 
-        def on_finished(success: bool, stdout: str, stderr: str):
+        def finished(result: object) -> None:
+            success, message = result
             if success:
                 self.progressUpdated.emit(100, "推送完成")
                 self.statusChanged.emit()
-            msg = "推送成功" if success else self._friendly_git_error(stderr, "推送失败")
-            self.operationFinished.emit(success, msg)
+            self.operationFinished.emit(success, message)
             if callback:
-                callback(success, msg)
+                callback(success, message)
 
-        self.progressUpdated.emit(0, "正在准备推送")
-        self._run_git_push_async(args, on_finished)
+        return submit_to_pool(
+            work,
+            on_success=finished,
+            on_failure=lambda exc: finished((
+                False, self._friendly_git_error(str(exc), "推送失败")
+            )),
+            on_progress=lambda update: self.progressUpdated.emit(
+                int(update[0]), str(update[1])
+            ),
+        )
 
     def push_with_upstream(self, remote: str = "origin", branch: str = "", callback: Callable[[bool, str], None] = None):
-        """推送并设置上游分支（异步）"""
-        self.operationStarted.emit("正在推送...")
-
-        if not branch:
-            branch = self.get_current_branch()
-
-        args = ['push', '--progress', '-u', remote, branch]
-
-        def on_finished(success: bool, stdout: str, stderr: str):
-            if success:
-                self.progressUpdated.emit(100, "推送完成")
-                self.statusChanged.emit()
-            msg = "推送成功" if success else self._friendly_git_error(stderr, "推送失败")
-            self.operationFinished.emit(success, msg)
-            if callback:
-                callback(success, msg)
-
-        self.progressUpdated.emit(0, "正在准备推送")
-        self._run_git_push_async(args, on_finished)
+        """兼容入口；``push`` 已统一设置上游。"""
+        return self.push(remote, branch, callback=callback)
     
     def set_upstream(self, local_branch: str, remote: str, remote_branch: str) -> tuple[bool, str]:
         """设置分支的上游跟踪关系（同步）
@@ -1584,106 +1583,156 @@ class GitService(QObject):
             return True, f"已设置 {local_branch} 跟踪 {remote}/{remote_branch}"
         return False, self._friendly_git_error(stderr, "设置上游分支失败")
 
-    def pull(self, remote: str = "origin", branch: str = "", rebase: bool = False, callback: Callable[[bool, str], None] = None):
-        """拉取远程变更（异步）
-        
-        Args:
-            remote: 远程仓库名
-            branch: 分支名
-            rebase: 是否使用rebase而非merge
-            callback: 完成回调
-        """
+    def pull(self, remote: str = "", branch: str = "", rebase: bool = False, callback: Callable[[bool, str], None] = None):
+        """通过 PrismQML 线程池拉取远程变更。"""
         self.operationStarted.emit("正在拉取...")
         remote = (remote or "").strip()
         branch = (branch or "").strip()
 
-        # 边界检查:远程不存在
-        remotes = self.get_remotes()
-        if remote not in remotes:
-            msg = f"未配置远程 '{remote}',请先添加远程仓库" if not remotes else f"远程 '{remote}' 不存在,可用: {', '.join(remotes)}"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
-        if branch and self._bad_ref(branch):
-            msg = "非法的分支名"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
+        def work() -> tuple[bool, str]:
+            selected_remote = remote
+            selected_branch = branch
+            remotes = self.get_remotes()
+            if selected_remote and selected_remote not in remotes:
+                return False, (
+                    f"未配置远程 '{selected_remote}',请先添加远程仓库"
+                    if not remotes
+                    else f"远程 '{selected_remote}' 不存在,可用: {', '.join(remotes)}"
+                )
+            if not selected_remote and not remotes:
+                return False, "当前仓库没有远程仓库，请先添加远程仓库"
+            if selected_branch and not selected_remote:
+                return False, "指定分支时还需要选择远程仓库"
+            if selected_branch and self._bad_ref(selected_branch):
+                return False, "非法的分支名"
 
-        args = ['pull']
-        if rebase:
-            args.append('--rebase')
-        args.append(remote)
-        if branch:
-            args.append(branch)
+            auto_branch = False
+            if not selected_branch:
+                selected_branch = self._current_branch_without_upstream()
+                auto_branch = bool(selected_branch)
+                if auto_branch and not selected_remote:
+                    selected_remote = (
+                        "origin" if "origin" in remotes else remotes[0]
+                    )
 
-        def on_finished(success: bool, stdout: str, stderr: str):
+            args = ['pull']
+            if rebase:
+                args.append('--rebase')
+            if selected_remote:
+                args.append(selected_remote)
+            if selected_branch:
+                args.append(selected_branch)
+            success, stdout, stderr = self._run_git_sync(args, timeout=60)
+            if success:
+                if auto_branch:
+                    track_ok, _, _ = self._run_git_sync([
+                        'branch', '--set-upstream-to',
+                        f'{selected_remote}/{selected_branch}', selected_branch
+                    ])
+                    if track_ok:
+                        return True, (
+                            f"拉取成功，已自动关联 {selected_remote}/{selected_branch}；"
+                            "以后直接点击“拉取”即可。"
+                        )
+                    return True, (
+                        f"拉取成功，但未能自动关联 {selected_remote}/{selected_branch}；"
+                        "下次请在“分支”页设置上游。"
+                    )
+                return True, "拉取成功"
+            detail = "\n".join(
+                part.strip()
+                for part in (stdout, stderr)
+                if part and part.strip()
+            )
+            if "CONFLICT" in detail or "Automatic merge failed" in detail:
+                return False, "拉取产生合并冲突,请到「冲突」页解决"
+            return False, self._friendly_git_error(detail, "拉取失败")
+
+        def finished(result: object) -> None:
+            success, message = result
             if success:
                 self.statusChanged.emit()
-                msg = "拉取成功"
-            else:
-                detail = "\n".join(
-                    part.strip() for part in (stdout, stderr) if part and part.strip()
-                )
-                # 合并冲突:git 把 CONFLICT/Automatic merge failed 输出到 stdout
-                if "CONFLICT" in detail or "Automatic merge failed" in detail:
-                    msg = "拉取产生合并冲突,请到「冲突」页解决"
-                else:
-                    msg = self._friendly_git_error(detail, "拉取失败")
-            self.operationFinished.emit(success, msg)
+            self.operationFinished.emit(success, message)
             if callback:
-                callback(success, msg)
+                callback(success, message)
 
-        self._run_git_async(args, on_finished)
+        return submit_to_pool(
+            work,
+            on_success=finished,
+            on_failure=lambda exc: finished((
+                False, self._friendly_git_error(str(exc), "拉取失败")
+            )),
+        )
 
     def fetch(self, remote: str = "origin", callback: Callable[[bool, str], None] = None):
-        """获取指定远程更新并清理已删除的远程跟踪引用（异步）"""
+        """通过 PrismQML 线程池获取指定远程更新。"""
         self.operationStarted.emit("正在获取远程更新...")
         remote = (remote or "").strip()
 
-        if remote not in self.get_remotes():
-            msg = f"未配置远程 '{remote}',请先添加远程仓库"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
+        def work() -> tuple[bool, str]:
+            if remote not in self.get_remotes():
+                return False, f"未配置远程 '{remote}',请先添加远程仓库"
+            success, _stdout, stderr = self._run_git_sync(
+                ['fetch', '--prune', remote], timeout=60
+            )
+            return (
+                success,
+                "获取成功"
+                if success
+                else self._friendly_git_error(stderr, "获取失败"),
+            )
 
-        def on_finished(success: bool, stdout: str, stderr: str):
+        def finished(result: object) -> None:
+            success, message = result
             if success:
                 self.statusChanged.emit()
-            msg = "获取成功" if success else self._friendly_git_error(stderr, "获取失败")
-            self.operationFinished.emit(success, msg)
+            self.operationFinished.emit(success, message)
             if callback:
-                callback(success, msg)
+                callback(success, message)
 
-        self._run_git_async(['fetch', '--prune', remote], on_finished)
+        return submit_to_pool(
+            work,
+            on_success=finished,
+            on_failure=lambda exc: finished((
+                False, self._friendly_git_error(str(exc), "获取失败")
+            )),
+        )
 
     def fetch_all(self, callback: Callable[[bool, str], None] = None):
-        """获取全部远程更新并清理已删除的远程跟踪引用（异步）。"""
+        """通过 PrismQML 线程池获取全部远程更新。"""
         self.operationStarted.emit("正在获取全部远程更新...")
-        remotes = self.get_remotes()
-        if not remotes:
-            msg = "未配置远程仓库,请先添加远程仓库"
-            self.operationFinished.emit(False, msg)
-            if callback:
-                callback(False, msg)
-            return
 
-        def on_finished(success: bool, stdout: str, stderr: str):
-            if success:
-                self.statusChanged.emit()
-            msg = (
+        def work() -> tuple[bool, str]:
+            if not self.get_remotes():
+                return False, "未配置远程仓库,请先添加远程仓库"
+            success, stdout, stderr = self._run_git_sync(
+                ['fetch', '--all', '--prune'], timeout=60
+            )
+            return (
+                success,
                 "全部远程更新获取成功"
                 if success
-                else self._friendly_git_error(stderr or stdout, "获取全部远程更新失败")
+                else self._friendly_git_error(
+                    stderr or stdout, "获取全部远程更新失败"
+                ),
             )
-            self.operationFinished.emit(success, msg)
-            if callback:
-                callback(success, msg)
 
-        self._run_git_async(['fetch', '--all', '--prune'], on_finished)
+        def finished(result: object) -> None:
+            success, message = result
+            if success:
+                self.statusChanged.emit()
+            self.operationFinished.emit(success, message)
+            if callback:
+                callback(success, message)
+
+        return submit_to_pool(
+            work,
+            on_success=finished,
+            on_failure=lambda exc: finished((
+                False,
+                self._friendly_git_error(str(exc), "获取全部远程更新失败"),
+            )),
+        )
 
     def _resolve_current_upstream(self) -> tuple[bool, str, str, str]:
         """解析当前分支上游 -> (ok, remote, upstream, msg)。"""
@@ -1747,7 +1796,9 @@ class GitService(QObject):
         return submit_to_pool(
             self.force_reset_to_upstream_sync,
             on_success=on_finished,
-            on_failure=lambda exc: on_finished((False, str(exc))),
+            on_failure=lambda exc: on_finished((
+                False, self._friendly_git_error(str(exc), "远程覆盖本地失败")
+            )),
         )
 
     # ==================== 分支操作 ====================
@@ -1768,6 +1819,17 @@ class GitService(QObject):
         ):
             return True
         return False
+
+    def _split_configured_remote_branch(
+        self, remote_branch: str
+    ) -> tuple[str, str]:
+        """按已配置远程名拆分 ``remote/branch``，优先匹配最长名称。"""
+        for remote in sorted(self.get_remotes(), key=len, reverse=True):
+            prefix = f"{remote}/"
+            if remote_branch.startswith(prefix):
+                return remote, remote_branch[len(prefix):]
+        return "", ""
+
     def checkout_branch(self, branch: str) -> tuple[bool, str]:
         """切换分支"""
         if self._bad_ref(branch):
@@ -1794,6 +1856,41 @@ class GitService(QObject):
             self.statusChanged.emit()
             return True, f"已检出 {remote_branch} 为本地分支 {local_branch}"
         return False, self._friendly_git_error(stderr, "检出远程分支失败")
+
+    def fetch_and_checkout_remote_branch(
+        self, remote_branch: str, local_branch: str = ""
+    ) -> tuple[bool, str]:
+        """获取指定远程后，创建并切换到对应的本地跟踪分支。"""
+        remote_branch = (remote_branch or "").strip()
+        local_branch = (local_branch or "").strip()
+        remote, branch = self._split_configured_remote_branch(remote_branch)
+        if not remote:
+            return False, f"未配置远程分支所属远程: {remote_branch}"
+        if not local_branch:
+            local_branch = branch
+        if self._bad_ref(branch) or self._bad_ref(local_branch):
+            return False, "非法的分支名"
+        fetched, stdout, stderr = self._run_git_sync(
+            ['fetch', '--prune', remote], timeout=60
+        )
+        if not fetched:
+            return False, self._friendly_git_error(
+                stderr or stdout, "获取远程分支失败"
+            )
+        exists, _, _ = self._run_git_sync([
+            'show-ref', '--verify', '--quiet',
+            f'refs/remotes/{remote}/{branch}',
+        ])
+        if not exists:
+            self.statusChanged.emit()
+            return False, f"获取完成，但远程分支不存在: {remote}/{branch}"
+        success, _, error = self._run_git_sync([
+            'checkout', '-b', local_branch, '--track', f'{remote}/{branch}'
+        ])
+        self.statusChanged.emit()
+        if success:
+            return True, f"已获取并检出 {remote}/{branch} 为本地分支 {local_branch}"
+        return False, self._friendly_git_error(error, "检出远程分支失败")
 
     def create_branch(
         self,
@@ -2097,7 +2194,9 @@ class GitService(QObject):
         return submit_to_pool(
             do_quick_commit_push,
             on_success=on_finished,
-            on_failure=lambda exc: on_finished((False, str(exc))),
+            on_failure=lambda exc: on_finished((
+                False, self._friendly_git_error(str(exc), "一键提交推送失败")
+            )),
             on_progress=report_progress,
         )
 
