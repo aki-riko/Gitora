@@ -548,7 +548,8 @@ Item {
                                         model: changeModel
                                         itemHeight: 40
                                         listSpacing: 2
-                                        listCacheBuffer: 0
+                                        // 提前准备视口外 6 行，避免滚动到边缘时同步创建 delegate。
+                                        listCacheBuffer: changeScrollArea.itemHeight * 6
                                         reuseItems: true
                                         bounceEnabled: false
                                         padding: 0
@@ -583,37 +584,58 @@ Item {
                                                     font.pixelSize: Fluent.Enums.typography.body
                                                     elide: Text.ElideMiddle
                                                 }
-                                                RowLayout {
-                                                    id: changeActions
-                                                    visible: hover.hovered
-                                                    spacing: Fluent.Enums.spacing.xxs
+                                                Loader {
+                                                    id: changeActionsLoader
+                                                    property string rowPath: model.path
+                                                    property bool rowStaged: model.staged
+                                                    active: hover.hovered
+                                                    onLoaded: {
+                                                        item.rowPath = rowPath
+                                                        item.rowStaged = rowStaged
+                                                    }
+                                                    onRowPathChanged: {
+                                                        if (item) item.rowPath = rowPath
+                                                    }
+                                                    onRowStagedChanged: {
+                                                        if (item) item.rowStaged = rowStaged
+                                                    }
+                                                    sourceComponent: Component {
+                                                        RowLayout {
+                                                            id: changeActions
+                                                            property string rowPath: ""
+                                                            property bool rowStaged: false
+                                                            spacing: Fluent.Enums.spacing.xxs
 
-                                                    Fluent.Button {
-                                                        preferredWidth: Fluent.Enums.controlSize.inputHeight
-                                                        text: model.staged ? "取消" : "暂存"
-                                                        style: Fluent.Enums.button.style_transparent
-                                                        onClicked: {
-                                                            if (model.staged) GitBridge.unstageFile(model.path)
-                                                            else GitBridge.stageFile(model.path)
+                                                            Fluent.Button {
+                                                                preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                text: changeActions.rowStaged ? "取消" : "暂存"
+                                                                style: Fluent.Enums.button.style_transparent
+                                                                onClicked: {
+                                                                    if (changeActions.rowStaged)
+                                                                        GitBridge.unstageFile(changeActions.rowPath)
+                                                                    else
+                                                                        GitBridge.stageFile(changeActions.rowPath)
+                                                                }
+                                                            }
+                                                            Fluent.Button {
+                                                                preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                text: "丢弃"
+                                                                style: Fluent.Enums.button.style_transparent
+                                                                visible: !changeActions.rowStaged
+                                                                onClicked: {
+                                                                    discardDanger.content = "将丢弃 " + changeActions.rowPath
+                                                                        + " 的工作区改动。\n此操作不可恢复。"
+                                                                    discardDanger._path = changeActions.rowPath
+                                                                    discardDanger.start()
+                                                                }
+                                                            }
+                                                            Fluent.Button {
+                                                                preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                text: "历史"
+                                                                style: Fluent.Enums.button.style_transparent
+                                                                onClicked: fileHistoryDialog.openFor(changeActions.rowPath)
+                                                            }
                                                         }
-                                                    }
-                                                    Fluent.Button {
-                                                        preferredWidth: Fluent.Enums.controlSize.inputHeight
-                                                        text: "丢弃"
-                                                        style: Fluent.Enums.button.style_transparent
-                                                        visible: !model.staged
-                                                        onClicked: {
-                                                            discardDanger.content = "将丢弃 " + model.path
-                                                                + " 的工作区改动。\n此操作不可恢复。"
-                                                            discardDanger._path = model.path
-                                                            discardDanger.start()
-                                                        }
-                                                    }
-                                                    Fluent.Button {
-                                                        preferredWidth: Fluent.Enums.controlSize.inputHeight
-                                                        text: "历史"
-                                                        style: Fluent.Enums.button.style_transparent
-                                                        onClicked: fileHistoryDialog.openFor(model.path)
                                                     }
                                                 }
                                             }

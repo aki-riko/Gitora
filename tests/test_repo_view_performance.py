@@ -20,8 +20,23 @@ class RepoViewPerformanceTest(unittest.TestCase):
 
         self.assertIn("GitBridge.fileChangeModel", source)
         self.assertIn("reuseItems: true", source)
+        self.assertIn(
+            "listCacheBuffer: changeScrollArea.itemHeight * 6",
+            source,
+        )
+        self.assertNotIn("listCacheBuffer: 0", source)
         self.assertNotIn("ListModel { id: changeModel }", source)
         self.assertNotIn("changeModel.append", source)
+
+    def test_change_list_only_instantiates_row_actions_on_hover(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("id: changeActionsLoader", source)
+        self.assertIn("active: hover.hovered", source)
+        self.assertIn("onRowPathChanged:", source)
+        self.assertIn("onRowStagedChanged:", source)
+        self.assertIn("sourceComponent: Component {", source)
+        self.assertNotIn("visible: hover.hovered", source)
 
     def test_change_list_actions_use_compact_button_group(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
