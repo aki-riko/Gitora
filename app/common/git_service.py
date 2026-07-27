@@ -2150,23 +2150,67 @@ class GitService(QObject):
         
         return conflicts
 
+    def _resolve_conflicts(
+        self, file_paths: list[str], side: str
+    ) -> tuple[bool, str]:
+        """用指定一侧逐个解决并暂存冲突，最后只发送一次状态刷新。"""
+        if side not in {"ours", "theirs"}:
+            return False, "不支持的冲突解决策略"
+        if not file_paths:
+            return False, "当前没有需要解决的冲突文件"
+
+        resolved = 0
+        failures: list[str] = []
+        for file_path in file_paths:
+            checkout_ok, checkout_stdout, checkout_stderr = self._run_git_sync(
+                ['checkout', f'--{side}', '--', file_path]
+            )
+            if not checkout_ok:
+                failures.append(self._friendly_git_error(
+                    checkout_stderr or checkout_stdout,
+                    f"解决冲突失败: {file_path}",
+                ))
+                continue
+            stage_ok, stage_stdout, stage_stderr = self._run_git_sync(
+                ['add', '--', file_path]
+            )
+            if not stage_ok:
+                failures.append(self._friendly_git_error(
+                    stage_stderr or stage_stdout,
+                    f"暂存解决结果失败: {file_path}",
+                ))
+                continue
+            resolved += 1
+
+        if resolved:
+            self.statusChanged.emit()
+        side_text = "本地" if side == "ours" else "远程"
+        if failures:
+            return False, (
+                f"已按{side_text}版本解决 {resolved}/{len(file_paths)} 个冲突；"
+                f"{failures[0]}"
+            )
+        return True, f"已按{side_text}版本解决 {resolved} 个冲突"
+
     def resolve_conflict_with_ours(self, file_path: str) -> tuple[bool, str]:
-        """采用本地版本解决冲突(--ours)"""
-        success, stdout, stderr = self._run_git_sync(['checkout', '--ours', '--', file_path])
-        if success:
-            # 标记为已解决（添加到暂存区）
-            self.stage_file(file_path)
-            return True, f"已采用本地版本: {file_path}"
-        return False, self._friendly_git_error(stderr, "解决冲突失败")
+        """采用本地版本解决单个冲突(--ours)。"""
+        return self._resolve_conflicts([file_path], "ours")
 
     def resolve_conflict_with_theirs(self, file_path: str) -> tuple[bool, str]:
-        """采用远程版本解决冲突(--theirs)"""
-        success, stdout, stderr = self._run_git_sync(['checkout', '--theirs', '--', file_path])
-        if success:
-            # 标记为已解决（添加到暂存区）
-            self.stage_file(file_path)
-            return True, f"已采用远程版本: {file_path}"
-        return False, self._friendly_git_error(stderr, "解决冲突失败")
+        """采用远程版本解决单个冲突(--theirs)。"""
+        return self._resolve_conflicts([file_path], "theirs")
+
+    def resolve_all_conflicts_with_ours(self) -> tuple[bool, str]:
+        """采用本地版本解决当前全部冲突。"""
+        return self._resolve_conflicts(
+            [conflict.path for conflict in self.get_conflicts()], "ours"
+        )
+
+    def resolve_all_conflicts_with_theirs(self) -> tuple[bool, str]:
+        """采用远程版本解决当前全部冲突。"""
+        return self._resolve_conflicts(
+            [conflict.path for conflict in self.get_conflicts()], "theirs"
+        )
 
     def abort_merge(self) -> tuple[bool, str]:
         """中止合并操作"""

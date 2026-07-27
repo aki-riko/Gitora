@@ -11,7 +11,22 @@ Item {
     property bool merging: false
     property string operation: ""
     property string _conflictsRequestRepoPath: ""
+    property bool resolveBusy: false
+    property int resolveCooldown: 0
     ListModel { id: conflictModel }
+
+    Timer {
+        id: resolveCooldownTimer
+        interval: 1000
+        repeat: true
+        onTriggered: {
+            root.resolveCooldown--
+            if (root.resolveCooldown <= 0) {
+                root.resolveCooldown = 0
+                stop()
+            }
+        }
+    }
 
     function clearModel() {
         root.merging = false
@@ -34,11 +49,32 @@ Item {
         return ""
     }
 
-    function _op(task) {
+    function _startResolveCooldown() {
+        root.resolveCooldown = 3
+        resolveCooldownTimer.restart()
+    }
+
+    function _op(task, isResolve) {
         if (!task) return
+        if (isResolve) {
+            root.resolveBusy = true
+            root._startResolveCooldown()
+            task.finished.connect(function() { root.resolveBusy = false })
+        }
         task.succeeded.connect(function(result) {
             if (result && result[0]) root.reload()
         })
+    }
+
+    function _resolve(task) {
+        if (root.resolveBusy || root.resolveCooldown > 0) return
+        root._op(task, true)
+    }
+
+    function _resolveText(label) {
+        if (root.resolveBusy) return "处理中…"
+        if (root.resolveCooldown > 0) return label + " (" + root.resolveCooldown + "s)"
+        return label
     }
 
     function _continueOperation() {
@@ -103,7 +139,12 @@ Item {
                     font.family: Fluent.Enums.fontFamily
                 }
                 Item { Layout.fillWidth: true }
-                Fluent.Button { text: "刷新"; icon: Fluent.Enums.icon.arrow_sync; onClicked: root.reload() }
+                Fluent.Button {
+                    text: "刷新"
+                    icon: Fluent.Enums.icon.arrow_sync
+                    enabled: !root.resolveBusy
+                    onClicked: root.reload()
+                }
                 Fluent.Button {
                     text: root.operation === "merge" ? "完成合并" : "继续"
                     visible: root.operation === "merge" || root.operation === "rebase" || root.operation === "cherry-pick" || root.operation === "revert"
@@ -153,12 +194,32 @@ Item {
                 spacing: Fluent.Enums.spacing.m
                 visible: conflictModel.count > 0
 
-                Text {
-                    text: "冲突文件"
-                    color: Fluent.Enums.textColor.primary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
+                RowLayout {
+                    width: parent.width
+                    Text {
+                        text: "冲突文件"
+                        color: Fluent.Enums.textColor.primary
+                        font.family: Fluent.Enums.fontFamily
+                        font.pixelSize: Fluent.Enums.typography.subtitle
+                        font.bold: true
+                    }
+                    Item { Layout.fillWidth: true }
+                    Fluent.Button {
+                        text: root._resolveText("全部本地优先")
+                        style: Fluent.Enums.button.style_filled
+                        level: Fluent.Enums.statusLevel.success
+                        enabled: conflictModel.count > 0 && !root.resolveBusy
+                                 && root.resolveCooldown === 0
+                        onClicked: root._resolve(GitBridge.resolveAllWithOurs())
+                    }
+                    Fluent.Button {
+                        text: root._resolveText("全部远程优先")
+                        style: Fluent.Enums.button.style_filled
+                        level: Fluent.Enums.statusLevel.warning
+                        enabled: conflictModel.count > 0 && !root.resolveBusy
+                                 && root.resolveCooldown === 0
+                        onClicked: root._resolve(GitBridge.resolveAllWithTheirs())
+                    }
                 }
 
                 Repeater {
@@ -200,16 +261,18 @@ Item {
                                 onClicked: conflictViewer.openFor(model.path)
                             }
                             Fluent.Button {
-                                text: "本地优先"
+                                text: root._resolveText("本地优先")
                                 style: Fluent.Enums.button.style_filled
                                 level: Fluent.Enums.statusLevel.success
-                                onClicked: root._op(GitBridge.resolveWithOurs(model.path))
+                                enabled: !root.resolveBusy && root.resolveCooldown === 0
+                                onClicked: root._resolve(GitBridge.resolveWithOurs(model.path))
                             }
                             Fluent.Button {
-                                text: "远程优先"
+                                text: root._resolveText("远程优先")
                                 style: Fluent.Enums.button.style_filled
                                 level: Fluent.Enums.statusLevel.warning
-                                onClicked: root._op(GitBridge.resolveWithTheirs(model.path))
+                                enabled: !root.resolveBusy && root.resolveCooldown === 0
+                                onClicked: root._resolve(GitBridge.resolveWithTheirs(model.path))
                             }
                         }
                     }

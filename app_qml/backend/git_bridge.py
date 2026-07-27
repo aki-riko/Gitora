@@ -982,6 +982,20 @@ class GitBridge(QObject):
         )
 
     @Slot(result=QObject)
+    def resolveAllWithOurs(self):
+        return self._submit_operation(
+            "正在使用当前分支版本解决全部冲突...",
+            self._svc.resolve_all_conflicts_with_ours,
+        )
+
+    @Slot(result=QObject)
+    def resolveAllWithTheirs(self):
+        return self._submit_operation(
+            "正在使用对方分支版本解决全部冲突...",
+            self._svc.resolve_all_conflicts_with_theirs,
+        )
+
+    @Slot(result=QObject)
     def continueMerge(self):
         return self._submit_operation("正在完成合并...", self._svc.continue_merge)
 
