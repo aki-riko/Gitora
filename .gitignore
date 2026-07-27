@@ -38,6 +38,7 @@ wheels/
 *.onefile-build/
 build_dist/
 dist_installer/
+release_artifacts/
 
 # 日志文件
 *.log
