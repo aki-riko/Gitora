@@ -5,7 +5,7 @@
 ; Source manifest: prismqml-installer.json
 
 #define PrismAppName "Gitora"
-#define PrismAppVersion "1.5.5"
+#define PrismAppVersion "1.5.6"
 #define PrismAppPublisher "aki-riko"
 #define PrismAppExe "Gitora.exe"
 #define PrismAppUserModelID "PrismQML.Gitora"
@@ -28,7 +28,7 @@ DefaultGroupName={#PrismAppName}
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
 OutputDir=dist_installer
-OutputBaseFilename=Gitora-Setup-1.5.5
+OutputBaseFilename=Gitora-Setup-1.5.6
 SetupIconFile={#PrismSetupIcon}
 UninstallDisplayIcon={app}\{#PrismAppExe}
 Compression=lzma2
@@ -49,6 +49,7 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
+
 
 [Files]
 Source: "{#PrismDistDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
