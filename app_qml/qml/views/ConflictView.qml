@@ -42,7 +42,8 @@ Item {
     }
 
     function _continueOperation() {
-        if (root.operation === "rebase") root._op(GitBridge.continueRebase())
+        if (root.operation === "merge") root._op(GitBridge.continueMerge())
+        else if (root.operation === "rebase") root._op(GitBridge.continueRebase())
         else if (root.operation === "cherry-pick") root._op(GitBridge.continueCherryPick())
         else if (root.operation === "revert") root._op(GitBridge.continueRevert())
     }
@@ -104,8 +105,8 @@ Item {
                 Item { Layout.fillWidth: true }
                 Fluent.Button { text: "刷新"; icon: Fluent.Enums.icon.arrow_sync; onClicked: root.reload() }
                 Fluent.Button {
-                    text: "继续"
-                    visible: root.operation === "rebase" || root.operation === "cherry-pick" || root.operation === "revert"
+                    text: root.operation === "merge" ? "完成合并" : "继续"
+                    visible: root.operation === "merge" || root.operation === "rebase" || root.operation === "cherry-pick" || root.operation === "revert"
                     onClicked: root._continueOperation()
                 }
                 Fluent.Button {
@@ -138,7 +139,7 @@ Item {
                     Text {
                         Layout.fillWidth: true
                         text: !root.merging ? "当前没有 Git 中途操作或冲突"
-                              : (conflictModel.count > 0 ? (root._operationText() + " 中发现 " + conflictModel.count + " 个冲突文件") : (root._operationText() + " 中,冲突已解决"))
+                              : (conflictModel.count > 0 ? (root._operationText() + " 中发现 " + conflictModel.count + " 个冲突文件") : (root._operationText() + " 中，冲突已解决，请点击继续完成"))
                         color: Fluent.Enums.textColor.primary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.body

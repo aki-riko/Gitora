@@ -2215,6 +2215,15 @@ class GitService(QObject):
             return True, success_msg
         return False, self._friendly_git_error(stderr, failure_msg)
 
+    def continue_merge(self) -> tuple[bool, str]:
+        """使用已有合并消息完成已解决冲突的 merge。"""
+        return self._run_mid_operation(
+            "merge",
+            ['-c', 'core.editor=true', 'merge', '--continue'],
+            "合并已完成",
+            "完成合并失败",
+        )
+
     def continue_rebase(self) -> tuple[bool, str]:
         """继续 rebase。"""
         return self._run_mid_operation(

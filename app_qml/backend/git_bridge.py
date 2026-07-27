@@ -982,6 +982,10 @@ class GitBridge(QObject):
         )
 
     @Slot(result=QObject)
+    def continueMerge(self):
+        return self._submit_operation("正在完成合并...", self._svc.continue_merge)
+
+    @Slot(result=QObject)
     def abortMerge(self):
         return self._submit_operation("正在中止合并...", self._svc.abort_merge)
 
