@@ -343,14 +343,25 @@ Item {
     // 先获取远程更新，再从远程分支创建本地跟踪分支
     Fluent.MessageBox {
         id: remoteCheckoutDialog
-        title: "获取并检出远程分支"
+        objectName: "remoteCheckoutDialog"
+        // MessageBox 的内建标题与调用方表单是并列子项，会从同一坐标绘制。
+        // 把可见标题纳入表单布局，确保标题、远程分支和输入框依次排列。
+        title: ""
         confirmText: "获取并检出"
         cancelText: "取消"
         function validate() { return remoteCheckoutLocalInput.text.trim().length > 0 }
         ColumnLayout {
             width: 360
             spacing: Fluent.Enums.spacing.m
+            Fluent.Label {
+                objectName: "remoteCheckoutDialogTitle"
+                Layout.fillWidth: true
+                text: "获取并检出远程分支"
+                type: Fluent.Enums.label.type_subtitle
+                color: Fluent.Enums.textColor.primary
+            }
             Text {
+                objectName: "remoteCheckoutTargetLabel"
                 Layout.fillWidth: true
                 text: "远程分支: " + root._remoteCheckoutTarget
                 color: Fluent.Enums.textColor.secondary
@@ -360,6 +371,7 @@ Item {
             }
             Fluent.LineEdit {
                 id: remoteCheckoutLocalInput
+                objectName: "remoteCheckoutLocalInput"
                 Layout.fillWidth: true
                 placeholderText: "本地分支名"
             }

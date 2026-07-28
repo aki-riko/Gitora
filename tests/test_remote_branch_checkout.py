@@ -171,7 +171,8 @@ class RemoteBranchCheckoutTest(unittest.TestCase):
         ).read_text(encoding="utf-8")
 
         self.assertIn('text: "获取并检出"', source)
-        self.assertIn('title: "获取并检出远程分支"', source)
+        self.assertIn('objectName: "remoteCheckoutDialogTitle"', source)
+        self.assertIn('text: "获取并检出远程分支"', source)
         self.assertIn('confirmText: "获取并检出"', source)
         self.assertIn(
             "root._op(GitBridge.fetchAndCheckoutRemoteBranch(", source
