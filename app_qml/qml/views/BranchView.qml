@@ -209,7 +209,8 @@ Item {
                                         renameBranchInput.text = localBranchCard.branchName
                                         renameBranchDialog.open()
                                     } else if (actionText === "删除分支") {
-                                        root._op(GitBridge.deleteBranch(localBranchCard.branchName, false))
+                                        deleteBranchConfirm._branch = localBranchCard.branchName
+                                        deleteBranchConfirm.open()
                                     } else if (actionText === "强制删除") {
                                         forceDeleteBranchDanger._branch = localBranchCard.branchName
                                         forceDeleteBranchDanger.start()
@@ -382,6 +383,24 @@ Item {
                 GitBridge.mergeBranch(root._mergeTarget)
             root._mergeTarget = ""
         }
+    }
+
+    // 普通删除仍需确认；Git 会拒绝删除包含未合并提交的分支。
+    Fluent.MessageBox {
+        id: deleteBranchConfirm
+        objectName: "deleteBranchConfirm"
+        title: "确认删除分支"
+        content: "确定删除本地分支 \"" + _branch + "\" 吗？\n"
+            + "如果分支包含尚未合并的提交，Git 会拒绝删除。"
+        confirmText: "删除"
+        cancelText: "取消"
+        property string _branch: ""
+        onAccepted: {
+            if (_branch)
+                root._op(GitBridge.deleteBranch(_branch, false))
+            _branch = ""
+        }
+        onRejected: _branch = ""
     }
 
     // 危险操作:将当前分支 rebase 到目标分支,会重写当前分支提交基底

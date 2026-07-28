@@ -9,7 +9,8 @@ from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[1]
-PROBE_MARKER = "[BRANCH_FORCE_DELETE_MENU_PROBE]"
+DELETE_PROBE_MARKER = "[BRANCH_DELETE_MENU_PROBE]"
+FORCE_DELETE_PROBE_MARKER = "[BRANCH_FORCE_DELETE_MENU_PROBE]"
 TARGET_BRANCH = "codex/cherry-pick-85d001f"
 
 
@@ -56,9 +57,9 @@ def test_branch_cards_collapse_secondary_actions_into_split_menus() -> None:
     assert remote_section.count("feature: Fluent.Enums.button.feature_split") == 1
 
 
-def test_branch_force_delete_opens_confirmation_without_deleting() -> None:
+def _run_delete_confirmation_probe(command: str, marker: str) -> None:
     result = subprocess.run(
-        [sys.executable, "-m", "tests.test_branch_force_delete_menu_qml", "--probe"],
+        [sys.executable, "-m", "tests.test_branch_force_delete_menu_qml", command],
         cwd=str(ROOT),
         env=_probe_environment(),
         capture_output=True,
@@ -70,10 +71,20 @@ def test_branch_force_delete_opens_confirmation_without_deleting() -> None:
     )
     diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert result.returncode == 0, diagnostic
-    assert PROBE_MARKER in result.stdout, diagnostic
+    assert marker in result.stdout, diagnostic
     assert "[WARNING]" not in result.stdout, diagnostic
     assert "[ERROR]" not in result.stdout, diagnostic
     assert result.stderr == "", diagnostic
+
+
+def test_branch_delete_opens_confirmation_without_deleting() -> None:
+    _run_delete_confirmation_probe("--probe-delete", DELETE_PROBE_MARKER)
+
+
+def test_branch_force_delete_opens_confirmation_without_deleting() -> None:
+    _run_delete_confirmation_probe(
+        "--probe-force-delete", FORCE_DELETE_PROBE_MARKER
+    )
 
 
 def _pump(milliseconds: int) -> None:
@@ -134,7 +145,7 @@ def _property(item, name):
         return None
 
 
-def _probe() -> int:
+def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
     from PySide6.QtCore import (
         Property,
         QObject,
@@ -258,9 +269,9 @@ def _probe() -> int:
         if item.objectName() == "localBranchActionButton"
         and _property(item, "branchName") == "main"
     )
-    danger = root.findChild(QObject, "forceDeleteBranchDanger")
-    if danger is None:
-        raise AssertionError("force-delete confirmation dialog is missing")
+    confirmation = root.findChild(QObject, dialog_object_name)
+    if confirmation is None:
+        raise AssertionError(f"{action_text} confirmation dialog is missing")
 
     current_button_point = current_button.mapToScene(
         QPointF(current_button.width() / 2, current_button.height() / 2)
@@ -328,7 +339,7 @@ def _probe() -> int:
     action = next(
         item
         for _, item in popup_items
-        if _property(item, "text") == "强制删除"
+        if _property(item, "text") == action_text
         and item.height() >= 30
         and item.isVisible()
     )
@@ -362,17 +373,17 @@ def _probe() -> int:
     )
     _pump(150)
 
-    if not bool(_property(danger, "_isOpen")):
+    if not bool(_property(confirmation, "_isOpen")):
         raise AssertionError(
-            "force-delete confirmation did not open; "
-            f"branch={_property(danger, '_branch')}; deletes={bridge.delete_calls}"
+            f"{action_text} confirmation did not open; "
+            f"branch={_property(confirmation, '_branch')}; deletes={bridge.delete_calls}"
         )
-    if _property(danger, "_branch") != TARGET_BRANCH:
-        raise AssertionError(_property(danger, "_branch"))
+    if _property(confirmation, "_branch") != TARGET_BRANCH:
+        raise AssertionError(_property(confirmation, "_branch"))
     if bridge.delete_calls:
         raise AssertionError(bridge.delete_calls)
 
-    print(f"{PROBE_MARKER} branch={TARGET_BRANCH} delete_calls=0")
+    print(f"{marker} branch={TARGET_BRANCH} delete_calls=0")
     root.close()
     root.deleteLater()
     component.deleteLater()
@@ -383,6 +394,19 @@ def _probe() -> int:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) == 2 and sys.argv[1] == "--probe":
-        raise SystemExit(_probe())
-    raise SystemExit("usage: test_branch_force_delete_menu_qml.py --probe")
+    if len(sys.argv) == 2 and sys.argv[1] == "--probe-delete":
+        raise SystemExit(
+            _probe("删除分支", "deleteBranchConfirm", DELETE_PROBE_MARKER)
+        )
+    if len(sys.argv) == 2 and sys.argv[1] == "--probe-force-delete":
+        raise SystemExit(
+            _probe(
+                "强制删除",
+                "forceDeleteBranchDanger",
+                FORCE_DELETE_PROBE_MARKER,
+            )
+        )
+    raise SystemExit(
+        "usage: test_branch_force_delete_menu_qml.py "
+        "[--probe-delete|--probe-force-delete]"
+    )
