@@ -459,7 +459,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
-            splitPosition: 0.35
+            splitPosition: 0.42
 
             firstContent: Item {
                 anchors.fill: parent
@@ -587,7 +587,10 @@ Item {
                                                 // 固定槽位隔离悬停操作的宽度，避免按钮加载时再次挤压文件名。
                                                 Item {
                                                     id: changeActionsSlot
-                                                    Layout.preferredWidth: Fluent.Enums.controlSize.inputHeightCompact
+                                                    readonly property int actionCount: model.staged ? 2 : 3
+                                                    Layout.preferredWidth: actionCount
+                                                        * Fluent.Enums.controlSize.inputHeight
+                                                        + (actionCount - 1) * Fluent.Enums.spacing.xxs
                                                     Layout.fillHeight: true
 
                                                     Loader {
@@ -595,7 +598,7 @@ Item {
                                                         anchors.fill: parent
                                                         property string rowPath: model.path
                                                         property bool rowStaged: model.staged
-                                                        active: hover.hovered || Boolean(item && item.menuOpen)
+                                                        active: hover.hovered
                                                         onLoaded: {
                                                             item.rowPath = rowPath
                                                             item.rowStaged = rowStaged
@@ -607,60 +610,43 @@ Item {
                                                             if (item) item.rowStaged = rowStaged
                                                         }
                                                         sourceComponent: Component {
-                                                            Item {
-                                                                id: changeActionMenuControl
+                                                            RowLayout {
+                                                                id: changeActions
                                                                 property string rowPath: ""
                                                                 property bool rowStaged: false
-                                                                property bool menuOpen: false
+                                                                spacing: Fluent.Enums.spacing.xxs
 
                                                                 Fluent.Button {
-                                                                    anchors.centerIn: parent
-                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeightCompact
-                                                                    preferredHeight: Fluent.Enums.controlSize.inputHeightCompact
-                                                                    icon: Fluent.Enums.icon.more_vertical
+                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                    text: changeActions.rowStaged ? "取消" : "暂存"
                                                                     style: Fluent.Enums.button.style_transparent
-                                                                    feature: Fluent.Enums.button.feature_dropdown
-                                                                    showDropdownIndicator: false
-                                                                    menu: changeActionMenu
-                                                                    toolTipText: "文件操作"
-                                                                    onMenuAboutToOpen: changeActionMenuControl.menuOpen = true
+                                                                    onClicked: {
+                                                                        if (changeActions.rowStaged)
+                                                                            GitBridge.unstageFile(changeActions.rowPath)
+                                                                        else
+                                                                            GitBridge.stageFile(changeActions.rowPath)
+                                                                    }
                                                                 }
-
-                                                                Fluent.MenuCore {
-                                                                    id: changeActionMenu
-                                                                    onDismissed: changeActionMenuControl.menuOpen = false
-
-                                                                    Fluent.Action {
-                                                                        text: changeActionMenuControl.rowStaged ? "取消暂存" : "暂存"
-                                                                        icon: changeActionMenuControl.rowStaged
-                                                                            ? Fluent.Enums.icon.arrow_undo
-                                                                            : Fluent.Enums.icon.save
-                                                                        onTriggered: {
-                                                                            if (changeActionMenuControl.rowStaged)
-                                                                                GitBridge.unstageFile(changeActionMenuControl.rowPath)
-                                                                            else
-                                                                                GitBridge.stageFile(changeActionMenuControl.rowPath)
-                                                                        }
+                                                                Fluent.Button {
+                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                    text: "丢弃"
+                                                                    style: Fluent.Enums.button.style_transparent
+                                                                    visible: !changeActions.rowStaged
+                                                                    onClicked: {
+                                                                        discardDanger.content = "将丢弃 "
+                                                                            + changeActions.rowPath
+                                                                            + " 的工作区改动。\n此操作不可恢复。"
+                                                                        discardDanger._path = changeActions.rowPath
+                                                                        discardDanger.start()
                                                                     }
-                                                                    Fluent.Action {
-                                                                        text: "丢弃"
-                                                                        icon: Fluent.Enums.icon.icon_delete
-                                                                        visible: !changeActionMenuControl.rowStaged
-                                                                        onTriggered: {
-                                                                            discardDanger.content = "将丢弃 "
-                                                                                + changeActionMenuControl.rowPath
-                                                                                + " 的工作区改动。\n此操作不可恢复。"
-                                                                            discardDanger._path = changeActionMenuControl.rowPath
-                                                                            discardDanger.start()
-                                                                        }
-                                                                    }
-                                                                    Fluent.Action {
-                                                                        text: "查看历史"
-                                                                        icon: Fluent.Enums.icon.history
-                                                                        onTriggered: fileHistoryDialog.openFor(
-                                                                            changeActionMenuControl.rowPath
-                                                                        )
-                                                                    }
+                                                                }
+                                                                Fluent.Button {
+                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                    text: "历史"
+                                                                    style: Fluent.Enums.button.style_transparent
+                                                                    onClicked: fileHistoryDialog.openFor(
+                                                                        changeActions.rowPath
+                                                                    )
                                                                 }
                                                             }
                                                         }
