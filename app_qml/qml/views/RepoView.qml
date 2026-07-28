@@ -459,7 +459,7 @@ Item {
             Layout.fillWidth: true
             Layout.fillHeight: true
             orientation: Qt.Horizontal
-            splitPosition: 0.42
+            splitPosition: 0.35
 
             firstContent: Item {
                 anchors.fill: parent
@@ -564,10 +564,12 @@ Item {
                                             TapHandler { onTapped: root.showDiff(model.path, model.staged) }
 
                                             RowLayout {
+                                                id: changeRowContent
                                                 anchors.fill: parent
                                                 anchors.leftMargin: Fluent.Enums.spacing.m
                                                 anchors.rightMargin: Fluent.Enums.spacing.s
                                                 spacing: Fluent.Enums.spacing.m
+                                                z: 0
 
                                                 Text {
                                                     text: model.statusText
@@ -584,70 +586,75 @@ Item {
                                                     font.pixelSize: Fluent.Enums.typography.body
                                                     elide: Text.ElideMiddle
                                                 }
-                                                // 固定槽位隔离悬停操作的宽度，避免按钮加载时再次挤压文件名。
-                                                Item {
-                                                    id: changeActionsSlot
-                                                    readonly property int actionCount: model.staged ? 2 : 3
-                                                    Layout.preferredWidth: actionCount
-                                                        * Fluent.Enums.controlSize.inputHeight
-                                                        + (actionCount - 1) * Fluent.Enums.spacing.xxs
-                                                    Layout.fillHeight: true
+                                            }
 
-                                                    Loader {
-                                                        id: changeActionsLoader
-                                                        anchors.fill: parent
-                                                        property string rowPath: model.path
-                                                        property bool rowStaged: model.staged
-                                                        active: hover.hovered
-                                                        onLoaded: {
-                                                            item.rowPath = rowPath
-                                                            item.rowStaged = rowStaged
-                                                        }
-                                                        onRowPathChanged: {
-                                                            if (item) item.rowPath = rowPath
-                                                        }
-                                                        onRowStagedChanged: {
-                                                            if (item) item.rowStaged = rowStaged
-                                                        }
-                                                        sourceComponent: Component {
-                                                            RowLayout {
-                                                                id: changeActions
-                                                                property string rowPath: ""
-                                                                property bool rowStaged: false
-                                                                spacing: Fluent.Enums.spacing.xxs
+                                            // 操作按钮覆盖在文本上层，不参与下层 RowLayout 的宽度分配。
+                                            Loader {
+                                                id: changeActionsLoader
+                                                readonly property int actionCount: model.staged ? 2 : 3
+                                                anchors.right: parent.right
+                                                anchors.rightMargin: Fluent.Enums.spacing.s
+                                                anchors.verticalCenter: parent.verticalCenter
+                                                width: actionCount * Fluent.Enums.controlSize.inputHeight
+                                                    + (actionCount - 1) * Fluent.Enums.spacing.xxs
+                                                height: Fluent.Enums.controlSize.inputHeight
+                                                z: 1
+                                                property string rowPath: model.path
+                                                property bool rowStaged: model.staged
+                                                active: hover.hovered
+                                                onLoaded: {
+                                                    item.rowPath = rowPath
+                                                    item.rowStaged = rowStaged
+                                                }
+                                                onRowPathChanged: {
+                                                    if (item) item.rowPath = rowPath
+                                                }
+                                                onRowStagedChanged: {
+                                                    if (item) item.rowStaged = rowStaged
+                                                }
+                                                sourceComponent: Component {
+                                                    Rectangle {
+                                                        id: changeActions
+                                                        property string rowPath: ""
+                                                        property bool rowStaged: false
+                                                        color: Fluent.Enums.stateColor.hover
+                                                        radius: Fluent.Enums.radius.small
 
-                                                                Fluent.Button {
-                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeight
-                                                                    text: changeActions.rowStaged ? "取消" : "暂存"
-                                                                    style: Fluent.Enums.button.style_transparent
-                                                                    onClicked: {
-                                                                        if (changeActions.rowStaged)
-                                                                            GitBridge.unstageFile(changeActions.rowPath)
-                                                                        else
-                                                                            GitBridge.stageFile(changeActions.rowPath)
-                                                                    }
+                                                        RowLayout {
+                                                            anchors.fill: parent
+                                                            spacing: Fluent.Enums.spacing.xxs
+
+                                                            Fluent.Button {
+                                                                preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                text: changeActions.rowStaged ? "取消" : "暂存"
+                                                                style: Fluent.Enums.button.style_transparent
+                                                                onClicked: {
+                                                                    if (changeActions.rowStaged)
+                                                                        GitBridge.unstageFile(changeActions.rowPath)
+                                                                    else
+                                                                        GitBridge.stageFile(changeActions.rowPath)
                                                                 }
-                                                                Fluent.Button {
-                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeight
-                                                                    text: "丢弃"
-                                                                    style: Fluent.Enums.button.style_transparent
-                                                                    visible: !changeActions.rowStaged
-                                                                    onClicked: {
-                                                                        discardDanger.content = "将丢弃 "
-                                                                            + changeActions.rowPath
-                                                                            + " 的工作区改动。\n此操作不可恢复。"
-                                                                        discardDanger._path = changeActions.rowPath
-                                                                        discardDanger.start()
-                                                                    }
+                                                            }
+                                                            Fluent.Button {
+                                                                preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                text: "丢弃"
+                                                                style: Fluent.Enums.button.style_transparent
+                                                                visible: !changeActions.rowStaged
+                                                                onClicked: {
+                                                                    discardDanger.content = "将丢弃 "
+                                                                        + changeActions.rowPath
+                                                                        + " 的工作区改动。\n此操作不可恢复。"
+                                                                    discardDanger._path = changeActions.rowPath
+                                                                    discardDanger.start()
                                                                 }
-                                                                Fluent.Button {
-                                                                    preferredWidth: Fluent.Enums.controlSize.inputHeight
-                                                                    text: "历史"
-                                                                    style: Fluent.Enums.button.style_transparent
-                                                                    onClicked: fileHistoryDialog.openFor(
-                                                                        changeActions.rowPath
-                                                                    )
-                                                                }
+                                                            }
+                                                            Fluent.Button {
+                                                                preferredWidth: Fluent.Enums.controlSize.inputHeight
+                                                                text: "历史"
+                                                                style: Fluent.Enums.button.style_transparent
+                                                                onClicked: fileHistoryDialog.openFor(
+                                                                    changeActions.rowPath
+                                                                )
                                                             }
                                                         }
                                                     }

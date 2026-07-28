@@ -38,18 +38,19 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("sourceComponent: Component {", source)
         self.assertNotIn("visible: hover.hovered", source)
 
-    def test_change_list_actions_keep_three_buttons_in_fixed_slot(self) -> None:
+    def test_change_list_actions_overlay_text_without_joining_row_layout(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 
-        self.assertIn("id: changeActionsSlot", source)
+        self.assertIn("id: changeRowContent", source)
+        self.assertIn("z: 0", source)
+        self.assertNotIn("id: changeActionsSlot", source)
         self.assertIn(
             "readonly property int actionCount: model.staged ? 2 : 3",
             source,
         )
-        self.assertIn(
-            "* Fluent.Enums.controlSize.inputHeight",
-            source,
-        )
+        self.assertIn("anchors.right: parent.right", source)
+        self.assertIn("anchors.verticalCenter: parent.verticalCenter", source)
+        self.assertIn("z: 1", source)
         self.assertIn("id: changeActions", source)
         self.assertIn("spacing: Fluent.Enums.spacing.xxs", source)
         self.assertEqual(
@@ -61,11 +62,11 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn('text: "历史"', source)
         self.assertNotIn("Fluent.MenuCore {", source)
 
-    def test_repository_split_restores_readable_change_list_width(self) -> None:
+    def test_repository_split_keeps_diff_oriented_ratio(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 
-        self.assertIn("splitPosition: 0.42", source)
-        self.assertNotIn("splitPosition: 0.35", source)
+        self.assertIn("splitPosition: 0.35", source)
+        self.assertNotIn("splitPosition: 0.42", source)
 
     def test_change_summary_actions_live_inside_card_above_separator(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
