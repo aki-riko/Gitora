@@ -549,7 +549,8 @@ Item {
                             Layout.fillWidth: true
                             spacing: Fluent.Enums.spacing.s
                             Fluent.Button {
-                                text: "Checkout"
+                                text: "检出提交"
+                                toolTipText: "Checkout"
                                 icon: Fluent.Enums.icon.checkmark_circle
                                 onClicked: root._op(GitBridge.checkoutCommit(root.selectedCommit.hash))
                             }
@@ -560,12 +561,14 @@ Item {
                                     root.selectedCommit.hash, false)
                             }
                             Fluent.Button {
-                                text: "Cherry-pick"
+                                text: "拣选提交"
+                                toolTipText: "Cherry-pick"
                                 icon: Fluent.Enums.icon.branch
                                 onClicked: root._openCherryPickDialog()
                             }
                             Fluent.Button {
-                                text: "Revert"
+                                text: "撤销提交"
+                                toolTipText: "Revert"
                                 icon: Fluent.Enums.icon.arrow_undo
                                 onClicked: root._op(GitBridge.revertCommit(root.selectedCommit.hash))
                             }
@@ -591,7 +594,8 @@ Item {
                             }
                             Item { Layout.fillWidth: true }
                             Fluent.Button {
-                                text: "Reset"
+                                text: "重置"
+                                toolTipText: "Reset"
                                 icon: Fluent.Enums.icon.arrow_clockwise
                                 style: Fluent.Enums.button.style_primary
                                 // 下拉选 reset 模式;选任一模式都走危险确认(hard 额外警告)

@@ -100,6 +100,24 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
             history_source,
         )
 
+    def test_history_commit_actions_use_chinese_labels_and_english_tooltips(self) -> None:
+        source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
+            encoding="utf-8"
+        )
+        action_area = source.split("// ── 操作区 ──", 1)[1].split(
+            "// 危险操作:reset 二次确认", 1
+        )[0]
+
+        for chinese_label, english_tooltip in (
+            ("检出提交", "Checkout"),
+            ("拣选提交", "Cherry-pick"),
+            ("撤销提交", "Revert"),
+            ("重置", "Reset"),
+        ):
+            self.assertIn(f'text: "{chinese_label}"', action_area)
+            self.assertIn(f'toolTipText: "{english_tooltip}"', action_area)
+            self.assertNotIn(f'text: "{english_tooltip}"', action_area)
+
     def test_history_commit_files_ignore_stale_async_results(self) -> None:
         source = (QML_ROOT / "components" / "CommitFilesPanel.qml").read_text(
             encoding="utf-8"
