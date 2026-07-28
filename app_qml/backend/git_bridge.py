@@ -445,6 +445,17 @@ class GitBridge(QObject):
             label="获取当前分支",
         )
 
+    @Slot()
+    def requestCurrentBranch(self):
+        """异步读取当前分支，经强类型 ``branchReady`` 信号返回给 QML。"""
+        repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: self._svc.get_current_branch_at(repo),
+            label="获取当前分支",
+            on_success=lambda branch: self.branchReady.emit(repo, str(branch)),
+            on_failure=lambda _exc: self.branchReady.emit(repo, ""),
+        )
+
     # ==================== 仓库维护 ====================
     @Slot()
     def requestCleanPreview(self):

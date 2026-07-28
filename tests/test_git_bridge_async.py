@@ -182,6 +182,30 @@ class GitBridgeAsyncTest(unittest.TestCase):
         bridge.deleteLater()
         app.processEvents()
 
+    def test_current_branch_query_emits_typed_branch_signal(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        bridge._svc.get_current_branch_at = (  # type: ignore[method-assign]
+            lambda repo: f"{repo}-branch"
+        )
+        emitted: list[tuple[str, str]] = []
+        bridge.branchReady.connect(
+            lambda repo, branch: emitted.append((repo, branch))
+        )
+
+        try:
+            bridge.requestCurrentBranch()
+            self.assertTrue(
+                self._wait_until(
+                    app, lambda: emitted == [("repo", "repo-branch")]
+                )
+            )
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_log_request_uses_graph_payload(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

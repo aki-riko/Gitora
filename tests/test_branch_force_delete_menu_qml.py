@@ -176,6 +176,7 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
     class ProbeBridge(QObject):
         statusChanged = Signal()
         repoPathChanged = Signal(str)
+        branchReady = Signal(str, str)
         branchesReady = Signal(str, "QVariantList")
 
         def __init__(self, async_queries):
@@ -219,6 +220,12 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
             if self._async_queries:
                 return self._task("main")
             return "main"
+
+        @Slot()
+        def requestCurrentBranch(self):
+            QTimer.singleShot(
+                0, lambda: self.branchReady.emit(self._repo_path, "main")
+            )
 
         @Slot(result=QObject)
         def getRemoteInfo(self):

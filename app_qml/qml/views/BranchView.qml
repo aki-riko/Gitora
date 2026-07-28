@@ -32,11 +32,7 @@ Item {
             return
         }
         root._branchesRequestRepoPath = GitBridge.repoPath
-        var branchTask = GitBridge.getCurrentBranch()
-        branchTask.succeeded.connect(function(branch) {
-            if (GitBridge && root._branchesRequestRepoPath === GitBridge.repoPath)
-                root.currentBranch = branch || ""
-        })
+        GitBridge.requestCurrentBranch()
         var remoteTask = GitBridge.getRemoteInfo()
         remoteTask.succeeded.connect(function(remotes) {
             if (GitBridge && root._branchesRequestRepoPath === GitBridge.repoPath)
@@ -72,6 +68,11 @@ Item {
         function onRepoPathChanged(path) {
             root.clearModels()
             root.reload()
+        }
+        function onBranchReady(repoPath, branch) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || repoPath !== root._branchesRequestRepoPath) return
+            root.currentBranch = branch
         }
         function onBranchesReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._branchesRequestRepoPath) return

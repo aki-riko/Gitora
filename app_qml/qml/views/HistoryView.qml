@@ -207,6 +207,14 @@ Item {
             root._clearCherryPickDialogState()
             root.resetForRepoChange()
         }
+        function onBranchReady(repoPath, branch) {
+            if (!GitBridge || root.cherryPickRequestRepoPath !== repoPath
+                    || repoPath !== GitBridge.repoPath) return
+            root.cherryPickCurrentBranch = branch
+            var targetIndex = root.cherryPickBranches.indexOf(branch)
+            if (targetIndex >= 0)
+                root.cherryPickTargetBranch = root.cherryPickBranches[targetIndex]
+        }
         function onBranchesReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath
                     || repoPath !== root.cherryPickRequestRepoPath) return
@@ -235,15 +243,7 @@ Item {
         root.cherryPickBranches = []
         root.cherryPickTargetBranch = ""
         cherryPickDialog.open()
-        var branchTask = GitBridge.getCurrentBranch()
-        branchTask.succeeded.connect(function(branch) {
-            if (!GitBridge || root.cherryPickRequestRepoPath !== GitBridge.repoPath)
-                return
-            root.cherryPickCurrentBranch = branch || ""
-            var targetIndex = root.cherryPickBranches.indexOf(root.cherryPickCurrentBranch)
-            if (targetIndex >= 0)
-                root.cherryPickTargetBranch = root.cherryPickBranches[targetIndex]
-        })
+        GitBridge.requestCurrentBranch()
         GitBridge.requestBranches()
     }
 

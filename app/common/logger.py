@@ -11,6 +11,13 @@ from datetime import datetime
 from logging.handlers import RotatingFileHandler
 
 
+class _ExcludePrismConsoleDuplicates(logging.Filter):
+    """PrismQML 已有自己的控制台处理器，避免再经根日志器输出一次。"""
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        return record.name != "PrismQML"
+
+
 class Logger:
     """日志管理器"""
     
@@ -55,6 +62,7 @@ class Logger:
         # 2. 控制台处理器（WARNING及以上）
         console_handler = logging.StreamHandler(sys.stdout)
         console_handler.setLevel(logging.WARNING)
+        console_handler.addFilter(_ExcludePrismConsoleDuplicates())
         console_formatter = logging.Formatter(
             '[%(levelname)s] %(name)s: %(message)s'
         )
