@@ -91,6 +91,34 @@ class GitHistorySearchTest(unittest.TestCase):
             service.search_commits("modern_plus_needle", "message", 20), []
         )
 
+    def test_all_search_includes_merge_file_and_resolution_changes(self) -> None:
+        repo = init_repo(self.root / "merge-content")
+        write_file(repo, "conflict.txt", "base\n")
+        commit_all(repo, "base")
+
+        run_git(repo, "checkout", "-b", "side")
+        write_file(repo, "conflict.txt", "side\n")
+        write_file(repo, "merged/CleanTarget.qml", "side_content_needle\n")
+        commit_all(repo, "side")
+
+        run_git(repo, "checkout", "master")
+        write_file(repo, "conflict.txt", "main\n")
+        commit_all(repo, "main")
+        merge_result = run_git(repo, "merge", "side", "--no-edit", check=False)
+        self.assertNotEqual(merge_result.returncode, 0)
+        write_file(repo, "conflict.txt", "merge_resolution_needle\n")
+        merge_commit = commit_all(repo, "neutral merge")
+
+        service = GitService()
+        self.assertTrue(service.set_repo_path(str(repo), emit_status=False))
+        for query in (
+            "cleantarget.qml",
+            "side_content_needle",
+            "merge_resolution_needle",
+        ):
+            results = service.search_commits(query, "all", 1)
+            self.assertEqual([item.hash for item in results], [merge_commit])
+
     def test_hex_branch_name_is_not_treated_as_commit_hash(self) -> None:
         service, _, _, newest = self.make_search_repo()
         run_git(self.root / "repo", "branch", "dead", newest)

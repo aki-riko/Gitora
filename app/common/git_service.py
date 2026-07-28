@@ -1082,8 +1082,8 @@ class GitService(QObject):
         count: int,
         include_all_refs: bool = False,
     ) -> list[str]:
-        """搜索文件路径以及补丁中新增、删除行命中的提交。"""
-        cmd_prefix = ['log']
+        """逐父搜索文件路径以及补丁中新增、删除行命中的提交。"""
+        cmd_prefix = ['log', '-m']
         if include_all_refs:
             cmd_prefix.append('--all')
         cmd_prefix.extend([f'-{count}', '--format=%H'])
