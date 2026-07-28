@@ -29,12 +29,9 @@ Fluent.MessageBox {
         width: 360
         spacing: Fluent.Enums.spacing.m
 
-        Fluent.Label {
+        DialogTitle {
             objectName: "createBranchDialogTitle"
-            Layout.fillWidth: true
             text: "新建分支"
-            type: Fluent.Enums.label.type_subtitle
-            color: Fluent.Enums.textColor.primary
         }
 
         Fluent.Label {

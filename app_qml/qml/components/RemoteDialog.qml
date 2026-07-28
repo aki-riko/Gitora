@@ -185,7 +185,7 @@ Fluent.DialogBoxCore {
     // 修改远程 URL
     Fluent.MessageBox {
         id: editRemoteBox
-        title: "修改远程 URL"
+        title: ""
         confirmText: "保存"
         cancelText: "取消"
         onAccepted: {
@@ -199,6 +199,10 @@ Fluent.DialogBoxCore {
         ColumnLayout {
             width: 400
             spacing: Fluent.Enums.spacing.s
+            DialogTitle {
+                objectName: "editRemoteDialogTitle"
+                text: "修改远程 URL"
+            }
             Fluent.LineEdit {
                 id: editNameInput
                 Layout.fillWidth: true
@@ -215,7 +219,7 @@ Fluent.DialogBoxCore {
     // 重命名远程
     Fluent.MessageBox {
         id: renameRemoteBox
-        title: "重命名远程"
+        title: ""
         confirmText: "保存"
         cancelText: "取消"
         function validate() { return renameRemoteInput.text.trim().length > 0 }
@@ -229,10 +233,18 @@ Fluent.DialogBoxCore {
             dlg._renameTarget = ""
             renameRemoteInput.text = ""
         }
-        Fluent.LineEdit {
-            id: renameRemoteInput
+        ColumnLayout {
             width: 320
-            placeholderText: "新的远程名称"
+            spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "renameRemoteDialogTitle"
+                text: "重命名远程"
+            }
+            Fluent.LineEdit {
+                id: renameRemoteInput
+                Layout.fillWidth: true
+                placeholderText: "新的远程名称"
+            }
         }
     }
 }

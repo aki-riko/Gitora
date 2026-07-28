@@ -6,7 +6,7 @@ import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg
-    title: "清理未跟踪文件"
+    title: ""
     confirmText: "清理"
     cancelText: "取消"
 
@@ -46,6 +46,11 @@ Fluent.MessageBox {
     ColumnLayout {
         width: 400
         spacing: Fluent.Enums.spacing.m
+
+        DialogTitle {
+            objectName: "cleanDialogTitle"
+            text: "清理未跟踪文件"
+        }
 
         Text {
             Layout.fillWidth: true

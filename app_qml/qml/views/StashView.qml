@@ -191,12 +191,16 @@ Item {
 
     Fluent.MessageBox {
         id: stashBranchDialog
-        title: "从 Stash 建分支"
+        title: ""
         confirmText: "创建"
         cancelText: "取消"
         ColumnLayout {
             width: 420
             spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "stashBranchDialogTitle"
+                text: "从 Stash 建分支"
+            }
             Text {
                 Layout.fillWidth: true
                 text: root._pendingBranchStash
@@ -227,12 +231,16 @@ Item {
 
     Fluent.MessageBox {
         id: stashShowDialog
-        title: "Stash 内容 " + root._showTitle
+        title: ""
         confirmText: "关闭"
         cancelText: "关闭"
         ColumnLayout {
             width: 720
             spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "stashShowDialogTitle"
+                text: "Stash 内容 " + root._showTitle
+            }
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 420

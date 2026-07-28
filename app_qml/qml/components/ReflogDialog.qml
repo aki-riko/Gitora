@@ -7,7 +7,7 @@ import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg
-    title: "引用日志 (Reflog)"
+    title: ""
     confirmText: "关闭"
     cancelButtonVisible: false
 
@@ -40,6 +40,12 @@ Fluent.MessageBox {
 
     ColumnLayout {
         width: 520
+        spacing: Fluent.Enums.spacing.m
+
+        DialogTitle {
+            objectName: "reflogDialogTitle"
+            text: "引用日志 (Reflog)"
+        }
 
         Fluent.ScrollArea {
             id: reflogList

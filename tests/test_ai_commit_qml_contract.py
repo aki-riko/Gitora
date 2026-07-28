@@ -366,7 +366,10 @@ class AiCommitQmlContractTest(unittest.TestCase):
             self.assertEqual(
                 len(text_elements), qml_source.count("textFormat: Text.PlainText")
             )
-        self.assertIn('title: "计划差异预览"', source)
+        patch_preview_source = source.split("id: patchPreview", 1)[1]
+        self.assertIn('title: ""', patch_preview_source)
+        self.assertIn('objectName: "patchPreviewDialogTitle"', patch_preview_source)
+        self.assertIn('text: "计划差异预览"', patch_preview_source)
         self.assertNotIn('title: "计划差异：" + dlg._previewTitle', source)
         self.assertIn("text: dlg._previewTitle", source)
         self.assertIn("enabled: !AiCommitPlanBridge || !AiCommitPlanBridge.busy", source)

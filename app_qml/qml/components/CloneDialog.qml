@@ -8,7 +8,7 @@ import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg
-    title: "克隆仓库"
+    title: ""
     confirmText: "克隆"
     cancelText: "取消"
 
@@ -23,6 +23,11 @@ Fluent.MessageBox {
     ColumnLayout {
         width: 380
         spacing: Fluent.Enums.spacing.m
+
+        DialogTitle {
+            objectName: "cloneDialogTitle"
+            text: "克隆仓库"
+        }
 
         Fluent.LineEdit {
             id: urlInput

@@ -8,14 +8,15 @@ import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg
-    title: "冲突内容"
+    property string _displayTitle: "冲突内容"
+    title: ""
     confirmText: "关闭"
     cancelButtonVisible: false
 
     ListModel { id: lineModel }
 
     function openFor(path) {
-        dlg.title = "冲突内容 - " + path
+        dlg._displayTitle = "冲突内容 - " + path
         lineModel.clear()
         var content = GitBridge.readConflictFile(path) || ""
         if (content !== "") {
@@ -35,6 +36,13 @@ Fluent.MessageBox {
 
     ColumnLayout {
         width: 600
+        spacing: Fluent.Enums.spacing.m
+
+        DialogTitle {
+            objectName: "conflictViewerDialogTitle"
+            text: dlg._displayTitle
+        }
+
         Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 420

@@ -7,7 +7,8 @@ import PrismQML as Fluent
 
 Fluent.MessageBox {
     id: dlg
-    title: "文件历史"
+    property string _displayTitle: "文件历史"
+    title: ""
     confirmText: "关闭"
     cancelButtonVisible: false
 
@@ -30,7 +31,7 @@ Fluent.MessageBox {
     function openFor(path) {
         dlg.filePath = path
         dlg._requestRepoPath = (GitBridge && GitBridge.repoPath) ? GitBridge.repoPath : ""
-        dlg.title = "文件历史 - " + path
+        dlg._displayTitle = "文件历史 - " + path
         dlg.selected = []
         dlg._showingDiff = false
         histModel.clear()
@@ -94,99 +95,110 @@ Fluent.MessageBox {
         }
     }
 
-    RowLayout {
+    ColumnLayout {
         width: 720
-        height: 440
         spacing: Fluent.Enums.spacing.m
 
-        // 左:提交历史列表
-        Rectangle {
-            Layout.preferredWidth: 280
-            Layout.fillHeight: true
-            radius: Fluent.Enums.radius.medium
-            color: Fluent.Enums.cardColor
-            border.width: Fluent.Enums.border.normal
-            border.color: Fluent.Enums.stateColor.border
+        DialogTitle {
+            objectName: "fileHistoryDialogTitle"
+            text: dlg._displayTitle
+        }
 
-            Fluent.ScrollArea {
-                id: histList
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.xs
-                type: Fluent.Enums.scroll.type_list
-                itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.xl
-                listSpacing: Fluent.Enums.spacing.xxs
-                reuseItems: true
-                bounceEnabled: false
-                padding: 0
-                model: histModel
-                delegate: Rectangle {
-                    width: ListView.view ? ListView.view.width : 0
-                    height: histList.itemHeight
-                    radius: Fluent.Enums.radius.micro
-                    readonly property bool isSel: dlg.selected.indexOf(model.hash) >= 0
-                    color: isSel ? Fluent.Enums.stateColor.hover : (hov.hovered ? Fluent.Enums.stateColor.hover : "transparent")
-                    border.width: isSel ? Fluent.Enums.border.normal : 0
-                    border.color: Fluent.Enums.accentColor
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 440
+            spacing: Fluent.Enums.spacing.m
 
-                    HoverHandler { id: hov }
-                    TapHandler { onTapped: dlg._toggleSelect(model.hash) }
+            // 左:提交历史列表
+            Rectangle {
+                Layout.preferredWidth: 280
+                Layout.fillHeight: true
+                radius: Fluent.Enums.radius.medium
+                color: Fluent.Enums.cardColor
+                border.width: Fluent.Enums.border.normal
+                border.color: Fluent.Enums.stateColor.border
 
-                    ColumnLayout {
-                        anchors.fill: parent
-                        anchors.margins: Fluent.Enums.spacing.s
-                        spacing: 0
-                        Text {
-                            Layout.fillWidth: true
-                            text: model.message
-                            color: Fluent.Enums.textColor.primary
-                            font.family: Fluent.Enums.fontFamily
-                            font.pixelSize: Fluent.Enums.typography.caption
-                            elide: Text.ElideRight
-                        }
-                        Text {
-                            text: model.shortHash + " · " + model.date
-                            color: Fluent.Enums.textColor.tertiary
-                            font.family: Fluent.Enums.fontFamily
-                            font.pixelSize: Fluent.Enums.typography.caption
+                Fluent.ScrollArea {
+                    id: histList
+                    anchors.fill: parent
+                    anchors.margins: Fluent.Enums.spacing.xs
+                    type: Fluent.Enums.scroll.type_list
+                    itemHeight: Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.xl
+                    listSpacing: Fluent.Enums.spacing.xxs
+                    reuseItems: true
+                    bounceEnabled: false
+                    padding: 0
+                    model: histModel
+                    delegate: Rectangle {
+                        width: ListView.view ? ListView.view.width : 0
+                        height: histList.itemHeight
+                        radius: Fluent.Enums.radius.micro
+                        readonly property bool isSel: dlg.selected.indexOf(model.hash) >= 0
+                        color: isSel ? Fluent.Enums.stateColor.hover : (hov.hovered ? Fluent.Enums.stateColor.hover : "transparent")
+                        border.width: isSel ? Fluent.Enums.border.normal : 0
+                        border.color: Fluent.Enums.accentColor
+
+                        HoverHandler { id: hov }
+                        TapHandler { onTapped: dlg._toggleSelect(model.hash) }
+
+                        ColumnLayout {
+                            anchors.fill: parent
+                            anchors.margins: Fluent.Enums.spacing.s
+                            spacing: 0
+                            Text {
+                                Layout.fillWidth: true
+                                text: model.message
+                                color: Fluent.Enums.textColor.primary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                elide: Text.ElideRight
+                            }
+                            Text {
+                                text: model.shortHash + " · " + model.date
+                                color: Fluent.Enums.textColor.tertiary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                            }
                         }
                     }
                 }
             }
         }
 
-        // 右:内容/diff
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            radius: Fluent.Enums.radius.medium
-            color: Fluent.Enums.cardColor
-            border.width: Fluent.Enums.border.normal
-            border.color: Fluent.Enums.stateColor.border
+            // 右:内容/diff
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Fluent.Enums.radius.medium
+                color: Fluent.Enums.cardColor
+                border.width: Fluent.Enums.border.normal
+                border.color: Fluent.Enums.stateColor.border
 
-            Fluent.ScrollArea {
-                id: rightScrollArea
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.s
-                visible: !dlg._showingDiff
-                orientation: Qt.Horizontal | Qt.Vertical
-                padding: 0
-                TextEdit {
-                    id: rightArea
-                    width: Math.max(parent ? parent.width : 0, paintedWidth)
-                    height: Math.max(1, paintedHeight)
-                    readOnly: true
-                    selectByMouse: true
-                    wrapMode: TextEdit.NoWrap
-                    font.family: "Consolas, monospace"
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    color: Fluent.Enums.textColor.primary
+                Fluent.ScrollArea {
+                    id: rightScrollArea
+                    anchors.fill: parent
+                    anchors.margins: Fluent.Enums.spacing.s
+                    visible: !dlg._showingDiff
+                    orientation: Qt.Horizontal | Qt.Vertical
+                    padding: 0
+                    TextEdit {
+                        id: rightArea
+                        width: Math.max(parent ? parent.width : 0, paintedWidth)
+                        height: Math.max(1, paintedHeight)
+                        readOnly: true
+                        selectByMouse: true
+                        wrapMode: TextEdit.NoWrap
+                        font.family: "Consolas, monospace"
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        color: Fluent.Enums.textColor.primary
+                    }
                 }
-            }
-            DiffViewer {
-                id: historyDiffViewer
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.s
-                visible: dlg._showingDiff
+                DiffViewer {
+                    id: historyDiffViewer
+                    anchors.fill: parent
+                    anchors.margins: Fluent.Enums.spacing.s
+                    visible: dlg._showingDiff
+                }
             }
         }
     }

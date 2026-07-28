@@ -650,12 +650,9 @@ Item {
             width: 420
             spacing: Fluent.Enums.spacing.m
 
-            Fluent.Label {
+            DialogTitle {
                 objectName: "cherryPickDialogTitle"
-                Layout.fillWidth: true
                 text: "Cherry-pick 提交"
-                type: Fluent.Enums.label.type_subtitle
-                color: Fluent.Enums.textColor.primary
             }
 
             Text {

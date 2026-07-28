@@ -731,7 +731,7 @@ Item {
     // 最近仓库管理
     Fluent.MessageBox {
         id: recentReposDialog
-        title: "最近仓库"
+        title: ""
         confirmText: "关闭"
         cancelButtonVisible: false
         ListModel { id: recentRepoModel }
@@ -751,6 +751,10 @@ Item {
         ColumnLayout {
             width: 620
             spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "recentReposDialogTitle"
+                text: "最近仓库"
+            }
             RowLayout {
                 Layout.fillWidth: true
                 Text {
@@ -836,13 +840,14 @@ Item {
     Fluent.MessageBox {
         id: syncDialog
         property string _mode: "pull"
-        title: {
+        readonly property string _displayTitle: {
             if (_mode === "pull") return "指定拉取"
             if (_mode === "pullRebase") return "指定变基拉取"
             if (_mode === "fetch") return "指定抓取远程"
             if (_mode === "push") return "指定推送"
             return "指定强制推送"
         }
+        title: ""
         confirmText: _mode === "pushForce" ? "继续" : "执行"
         cancelText: "取消"
 
@@ -881,6 +886,10 @@ Item {
         ColumnLayout {
             width: 360
             spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "syncDialogTitle"
+                text: syncDialog._displayTitle
+            }
             Fluent.LineEdit {
                 id: syncRemoteInput
                 Layout.fillWidth: true

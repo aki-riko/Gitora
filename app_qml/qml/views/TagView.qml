@@ -230,7 +230,7 @@ Item {
     // 创建标签对话框
     Fluent.MessageBox {
         id: createTagDialog
-        title: "创建标签"
+        title: ""
         confirmText: "创建"
         cancelText: "取消"
         function validate() {
@@ -240,6 +240,10 @@ Item {
         ColumnLayout {
             width: 320
             spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "createTagDialogTitle"
+                text: "创建标签"
+            }
             Fluent.LineEdit { id: tagNameInput; Layout.fillWidth: true; placeholderText: "标签名称(如 v1.0.0)" }
             Fluent.CheckBox {
                 id: tagAnnotatedCheck

@@ -433,11 +433,16 @@ Fluent.DialogBoxCore {
 
     Fluent.MessageBox {
         id: patchPreview
-        title: "计划差异预览"
+        title: ""
         confirmText: "关闭"
         cancelText: ""
         ColumnLayout {
             width: 760
+            spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "patchPreviewDialogTitle"
+                text: "计划差异预览"
+            }
             Text {
                 Layout.fillWidth: true
                 visible: text.length > 0

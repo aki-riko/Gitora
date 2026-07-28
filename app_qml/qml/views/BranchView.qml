@@ -283,15 +283,23 @@ Item {
     // 重命名本地分支
     Fluent.MessageBox {
         id: renameBranchDialog
-        title: "重命名分支"
+        title: ""
         confirmText: "保存"
         cancelText: "取消"
         property string _oldBranch: ""
         function validate() { return renameBranchInput.text.trim().length > 0 }
-        Fluent.LineEdit {
-            id: renameBranchInput
+        ColumnLayout {
             width: 320
-            placeholderText: "新的分支名称"
+            spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "renameBranchDialogTitle"
+                text: "重命名分支"
+            }
+            Fluent.LineEdit {
+                id: renameBranchInput
+                Layout.fillWidth: true
+                placeholderText: "新的分支名称"
+            }
         }
         onAccepted: {
             root._op(GitBridge.renameBranch(_oldBranch, renameBranchInput.text))
@@ -303,7 +311,7 @@ Item {
     // 设置本地分支上游
     Fluent.MessageBox {
         id: upstreamDialog
-        title: "设置上游分支"
+        title: ""
         confirmText: "保存"
         cancelText: "取消"
         property string _branch: ""
@@ -314,6 +322,10 @@ Item {
         ColumnLayout {
             width: 360
             spacing: Fluent.Enums.spacing.m
+            DialogTitle {
+                objectName: "upstreamDialogTitle"
+                text: "设置上游分支"
+            }
             Text {
                 Layout.fillWidth: true
                 text: "本地分支: " + upstreamDialog._branch
@@ -353,12 +365,9 @@ Item {
         ColumnLayout {
             width: 360
             spacing: Fluent.Enums.spacing.m
-            Fluent.Label {
+            DialogTitle {
                 objectName: "remoteCheckoutDialogTitle"
-                Layout.fillWidth: true
                 text: "获取并检出远程分支"
-                type: Fluent.Enums.label.type_subtitle
-                color: Fluent.Enums.textColor.primary
             }
             Text {
                 objectName: "remoteCheckoutTargetLabel"
