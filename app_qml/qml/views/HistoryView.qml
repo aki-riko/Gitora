@@ -296,7 +296,7 @@ Item {
                     Fluent.LineEdit {
                         id: searchInput
                         width: root.width < 1200 ? 160 : 240
-                        placeholderText: "搜索提交(消息/作者/哈希)"
+                        placeholderText: "搜索提交(消息/作者/哈希/文件/增删内容)"
                         onTextChanged: searchDebounce.restart()
                     }
                     Fluent.Button {

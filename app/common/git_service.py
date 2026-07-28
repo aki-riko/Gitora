@@ -3,6 +3,7 @@
 Git服务层 - 封装所有Git命令操作
 提供异步执行和错误处理
 """
+import glob
 import os
 import re
 import subprocess
@@ -1074,6 +1075,35 @@ class GitService(QObject):
 
         return list(dict.fromkeys(hashes))
 
+    def _search_changed_commit_hashes(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool = False,
+    ) -> list[str]:
+        """搜索文件路径以及补丁中新增、删除行命中的提交。"""
+        cmd_prefix = ['log']
+        if include_all_refs:
+            cmd_prefix.append('--all')
+        cmd_prefix.extend([f'-{count}', '--format=%H'])
+
+        path_query = glob.escape(query.replace('\\', '/'))
+        commands = [
+            [*cmd_prefix, '--', f':(icase,glob)**/*{path_query}*'],
+            [
+                *cmd_prefix,
+                f'-G{re.escape(query)}',
+                '--regexp-ignore-case',
+            ],
+        ]
+        hashes = []
+        for cmd in commands:
+            success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
+            if success:
+                hashes.extend(line for line in stdout.splitlines() if line)
+        return list(dict.fromkeys(hashes))
+
     def _build_commit_search_command(
         self,
         repo_path: str,
@@ -1104,9 +1134,14 @@ class GitService(QObject):
         hashes = (
             [resolved_hash]
             if resolved_hash
-            else self._search_text_commit_hashes(
-                repo_path, query, count, include_all_refs
-            )
+            else [
+                *self._search_text_commit_hashes(
+                    repo_path, query, count, include_all_refs
+                ),
+                *self._search_changed_commit_hashes(
+                    repo_path, query, count, include_all_refs
+                ),
+            ]
         )
         if not hashes:
             return []
@@ -1124,7 +1159,8 @@ class GitService(QObject):
         
         Args:
             query: 搜索关键词
-            search_type: 搜索类型（"all"=消息/作者/哈希, "message"=提交信息, "author"=作者）
+            search_type: 搜索类型（"all"=消息/作者/哈希/文件/增删内容,
+                "message"=提交信息, "author"=作者）
             count: 最大返回数量
         """
         repo_path = self._repo_path or ""

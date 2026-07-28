@@ -65,6 +65,32 @@ class GitHistorySearchTest(unittest.TestCase):
         results = service.search_commits("Search Needle", "all", 1)
         self.assertEqual([item.hash for item in results], [target])
 
+    def test_all_search_includes_paths_and_both_sides_of_diff(self) -> None:
+        repo = init_repo(self.root / "changed-content")
+        write_file(repo, "history.txt", "legacy_minus_needle\n")
+        write_file(repo, "src/LegacyTarget.qml", "Item {}\n")
+        commit_all(repo, "baseline")
+        write_file(repo, "history.txt", "modern_plus_needle [literal]\n")
+        (repo / "src" / "LegacyTarget.qml").unlink()
+        write_file(repo, "src/SearchTarget.qml", "Item {}\n")
+        changed = commit_all(repo, "neutral change")
+        service = GitService()
+        self.assertTrue(service.set_repo_path(str(repo), emit_status=False))
+
+        for query in (
+            "searchtarget.qml",
+            "legacytarget.qml",
+            "modern_plus_needle",
+            "legacy_minus_needle",
+            "[literal]",
+        ):
+            results = service.search_commits(query, "all", 1)
+            self.assertEqual([item.hash for item in results], [changed])
+
+        self.assertEqual(
+            service.search_commits("modern_plus_needle", "message", 20), []
+        )
+
     def test_hex_branch_name_is_not_treated_as_commit_hash(self) -> None:
         service, _, _, newest = self.make_search_repo()
         run_git(self.root / "repo", "branch", "dead", newest)
@@ -91,6 +117,18 @@ class GitHistorySearchTest(unittest.TestCase):
         self.assertEqual(
             [item.hash for item in all_refs_text_results], [side_commit]
         )
+
+        self.assertEqual(service.search_commits("side.txt", "all", 20), [])
+        all_refs_path_results = service.search_commits(
+            "side.txt", "all", 20, include_all_refs=True
+        )
+        self.assertEqual(
+            [item.hash for item in all_refs_path_results], [side_commit]
+        )
+        all_refs_diff_results = service.search_commits(
+            "side", "all", 20, include_all_refs=True
+        )
+        self.assertIn(side_commit, [item.hash for item in all_refs_diff_results])
 
     def test_text_search_treats_query_as_literal_text(self) -> None:
         repo = init_repo(self.root / "literal")
