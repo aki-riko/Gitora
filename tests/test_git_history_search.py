@@ -119,6 +119,29 @@ class GitHistorySearchTest(unittest.TestCase):
             results = service.search_commits(query, "all", 1)
             self.assertEqual([item.hash for item in results], [merge_commit])
 
+    def test_progressive_search_publishes_diff_matches_before_completion(self) -> None:
+        repo = init_repo(self.root / "progressive-content")
+        write_file(repo, "history.txt", "base\n")
+        commit_all(repo, "base")
+        write_file(repo, "history.txt", "streamed_content_needle\n")
+        target = commit_all(repo, "neutral change")
+        service = GitService()
+        self.assertTrue(service.set_repo_path(str(repo), emit_status=False))
+        previews: list[list[str]] = []
+
+        results = service.search_commits_progressively_at(
+            str(repo),
+            "streamed_content_needle",
+            "all",
+            20,
+            False,
+            lambda commits: previews.append([item.hash for item in commits]),
+        )
+
+        self.assertEqual(previews[0], [])
+        self.assertIn([target], previews[1:])
+        self.assertEqual([item.hash for item in results], [target])
+
     def test_hex_branch_name_is_not_treated_as_commit_hash(self) -> None:
         service, _, _, newest = self.make_search_repo()
         run_git(self.root / "repo", "branch", "dead", newest)

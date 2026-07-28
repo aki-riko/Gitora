@@ -226,6 +226,7 @@ class GitBridgeAsyncTest(unittest.TestCase):
         try:
             self.assertIn("requestLog(int,int,bool)", signatures)
             self.assertIn("requestSearch(QString,QString,bool)", signatures)
+            self.assertIn("cancelSearch()", signatures)
         finally:
             bridge.deleteLater()
             app.processEvents()
@@ -313,6 +314,7 @@ class GitBridgeAsyncTest(unittest.TestCase):
             search_type: str,
             count: int,
             _include_all_refs: bool,
+            _progress_callback,
         ):
             index = len(calls)
             calls.append(query)
@@ -320,7 +322,7 @@ class GitBridgeAsyncTest(unittest.TestCase):
             release[index].wait(5)
             return [CommitInfo(f"hash-{index}", f"h-{index}", "author", "", "", query)]
 
-        bridge._svc.search_commits_at = fake_search  # type: ignore[method-assign]
+        bridge._svc.search_commits_progressively_at = fake_search  # type: ignore[method-assign]
         bridge.searchReady.connect(lambda _repo, items: emitted.append(items[0]["message"]))
         return started, release, calls, emitted
 
@@ -347,6 +349,45 @@ class GitBridgeAsyncTest(unittest.TestCase):
         app.processEvents()
         self.assertEqual(calls, ["a", "b", "a"])
         self.assertEqual(emitted, ["a"])
+
+    def test_search_preview_arrives_before_complete_result(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        release = threading.Event()
+        previews: list[str] = []
+        completed: list[str] = []
+
+        def fake_search(
+            _repo_path: str,
+            _query: str,
+            _search_type: str,
+            _count: int,
+            _include_all_refs: bool,
+            progress_callback,
+        ):
+            progress_callback([
+                CommitInfo("preview", "preview", "author", "", "", "preview")
+            ])
+            release.wait(5)
+            return [CommitInfo("final", "final", "author", "", "", "final")]
+
+        bridge._svc.search_commits_progressively_at = fake_search  # type: ignore[method-assign]
+        bridge.searchPreviewReady.connect(
+            lambda _repo, items: previews.append(items[0]["message"])
+        )
+        bridge.searchReady.connect(
+            lambda _repo, items: completed.append(items[0]["message"])
+        )
+        self.addCleanup(release.set)
+        self.addCleanup(bridge.deleteLater)
+
+        bridge.requestSearch("needle", "all")
+        self.assertTrue(self._wait_until(app, lambda: previews == ["preview"]))
+        self.assertEqual(completed, [])
+        release.set()
+        self.assertTrue(self._wait_until(app, lambda: completed == ["final"]))
 
     def test_latest_tag_request_wins_across_a_b_a_switch(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])

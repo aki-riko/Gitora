@@ -14,6 +14,7 @@ from collections.abc import Callable
 from typing import Any, Optional
 
 from PySide6.QtCore import QObject, Slot, Signal, Property
+from prismqml import current_task
 
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
@@ -166,6 +167,7 @@ class GitBridge(QObject):
     statusReady = Signal(str, int)              # 后台状态就绪(repoPath, 变更数量)
     branchReady = Signal(str, str)             # 后台当前分支就绪(repoPath, 分支)
     logReady = Signal(str, int, "QVariantList")    # 后台提交分页就绪(repoPath, skip, 批次)
+    searchPreviewReady = Signal(str, "QVariantList")  # 搜索阶段结果(repoPath, 结果)
     searchReady = Signal(str, "QVariantList")       # 后台搜索结果就绪(repoPath, 结果)
     # 以下为耗时操作异步化新增信号(均带请求参数供前端校验防过期)
     diffReady = Signal(str, str, bool, str)              # (repoPath, path, staged, diff内容)
@@ -205,6 +207,7 @@ class GitBridge(QObject):
         self._svc.progressUpdated.connect(self.progressUpdated)
         self._log_request_serial = 0
         self._search_request_serial = 0
+        self._search_task = None
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
         self._open_request_serial = 0
@@ -225,6 +228,9 @@ class GitBridge(QObject):
         label: str,
         on_success: Callable[[Any], None] | None = None,
         on_failure: Callable[[BaseException], None] | None = None,
+        on_progress: Callable[[Any], None] | None = None,
+        on_cancelled: Callable[[], None] | None = None,
+        on_finished: Callable[[], None] | None = None,
     ):
         """把只读查询提交给 PrismQML；所有回调都由引擎排回主线程。"""
         def failed(exc: BaseException) -> None:
@@ -236,6 +242,9 @@ class GitBridge(QObject):
             function,
             on_success=on_success,
             on_failure=failed,
+            on_progress=on_progress,
+            on_cancelled=on_cancelled,
+            on_finished=on_finished,
         )
 
     def _submit_operation(
@@ -778,18 +787,34 @@ class GitBridge(QObject):
     def requestSearch(
         self, query: str, search_type: str, include_all_refs: bool = False
     ):
-        """后台搜索提交,完成发 searchReady(repoPath, list)。"""
+        """后台流式搜索提交，先发阶段结果，再发完整结果。"""
         repo = self._svc.repo_path or ""
+        self._cancel_active_search()
         self._search_request_serial += 1
         request_serial = self._search_request_serial
 
         def work():
+            task = current_task()
             return [
                     _commit_to_dict(c)
-                    for c in self._svc.search_commits_at(
-                        repo, query, search_type, 100, include_all_refs
+                    for c in self._svc.search_commits_progressively_at(
+                        repo,
+                        query,
+                        search_type,
+                        100,
+                        include_all_refs,
+                        lambda commits: task.report_progress([
+                            _commit_to_dict(commit) for commit in commits
+                        ]),
                     )
                 ]
+
+        def progressed(results: list) -> None:
+            if request_serial != self._search_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
+            self.searchPreviewReady.emit(repo, results)
 
         def completed(results: list) -> None:
             if request_serial != self._search_request_serial:
@@ -798,12 +823,33 @@ class GitBridge(QObject):
                 return
             self.searchReady.emit(repo, results)
 
-        return self._submit_query(
+        handle = None
+
+        def finished() -> None:
+            if self._search_task is handle:
+                self._search_task = None
+
+        handle = self._submit_query(
             work,
             label="搜索提交",
             on_success=completed,
             on_failure=lambda _exc: completed([]),
+            on_progress=progressed,
+            on_finished=finished,
         )
+        self._search_task = handle
+        return handle
+
+    def _cancel_active_search(self) -> None:
+        if self._search_task is not None:
+            self._search_task.cancel()
+            self._search_task = None
+
+    @Slot()
+    def cancelSearch(self) -> None:
+        """取消仍在扫描历史的搜索，并使迟到结果失效。"""
+        self._search_request_serial += 1
+        self._cancel_active_search()
 
     def isLargeRepo(self) -> bool:
         return self._svc.is_large_repo()

@@ -13,6 +13,7 @@ Item {
     property int loadedCount: 0
     property bool hasMore: true
     property bool loading: false
+    property bool searchDeepening: false
     property bool refreshing: false
     property int refreshCount: 0
     property bool searchMode: false
@@ -30,11 +31,13 @@ Item {
 
     // ==================== 数据加载 ====================
     function resetAndLoad() {
+        if (GitBridge) GitBridge.cancelSearch()
         root.allCommits = []
         root.loadedCount = 0
         root.hasMore = true
         root.searchMode = false
         root.loading = false
+        root.searchDeepening = false
         root.refreshing = false
         root.refreshCount = 0
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
@@ -65,6 +68,7 @@ Item {
             if (searchInput.text === "") { resetAndLoad(); return }
             root.refreshing = true
             root.loading = true
+            root.searchDeepening = false
             GitBridge.requestSearch(
                 searchInput.text, "all", root.includeAllRefs
             )
@@ -96,6 +100,7 @@ Item {
         root.loadedCount = 0
         root.hasMore = false        // 搜索结果不分页
         root.loading = true
+        root.searchDeepening = false
         root.refreshing = false
         root.searchMode = true
         root.selectedCommit = null
@@ -172,15 +177,25 @@ Item {
         function onSearchReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) {
                 root.loading = false
+                root.searchDeepening = false
                 root.refreshing = false
                 return
             }
             if (!root.searchMode) return  // 已退出搜索,丢弃过期搜索结果
             root.allCommits = results
             root.loading = false
+            root.searchDeepening = false
             root.refreshing = false
             root._restoreSelection(results)
             root._selectPendingJump(results)
+        }
+        function onSearchPreviewReady(repoPath, results) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return
+            if (!root.searchMode) return
+            root.allCommits = results
+            root.loading = false
+            root.searchDeepening = true
+            root._restoreSelection(results)
         }
     }
 
@@ -283,6 +298,7 @@ Item {
                         ? root.allCommits.length + " 条搜索结果"
                         : root.allCommits.length + " 条提交")
                         + (root.includeAllRefs ? " · 全部分支" : " · 当前分支")
+                        + (root.searchDeepening ? " · 后台补全中" : "")
                     Fluent.ComboBox {
                         id: historyScopeCombo
                         objectName: "historyScopeCombo"

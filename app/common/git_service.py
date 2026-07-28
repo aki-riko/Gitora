@@ -17,17 +17,20 @@ from pathlib import Path
 from PySide6.QtCore import QObject, Signal, QMutex, QMutexLocker
 from prismqml import current_task
 
-from .git_push_progress import run_git_push_with_progress
 from .git_graph import (
     CommitGraphRow,
     CommitRef,
     layout_commit_graph,
     parse_commit_refs,
 )
+from .git_hash_stream import stream_git_hashes
+from .git_push_progress import run_git_push_with_progress
 from .logger import get_logger
 from .prism_task import submit_to_pool
 
 logger = get_logger("GitService")
+
+_HISTORY_SEARCH_TIMEOUT_SECONDS = 300
 
 
 class FileStatus(Enum):
@@ -1075,6 +1078,84 @@ class GitService(QObject):
 
         return list(dict.fromkeys(hashes))
 
+    def _search_path_commit_hashes(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool = False,
+    ) -> list[str]:
+        """逐父搜索文件路径命中的提交。"""
+        cmd_prefix = ['log', '-m']
+        if include_all_refs:
+            cmd_prefix.append('--all')
+        cmd_prefix.extend([f'-{count}', '--format=%H'])
+
+        path_query = glob.escape(query.replace('\\', '/'))
+        success, stdout, _ = self._run_git_sync_at(repo_path, [
+            *cmd_prefix, '--', f':(icase,glob)**/*{path_query}*'
+        ])
+        if not success:
+            return []
+        return list(dict.fromkeys(line for line in stdout.splitlines() if line))
+
+    @staticmethod
+    def _diff_search_command(
+        query: str, count: int, include_all_refs: bool
+    ) -> list[str]:
+        cmd = ['log', '-m']
+        if include_all_refs:
+            cmd.append('--all')
+        cmd.extend([
+            f'-{count}', '--format=%H', f'-G{re.escape(query)}',
+            '--regexp-ignore-case',
+        ])
+        return cmd
+
+    def _search_diff_commit_hashes(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool = False,
+    ) -> list[str]:
+        """逐父搜索补丁中新增、删除行命中的提交。"""
+        cmd = self._diff_search_command(query, count, include_all_refs)
+        success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
+        if not success:
+            return []
+        return list(dict.fromkeys(line for line in stdout.splitlines() if line))
+
+    def _stream_diff_commit_hashes(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool,
+        on_progress: Callable[[list[str]], None],
+    ) -> list[str]:
+        """流式搜索补丁内容，并在任务取消时终止旧 Git 进程。"""
+        try:
+            task = current_task()
+        except RuntimeError:
+            task = None
+        args = self._diff_search_command(query, count, include_all_refs)
+        result = stream_git_hashes(
+            ['git', '-c', 'core.quotepath=false', *args],
+            repo_path,
+            timeout=_HISTORY_SEARCH_TIMEOUT_SECONDS,
+            creationflags=(
+                subprocess.CREATE_NO_WINDOW if os.name == 'nt' else 0
+            ),
+            cancel_requested=lambda: bool(task and task.cancel_requested),
+            on_progress=on_progress,
+        )
+        if result.cancelled and task is not None:
+            task.raise_if_cancelled()
+        if not result.success:
+            logger.warning("Git 补丁内容搜索未完整结束: %s", result.error)
+        return result.hashes
+
     def _search_changed_commit_hashes(
         self,
         repo_path: str,
@@ -1082,27 +1163,82 @@ class GitService(QObject):
         count: int,
         include_all_refs: bool = False,
     ) -> list[str]:
-        """逐父搜索文件路径以及补丁中新增、删除行命中的提交。"""
-        cmd_prefix = ['log', '-m']
-        if include_all_refs:
-            cmd_prefix.append('--all')
-        cmd_prefix.extend([f'-{count}', '--format=%H'])
-
-        path_query = glob.escape(query.replace('\\', '/'))
-        commands = [
-            [*cmd_prefix, '--', f':(icase,glob)**/*{path_query}*'],
-            [
-                *cmd_prefix,
-                f'-G{re.escape(query)}',
-                '--regexp-ignore-case',
-            ],
+        """搜索文件路径以及补丁中新增、删除行命中的提交。"""
+        hashes = [
+            *self._search_path_commit_hashes(
+                repo_path, query, count, include_all_refs
+            ),
+            *self._search_diff_commit_hashes(
+                repo_path, query, count, include_all_refs
+            ),
         ]
-        hashes = []
-        for cmd in commands:
-            success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
-            if success:
-                hashes.extend(line for line in stdout.splitlines() if line)
         return list(dict.fromkeys(hashes))
+
+    def _load_search_commits_at(
+        self, repo_path: str, hashes: list[str], count: int
+    ) -> list[CommitInfo]:
+        unique_hashes = list(dict.fromkeys(
+            hash_value for hash_value in hashes if hash_value
+        ))
+        if not unique_hashes:
+            return []
+        format_str = '%H|%h|%an|%ae|%ad|%s'
+        cmd = [
+            'log', f'-{count}', f'--format={format_str}',
+            '--date=format:%Y-%m-%d %H:%M', '--no-walk=sorted',
+            *unique_hashes,
+        ]
+        success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
+        if not success:
+            return []
+        commits = self._parse_commit_log(stdout, repo_path)
+        return self._mark_reverted_commits_at(repo_path, commits)
+
+    def _search_fast_commit_hashes(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool,
+    ) -> list[str]:
+        """搜索无需扫描补丁内容的消息、作者和路径候选。"""
+        return [
+            *self._search_text_commit_hashes(
+                repo_path, query, count, include_all_refs
+            ),
+            *self._search_path_commit_hashes(
+                repo_path, query, count, include_all_refs
+            ),
+        ]
+
+    def _progressive_search_hashes_at(
+        self,
+        repo_path: str,
+        query: str,
+        count: int,
+        include_all_refs: bool,
+        progress_callback: Callable[[list[CommitInfo]], None],
+    ) -> list[str]:
+        base_hashes = self._search_fast_commit_hashes(
+            repo_path, query, count, include_all_refs
+        )
+        last_preview: tuple[str, ...] | None = None
+
+        def publish_diff(diff_hashes: list[str]) -> None:
+            nonlocal last_preview
+            commits = self._load_search_commits_at(
+                repo_path, [*base_hashes, *diff_hashes], count
+            )
+            signature = tuple(commit.hash for commit in commits)
+            if signature != last_preview:
+                last_preview = signature
+                progress_callback(commits)
+
+        publish_diff([])
+        diff_hashes = self._stream_diff_commit_hashes(
+            repo_path, query, count, include_all_refs, publish_diff
+        )
+        return [*base_hashes, *diff_hashes]
 
     def _build_commit_search_command(
         self,
@@ -1192,6 +1328,39 @@ class GitService(QObject):
 
         commits = self._parse_commit_log(stdout, repo_path)
         return self._mark_reverted_commits_at(repo_path, commits)
+
+    def search_commits_progressively_at(
+        self,
+        repo_path: str,
+        query: str,
+        search_type: str,
+        count: int,
+        include_all_refs: bool,
+        progress_callback: Callable[[list[CommitInfo]], None],
+    ) -> list[CommitInfo]:
+        """先发布快速候选，再流式补齐增删内容命中的提交。"""
+        query = query.strip()
+        if not query or search_type != "all":
+            return self.search_commits_at(
+                repo_path, query, search_type, count, include_all_refs
+            )
+
+        resolved_hash = self._resolve_commit_hash(
+            repo_path, query, include_all_refs
+        )
+        if resolved_hash:
+            return self._load_search_commits_at(
+                repo_path, [resolved_hash], count
+            )
+
+        hashes = self._progressive_search_hashes_at(
+            repo_path,
+            query,
+            count,
+            include_all_refs,
+            progress_callback,
+        )
+        return self._load_search_commits_at(repo_path, hashes, count)
 
     def _path_in_repo(self, file_path: str) -> bool:
         """校验文件路径在仓库内(防 ../ 遍历或绝对路径越界)。"""

@@ -65,6 +65,17 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         )
         self.assertIn('root.includeAllRefs ? " · 全部分支" : " · 当前分支"', source)
 
+    def test_history_search_uses_progressive_results_and_cancellation(self) -> None:
+        source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("property bool searchDeepening: false", source)
+        self.assertIn("GitBridge.cancelSearch()", source)
+        self.assertIn("function onSearchPreviewReady(repoPath, results)", source)
+        self.assertIn("root.searchDeepening = true", source)
+        self.assertIn('root.searchDeepening ? " · 后台补全中" : ""', source)
+
     def test_history_timeline_uses_fluent_layered_surface(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
             encoding="utf-8"
