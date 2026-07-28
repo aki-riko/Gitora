@@ -617,7 +617,12 @@ Item {
                                                         id: changeActions
                                                         property string rowPath: ""
                                                         property bool rowStaged: false
-                                                        color: Fluent.Enums.stateColor.hover
+                                                        // hover 是半透明状态色；先与卡片底色合成，
+                                                        // 避免下层路径文字透过按钮覆盖层。
+                                                        color: Qt.tint(
+                                                            Fluent.Enums.cardColor,
+                                                            Fluent.Enums.stateColor.hover
+                                                        )
                                                         radius: Fluent.Enums.radius.small
 
                                                         RowLayout {

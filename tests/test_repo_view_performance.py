@@ -52,6 +52,16 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("anchors.verticalCenter: parent.verticalCenter", source)
         self.assertIn("z: 1", source)
         self.assertIn("id: changeActions", source)
+        overlay_start = source.index("id: changeActions")
+        overlay_end = source.index("RowLayout {", overlay_start)
+        overlay_source = source[overlay_start:overlay_end]
+        self.assertIn("color: Qt.tint(", overlay_source)
+        self.assertIn("Fluent.Enums.cardColor", overlay_source)
+        self.assertIn("Fluent.Enums.stateColor.hover", overlay_source)
+        self.assertNotIn(
+            "color: Fluent.Enums.stateColor.hover",
+            overlay_source,
+        )
         self.assertIn("spacing: Fluent.Enums.spacing.xxs", source)
         self.assertEqual(
             source.count("preferredWidth: Fluent.Enums.controlSize.inputHeight"),
