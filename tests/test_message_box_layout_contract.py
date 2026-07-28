@@ -9,6 +9,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 MESSAGE_BOX_RE = re.compile(r"(?:(?:Fluent\.)?MessageBox)\s*\{")
 OBJECT_RE = re.compile(r"^([A-Za-z_][\w.]*)\s*\{")
+EMPTY_TITLE_RE = re.compile(r'^title\s*:\s*""\s*;?$')
 NON_VISUAL_TYPES = {
     "Binding",
     "Component",
@@ -83,7 +84,7 @@ def _find_violations(path: Path) -> list[str]:
                 break
             cursor += 1
 
-        if title_line and '""' not in title_line and visual_children:
+        if title_line and not EMPTY_TITLE_RE.fullmatch(title_line) and visual_children:
             display_path = path.relative_to(ROOT) if path.is_relative_to(ROOT) else path
             violations.append(
                 f"{display_path}:{start + 1}: "
@@ -134,3 +135,20 @@ def test_contract_allows_content_and_non_visual_children(tmp_path: Path) -> None
     )
 
     assert _find_violations(safe) == []
+
+
+def test_contract_rejects_conditional_title_with_empty_branch(tmp_path: Path) -> None:
+    unsafe = tmp_path / "ConditionalTitleDialog.qml"
+    unsafe.write_text(
+        """Fluent.MessageBox {
+    title: enabled ? "" : "仍会重叠"
+    ColumnLayout { }
+}
+""",
+        encoding="utf-8",
+    )
+
+    violations = _find_violations(unsafe)
+
+    assert len(violations) == 1
+    assert "仍会重叠" in violations[0]

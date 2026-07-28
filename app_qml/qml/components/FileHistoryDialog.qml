@@ -111,6 +111,7 @@ Fluent.MessageBox {
 
             // 左:提交历史列表
             Rectangle {
+                objectName: "fileHistoryListPane"
                 Layout.preferredWidth: 280
                 Layout.fillHeight: true
                 radius: Fluent.Enums.radius.medium
@@ -163,10 +164,10 @@ Fluent.MessageBox {
                     }
                 }
             }
-        }
 
             // 右:内容/diff
             Rectangle {
+                objectName: "fileHistoryContentPane"
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: Fluent.Enums.radius.medium
