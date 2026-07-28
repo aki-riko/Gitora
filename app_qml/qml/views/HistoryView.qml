@@ -278,10 +278,39 @@ Item {
 
     // ==================== 布局 ====================
     Fluent.SplitPane {
+        id: historySplitPane
+
+        readonly property real minimumFirstPaneWidth: historyHeader.implicitWidth
+            + Fluent.Enums.spacing.m
+        readonly property real minimumSecondPaneWidth: 360
+
+        function clampSplitPosition() {
+            const availableWidth = width - handleWidth
+            if (availableWidth <= 0)
+                return
+
+            const minimumLeft = Math.min(minimumFirstPaneWidth, availableWidth)
+            const maximumLeft = Math.max(
+                minimumLeft,
+                availableWidth - minimumSecondPaneWidth
+            )
+            const leftWidth = Math.max(
+                minimumLeft,
+                Math.min(maximumLeft, availableWidth * splitPosition)
+            )
+            const clampedPosition = leftWidth / availableWidth
+            if (Math.abs(splitPosition - clampedPosition) > 0.0001)
+                splitPosition = clampedPosition
+        }
+
         anchors.fill: parent
         anchors.margins: Fluent.Enums.spacing.xl
         orientation: Qt.Horizontal
         splitPosition: 0.55
+        onSplitPositionChanged: clampSplitPosition()
+        onWidthChanged: clampSplitPosition()
+        onMinimumFirstPaneWidthChanged: clampSplitPosition()
+        onMinimumSecondPaneWidthChanged: clampSplitPosition()
 
         firstContent: Item {
             anchors.fill: parent
@@ -293,6 +322,7 @@ Item {
 
                 // 标题 + 搜索
                 PageHeader {
+                    id: historyHeader
                     title: "历史"
                     subtitle: (root.searchMode
                         ? root.allCommits.length + " 条搜索结果"
