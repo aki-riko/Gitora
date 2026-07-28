@@ -38,15 +38,24 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("sourceComponent: Component {", source)
         self.assertNotIn("visible: hover.hovered", source)
 
-    def test_change_list_actions_use_compact_button_group(self) -> None:
+    def test_change_list_actions_use_fixed_compact_overflow_slot(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 
-        self.assertIn("id: changeActions", source)
-        self.assertIn("spacing: Fluent.Enums.spacing.xxs", source)
-        self.assertEqual(
-            source.count("preferredWidth: Fluent.Enums.controlSize.inputHeight"),
-            3,
+        self.assertIn("id: changeActionsSlot", source)
+        self.assertIn(
+            "Layout.preferredWidth: Fluent.Enums.controlSize.inputHeightCompact",
+            source,
         )
+        self.assertIn(
+            "active: hover.hovered || Boolean(item && item.menuOpen)",
+            source,
+        )
+        self.assertIn("feature: Fluent.Enums.button.feature_dropdown", source)
+        self.assertIn("showDropdownIndicator: false", source)
+        self.assertIn("icon: Fluent.Enums.icon.more_vertical", source)
+        self.assertIn("Fluent.MenuCore {", source)
+        self.assertIn('toolTipText: "文件操作"', source)
+        self.assertNotIn("id: changeActions\n", source)
 
     def test_change_summary_actions_live_inside_card_above_separator(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
