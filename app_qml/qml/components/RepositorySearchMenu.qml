@@ -25,6 +25,13 @@ Fluent.PopupWindowCore {
     closeOnClickOutside: true
     useQtPopupWindow: true
 
+    onPopupHeightChanged: {
+        if (!isOpen || isClosing) return
+        // PopupWindowCore 的动画裁切高度会保留打开时的值，动态缩放时需同步。
+        stabilizeInteraction()
+        _clipHeight = popupHeight
+    }
+
     function _normalizedPaths(values) {
         if (!values) return []
         var normalized = []

@@ -25,6 +25,7 @@ Window {
     visible: true
     color: Fluent.Enums.backgroundColor
     property int mainClickCount: 0
+    property bool useScreenshotPaths: false
 
     function prepareScreenshotPaths() {
         menu.prepareForOpen([
@@ -50,12 +51,18 @@ Window {
         feature: Fluent.Enums.button.feature_split
         menu: menu
         onClicked: root.mainClickCount += 1
-        onMenuAboutToOpen: menu.prepareForOpen([
-            "D:/MinecraftProject/mojin",
-            "D:/API/kiro_rs",
-            "D:/PrismQML/Gitora",
-            "B:/Minecraft/Addons和modApi/已完成作品(新)/LuckyWorld"
-        ])
+        onMenuAboutToOpen: {
+            if (root.useScreenshotPaths) {
+                root.prepareScreenshotPaths()
+            } else {
+                menu.prepareForOpen([
+                    "D:/MinecraftProject/mojin",
+                    "D:/API/kiro_rs",
+                    "D:/PrismQML/Gitora",
+                    "B:/Minecraft/Addons和modApi/已完成作品(新)/LuckyWorld"
+                ])
+            }
+        }
     }
 
     RepositorySearchMenu {
@@ -212,9 +219,9 @@ def _assert_screenshot_search_geometry(menu, search_input, result_area) -> tuple
     from PySide6.QtCore import QPointF
     from PySide6.QtQuick import QQuickItem
 
-    search_input.setProperty("text", "mo")
+    search_input.setProperty("text", "moj")
     _pump(100)
-    if len(_filtered_paths(menu)) != 8:
+    if _filtered_paths(menu) != ["D:/MinecraftProject/mojin"]:
         raise AssertionError(_filtered_paths(menu))
     popup_content = menu.findChild(QQuickItem, "_popupContent")
     if popup_content is None:
@@ -227,11 +234,17 @@ def _assert_screenshot_search_geometry(menu, search_input, result_area) -> tuple
         raise AssertionError(
             f"results clipped: {result_bottom=} {content_height=}"
         )
+    popup_height = float(menu.property("popupHeight"))
+    clip_height = float(menu.property("_clipHeight"))
+    if abs(clip_height - popup_height) > 0.25:
+        raise AssertionError(
+            f"shadow geometry stale: {clip_height=} {popup_height=}"
+        )
     return result_bottom, content_height
 
 
 def _render_probe(output: Path) -> int:
-    from PySide6.QtCore import QPointF, QMetaObject, Qt
+    from PySide6.QtCore import QPointF
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
     from prismqml import configure_qml_environment, register_types
@@ -245,14 +258,10 @@ def _render_probe(output: Path) -> int:
     component, root = _create_scene(engine, use_in_window_popup=True)
     root.requestActivate()
     _pump(100)
+    root.setProperty("useScreenshotPaths", True)
     _click_trigger(root, _trigger(root), arrow=True)
     _pump(700)
     menu, search_input, search_box, result_area, _ = _scene_objects(root)
-    invoked = QMetaObject.invokeMethod(
-        root, "prepareScreenshotPaths", Qt.ConnectionType.DirectConnection
-    )
-    if not invoked:
-        raise AssertionError("failed to prepare screenshot paths")
     result_bottom, content_height = _assert_screenshot_search_geometry(
         menu, search_input, result_area
     )
@@ -268,7 +277,7 @@ def _render_probe(output: Path) -> int:
     if image.isNull() or not image.save(str(output), "PNG"):
         raise AssertionError("failed to save rendered repository search menu")
     print(
-        f"{RENDER_MARKER} matches=8 search=({search_top},{search_bottom}) "
+        f"{RENDER_MARKER} matches=1 search=({search_top},{search_bottom}) "
         f"result_top={result_top} result_bottom={result_bottom} "
         f"content_height={content_height} output={output}"
     )
