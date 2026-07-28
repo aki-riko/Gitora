@@ -101,11 +101,10 @@ QtObject {
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
             lazyLoading: true
+            splashComponent: root.splashComponent
             // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
             micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
-            // 创建启动屏幕,赋给 _splashInstance;内容加载完成后引擎自动 finish()
             Component.onCompleted: {
-                this._splashInstance = root.splashComponent.createObject(this.contentItem)
                 root.toastProgressHostInstance = root.toastProgressHostComponent.createObject(this.contentItem)
                 let currentWindow = this
                 Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })

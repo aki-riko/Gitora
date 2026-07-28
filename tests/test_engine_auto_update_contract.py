@@ -66,6 +66,15 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertNotIn("Updater.checkForUpdate()", settings_source)
         self.assertNotIn("target: typeof Updater", settings_source)
 
+    def test_qml_uses_the_engine_owned_splash_instance(self) -> None:
+        main_source = (
+            ROOT / "app_qml" / "qml" / "main.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("splashComponent: root.splashComponent", main_source)
+        self.assertNotIn("this._splashInstance =", main_source)
+        self.assertNotIn("root.splashComponent.createObject", main_source)
+
     def test_installed_engine_exposes_in_place_download_feedback(self) -> None:
         feedback_dir = prismqml.qml_path() / "controls" / "feedback"
         facade_source = (feedback_dir / "AutoUpdater.qml").read_text(

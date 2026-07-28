@@ -119,7 +119,7 @@ def _start_settings_navigation_selftest(engine, finish) -> None:
 
 def _start_splash_dismissal_selftest(engine, finish) -> None:
     """等待真实首屏加载完成并确认启动页已经淡出。"""
-    from PySide6.QtCore import QTimer
+    from PySide6.QtCore import QObject, QTimer
 
     root = engine.rootObjects()[0]
     window = root.property("windowInstance")
@@ -139,12 +139,17 @@ def _start_splash_dismissal_selftest(engine, finish) -> None:
         dismissed = bool(window.property("_splashDismissed"))
         splash = window.property("_splashInstance")
         visible = bool(splash.property("visible")) if splash is not None else False
-        if dismissed and not visible:
+        loader = window.findChild(QObject, "windowSplashLoader")
+        loader_splash = loader.property("item") if loader is not None else None
+        loader_owns_splash = loader is None or loader_splash == splash
+        if dismissed and loader_owns_splash and not visible:
             complete(True, "启动页已关闭")
         elif time.monotonic() >= deadline:
             complete(
                 False,
-                f"启动页超时未关闭: dismissed={dismissed}, visible={visible}",
+                "启动页超时未关闭: "
+                f"dismissed={dismissed}, visible={visible}, "
+                f"loaderOwnsSplash={loader_owns_splash}",
             )
         else:
             QTimer.singleShot(SPLASH_POLL_MS, poll)
