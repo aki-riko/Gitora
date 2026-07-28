@@ -19,7 +19,9 @@ Fluent.PopupWindowCore {
     signal pathSelected(string path)
 
     popupWidth: Fluent.Enums.controlSize.cardWidth + Fluent.Enums.spacing.xxxl * 4
-    popupHeight: Fluent.Enums.comboBoxMetrics.searchBoxHeight + _resultAreaHeight
+    popupHeight: Fluent.Enums.comboBoxMetrics.searchBoxHeight
+        + _resultAreaHeight
+        + Fluent.Enums.comboBoxMetrics.popupPadding
     closeOnClickOutside: true
     useQtPopupWindow: true
 

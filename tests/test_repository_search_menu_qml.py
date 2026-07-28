@@ -26,6 +26,19 @@ Window {
     color: Fluent.Enums.backgroundColor
     property int mainClickCount: 0
 
+    function prepareScreenshotPaths() {
+        menu.prepareForOpen([
+            "D:/MinecraftProject/mojin",
+            "B:/Minecraft/Addons和modApi/已冻结策划JOJO",
+            "B:/Minecraft/Addons和modApi/已完成作品(新)/LuckyWorld",
+            "B:/Minecraft/Addons和modApi/已完成作品(新)/MailSystem",
+            "D:/PrismQML/AeroMount",
+            "L:/home/Aquila/Minecraft/Addons和modApi/已完成作品(新)/MailSystem",
+            "L:/home/Aquila/Minecraft/Addons和modApi/已完成作品(新)/LuckyWorld",
+            "L:/home/Aquila/Minecraft/Addons和modApi/已冻结策划JOJO"
+        ])
+    }
+
     Fluent.Button {
         id: trigger
         objectName: "repositoryMenuTrigger"
@@ -105,7 +118,7 @@ def test_repository_search_menu_filters_and_keeps_original_path() -> None:
     assert result.stderr == "", diagnostic
 
 
-def test_repository_search_menu_renders_search_above_results() -> None:
+def test_repository_search_menu_renders_results_without_clipping() -> None:
     with tempfile.TemporaryDirectory(prefix="gitora-repository-menu-qml-") as temp_dir:
         output = Path(temp_dir) / "repository-search-menu.png"
         result = _run_probe("--render-probe", output)
@@ -195,8 +208,30 @@ def _click_trigger(root, trigger, arrow: bool) -> None:
     _pump(100)
 
 
-def _render_probe(output: Path) -> int:
+def _assert_screenshot_search_geometry(menu, search_input, result_area) -> tuple[float, float]:
     from PySide6.QtCore import QPointF
+    from PySide6.QtQuick import QQuickItem
+
+    search_input.setProperty("text", "mo")
+    _pump(100)
+    if len(_filtered_paths(menu)) != 8:
+        raise AssertionError(_filtered_paths(menu))
+    popup_content = menu.findChild(QQuickItem, "_popupContent")
+    if popup_content is None:
+        raise AssertionError("missing popup content")
+    result_bottom = result_area.mapToItem(
+        popup_content, QPointF(0, result_area.height())
+    ).y()
+    content_height = popup_content.height()
+    if result_bottom > content_height + 0.25:
+        raise AssertionError(
+            f"results clipped: {result_bottom=} {content_height=}"
+        )
+    return result_bottom, content_height
+
+
+def _render_probe(output: Path) -> int:
+    from PySide6.QtCore import QPointF, QMetaObject, Qt
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
     from prismqml import configure_qml_environment, register_types
@@ -213,11 +248,14 @@ def _render_probe(output: Path) -> int:
     _click_trigger(root, _trigger(root), arrow=True)
     _pump(700)
     menu, search_input, search_box, result_area, _ = _scene_objects(root)
-    search_input.setProperty("text", "prismqml")
-    _pump(200)
-
-    if _filtered_paths(menu) != ["D:/PrismQML/Gitora"]:
-        raise AssertionError(_filtered_paths(menu))
+    invoked = QMetaObject.invokeMethod(
+        root, "prepareScreenshotPaths", Qt.ConnectionType.DirectConnection
+    )
+    if not invoked:
+        raise AssertionError("failed to prepare screenshot paths")
+    result_bottom, content_height = _assert_screenshot_search_geometry(
+        menu, search_input, result_area
+    )
     search_top = search_box.mapToScene(QPointF(0, 0)).y()
     search_bottom = search_top + search_box.height()
     result_top = result_area.mapToScene(QPointF(0, 0)).y()
@@ -230,8 +268,9 @@ def _render_probe(output: Path) -> int:
     if image.isNull() or not image.save(str(output), "PNG"):
         raise AssertionError("failed to save rendered repository search menu")
     print(
-        f"{RENDER_MARKER} filtered={_filtered_paths(menu)} "
-        f"search=({search_top},{search_bottom}) result_top={result_top} output={output}"
+        f"{RENDER_MARKER} matches=8 search=({search_top},{search_bottom}) "
+        f"result_top={result_top} result_bottom={result_bottom} "
+        f"content_height={content_height} output={output}"
     )
     root.close()
     root.deleteLater()
