@@ -249,7 +249,10 @@ Item {
     }
 
     function _op(task) {
-        // 反馈由全局 Git 任务提示统一显示；TaskHandle 由 PrismQML 管理。
+        if (!task) return
+        task.succeeded.connect(function(result) {
+            if (result && result[0]) root.refreshIncrementally()
+        })
     }
 
     function _openCherryPickDialog() {
@@ -767,7 +770,10 @@ Item {
     }
 
     // 直接从选中的历史提交创建，默认不切换，避免扰动当前工作区。
-    CreateBranchDialog { id: createBranchDialog }
+    CreateBranchDialog {
+        id: createBranchDialog
+        onOperationSucceeded: root.refreshIncrementally()
+    }
 
     // 引用日志
     ReflogDialog {

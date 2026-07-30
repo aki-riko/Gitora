@@ -145,6 +145,8 @@ def test_branch_and_history_views_expose_complete_create_flow() -> None:
 
     assert 'createBranchDialog.openFor("HEAD", true)' in branch_source
     assert "root.selectedCommit.hash, false" in history_source
+    assert "onOperationSucceeded: root.reload()" in branch_source
+    assert "onOperationSucceeded: root.refreshIncrementally()" in history_source
     assert "GitBridge.createBranchAt(" not in branch_source
     assert "Fluent.MessageBox {\n        id: createDialog" not in branch_source
 
@@ -155,6 +157,8 @@ def test_create_branch_dialog_uses_specific_error_title() -> None:
     ).read_text(encoding="utf-8")
 
     assert 'desktop.error("无法创建分支", result[1]' in dialog_source
+    assert "signal operationSucceeded()" in dialog_source
+    assert "dialog.operationSucceeded()" in dialog_source
 
 
 def test_create_branch_dialog_renders_fields_without_overlap() -> None:

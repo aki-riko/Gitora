@@ -53,7 +53,8 @@ def test_real_branch_switch_refreshes_history_without_split_recursion() -> None:
         assert result.returncode == 0, diagnostic
         assert PROBE_MARKER in result.stdout, diagnostic
         assert (
-            "counts=4,2,4 branches=master,side,master stack_overflows=0"
+            "counts=4,2,4,2,4 branches=master,HEAD,master,side,master "
+            "stack_overflows=0"
             in result.stdout
         ), diagnostic
 
@@ -101,6 +102,16 @@ def _run_probe(repo: Path) -> int:
                 }
             )
 
+    def run_task(task, description: str) -> None:
+        finished: list[bool] = []
+        results: list[object] = []
+        task.succeeded.connect(results.append)
+        task.finished.connect(lambda: finished.append(True))
+        if not _wait_until(lambda: bool(finished)):
+            raise AssertionError(f"{description} did not finish")
+        if not results or not results[-1][0]:
+            raise AssertionError({"description": description, "results": results})
+
     history_view = root.findChild(QObject, "historyScopeView")
     if history_view is None:
         raise AssertionError("missing history view")
@@ -111,6 +122,17 @@ def _run_probe(repo: Path) -> int:
     wait_for_state(4, "master")
     initial_count = int(root.property("probeCommitCount"))
     initial_branch = str(root.property("probeCurrentBranch"))
+
+    earlier_commit = run_git(repo, "rev-parse", "master~1").stdout.strip()
+    run_task(bridge.checkoutCommit(earlier_commit), "checkout commit")
+    wait_for_state(2, "HEAD")
+    detached_count = int(root.property("probeCommitCount"))
+    detached_branch = str(root.property("probeCurrentBranch"))
+
+    run_task(bridge.checkoutBranch("master"), "checkout master")
+    wait_for_state(4, "master")
+    operated_count = int(root.property("probeCommitCount"))
+    operated_branch = str(root.property("probeCurrentBranch"))
 
     page_host.setProperty("visible", False)
     run_git(repo, "checkout", "side")
@@ -132,8 +154,10 @@ def _run_probe(repo: Path) -> int:
     app.processEvents()
 
     print(
-        f"{PROBE_MARKER} counts={initial_count},{side_count},{restored_count} "
-        f"branches={initial_branch},{side_branch},{restored_branch} "
+        f"{PROBE_MARKER} counts={initial_count},{detached_count},"
+        f"{operated_count},{side_count},{restored_count} "
+        f"branches={initial_branch},{detached_branch},{operated_branch},"
+        f"{side_branch},{restored_branch} "
         f"stack_overflows={len(stack_overflows)}"
     )
     root.close()

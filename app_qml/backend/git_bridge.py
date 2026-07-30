@@ -208,6 +208,8 @@ class GitBridge(QObject):
         self._log_request_serial = 0
         self._search_request_serial = 0
         self._search_task = None
+        self._current_branch_request_serial = 0
+        self._branches_request_serial = 0
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
         self._open_request_serial = 0
@@ -449,11 +451,21 @@ class GitBridge(QObject):
     def requestCurrentBranch(self):
         """异步读取当前分支，经强类型 ``branchReady`` 信号返回给 QML。"""
         repo = self._svc.repo_path or ""
+        self._current_branch_request_serial += 1
+        request_serial = self._current_branch_request_serial
+
+        def completed(branch: str) -> None:
+            if request_serial != self._current_branch_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
+            self.branchReady.emit(repo, branch)
+
         return self._submit_query(
             lambda: self._svc.get_current_branch_at(repo),
             label="获取当前分支",
-            on_success=lambda branch: self.branchReady.emit(repo, str(branch)),
-            on_failure=lambda _exc: self.branchReady.emit(repo, ""),
+            on_success=lambda branch: completed(str(branch)),
+            on_failure=lambda _exc: completed(""),
         )
 
     # ==================== 仓库维护 ====================
@@ -909,11 +921,21 @@ class GitBridge(QObject):
     def requestBranches(self):
         """后台获取分支列表,完成发 branchesReady(repoPath,list)。"""
         repo = self._svc.repo_path or ""
+        self._branches_request_serial += 1
+        request_serial = self._branches_request_serial
+
+        def completed(data: list) -> None:
+            if request_serial != self._branches_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
+            self.branchesReady.emit(repo, data)
+
         return self._submit_query(
             lambda: [_branch_to_dict(b) for b in self._svc.get_branches()],
             label="获取分支列表",
-            on_success=lambda data: self.branchesReady.emit(repo, data),
-            on_failure=lambda _exc: self.branchesReady.emit(repo, []),
+            on_success=completed,
+            on_failure=lambda _exc: completed([]),
         )
 
     @Slot(str, bool, result=QObject)

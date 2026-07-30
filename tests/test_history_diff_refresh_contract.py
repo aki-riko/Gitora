@@ -33,6 +33,8 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         )[0]
 
         self.assertIn("root.refreshIncrementally()", status_handler)
+        self.assertIn("task.succeeded.connect", operation_handler)
+        self.assertIn("root.refreshIncrementally()", operation_handler)
         self.assertNotIn("root.resetAndLoad()", status_handler)
         self.assertNotIn("root.resetAndLoad()", operation_handler)
 
@@ -74,6 +76,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         )
         self.assertIn('? " · 全部分支"', source)
         self.assertIn('root.currentBranch || "正在读取…"', source)
+        self.assertIn("onOperationSucceeded: root.refreshIncrementally()", source)
 
     def test_history_search_uses_progressive_results_and_cancellation(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(

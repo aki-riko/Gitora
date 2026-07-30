@@ -6,6 +6,8 @@ import PrismQML as Fluent
 Fluent.MessageBox {
     id: dialog
 
+    signal operationSucceeded()
+
     // MessageBox 自带标题与调用方表单是并列子项，直接同时使用会从同一坐标绘制。
     // 统一把可见标题和表单放进一个布局，继续复用引擎的遮罩、动画和操作按钮。
     title: ""
@@ -89,11 +91,13 @@ Fluent.MessageBox {
             startPointInput.text.trim(),
             checkoutCheck.checked)
         task.succeeded.connect(function(result) {
-            if (result && result[0])
+            if (result && result[0]) {
                 Fluent.NotificationManager.desktop.success(
                     "成功", result[1] || "分支已创建")
-            else
+                dialog.operationSucceeded()
+            } else {
                 Fluent.NotificationManager.desktop.error("无法创建分支", result[1] || "创建分支失败")
+            }
         })
         task.failed.connect(function() {
             Fluent.NotificationManager.desktop.error(

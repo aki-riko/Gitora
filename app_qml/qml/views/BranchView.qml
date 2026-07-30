@@ -14,6 +14,9 @@ Item {
     property string _remoteCheckoutTarget: ""
     property string _remoteDeleteTarget: ""
     property string _branchesRequestRepoPath: ""
+    property bool initialized: false
+    readonly property bool pageActive: root.visible
+        && (!root.parent || root.parent.visible)
     property var _remotes: []
     ListModel { id: localModel }
     ListModel { id: remoteModel }
@@ -83,7 +86,17 @@ Item {
             }
         }
     }
-    Component.onCompleted: root.reload()
+    onPageActiveChanged: {
+        if (!root.pageActive || !root.initialized) return
+        Qt.callLater(function() {
+            if (root.pageActive) root.reload()
+        })
+    }
+
+    Component.onCompleted: {
+        root.initialized = true
+        root.reload()
+    }
 
     Fluent.ScrollArea {
         anchors.fill: parent
@@ -279,7 +292,10 @@ Item {
     }
 
     // 默认从 HEAD 创建并切换；对话框内可改为任意提交并取消切换。
-    CreateBranchDialog { id: createBranchDialog }
+    CreateBranchDialog {
+        id: createBranchDialog
+        onOperationSucceeded: root.reload()
+    }
 
     // 重命名本地分支
     Fluent.MessageBox {

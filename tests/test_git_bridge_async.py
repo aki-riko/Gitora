@@ -8,6 +8,7 @@ import unittest
 from PySide6.QtCore import QCoreApplication
 
 from app.common.git_service import (
+    BranchInfo,
     CommitInfo,
     FileChange,
     FileStatus,
@@ -203,6 +204,99 @@ class GitBridgeAsyncTest(unittest.TestCase):
                 )
             )
         finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_current_branch_query_drops_older_result(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        first_started = threading.Event()
+        release_first = threading.Event()
+        call_count = 0
+        call_lock = threading.Lock()
+        emitted: list[tuple[str, str]] = []
+
+        def fake_current_branch(_repo: str) -> str:
+            nonlocal call_count
+            with call_lock:
+                call_count += 1
+                current_call = call_count
+            if current_call == 1:
+                first_started.set()
+                release_first.wait(timeout=5)
+                return "stale"
+            return "latest"
+
+        bridge._svc.get_current_branch_at = fake_current_branch  # type: ignore[method-assign]
+        bridge.branchReady.connect(
+            lambda repo, branch: emitted.append((repo, branch))
+        )
+
+        try:
+            first_task = bridge.requestCurrentBranch()
+            first_finished: list[bool] = []
+            first_task.finished.connect(lambda: first_finished.append(True))
+            self.assertTrue(first_started.wait(timeout=2))
+            bridge.requestCurrentBranch()
+            self.assertTrue(
+                self._wait_until(app, lambda: emitted == [("repo", "latest")])
+            )
+            release_first.set()
+            self.assertTrue(self._wait_until(app, lambda: bool(first_finished)))
+            self.assertEqual(emitted, [("repo", "latest")])
+        finally:
+            release_first.set()
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_branch_list_query_drops_older_result(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        first_started = threading.Event()
+        release_first = threading.Event()
+        call_count = 0
+        call_lock = threading.Lock()
+        emitted: list[tuple[str, list]] = []
+
+        def fake_branches() -> list[BranchInfo]:
+            nonlocal call_count
+            with call_lock:
+                call_count += 1
+                current_call = call_count
+            if current_call == 1:
+                first_started.set()
+                release_first.wait(timeout=5)
+                return [BranchInfo("stale", True, False)]
+            return [BranchInfo("latest", True, False)]
+
+        bridge._svc.get_branches = fake_branches  # type: ignore[method-assign]
+        bridge.branchesReady.connect(
+            lambda repo, branches: emitted.append((repo, branches))
+        )
+
+        try:
+            first_task = bridge.requestBranches()
+            first_finished: list[bool] = []
+            first_task.finished.connect(lambda: first_finished.append(True))
+            self.assertTrue(first_started.wait(timeout=2))
+            bridge.requestBranches()
+            self.assertTrue(
+                self._wait_until(
+                    app,
+                    lambda: len(emitted) == 1
+                    and emitted[0][1][0]["name"] == "latest",
+                )
+            )
+            release_first.set()
+            self.assertTrue(self._wait_until(app, lambda: bool(first_finished)))
+            self.assertEqual(len(emitted), 1)
+            self.assertEqual(emitted[0][1][0]["name"], "latest")
+        finally:
+            release_first.set()
             bridge.deleteLater()
             app.processEvents()
 
