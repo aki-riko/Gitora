@@ -145,6 +145,17 @@ def _property(item, name):
         return None
 
 
+def _visible_popup_surface_entries(application):
+    entries = []
+    for window in application.allWindows():
+        if not window.isVisible():
+            continue
+        for item in _visual_items(window.contentItem()):
+            if item.objectName() == "_popupSurface" and item.isVisible():
+                entries.append((window, item))
+    return entries
+
+
 def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
     from PySide6.QtCore import (
         Property,
@@ -290,24 +301,20 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
         current_button_point,
     )
     _pump(250)
-    current_popup_windows = [
-        window
-        for window in QApplication.allWindows()
-        if window is not root and window.isVisible()
-    ]
-    current_popup_items = [
-        (window, item)
-        for window in current_popup_windows
-        for item in _visual_items(window.contentItem())
-    ]
+    current_surface_entries = _visible_popup_surface_entries(QApplication)
+    if len(current_surface_entries) != 1:
+        raise AssertionError(
+            f"unexpected current-branch popup surfaces: {len(current_surface_entries)}"
+        )
+    current_popup_items = list(_visual_items(current_surface_entries[0][1]))
     current_actions = {
         _property(item, "text")
-        for _, item in current_popup_items
+        for item in current_popup_items
         if item.height() >= 30 and _property(item, "text")
     }
     if current_actions != {"设置上游", "重命名"}:
         raise AssertionError(f"unexpected current-branch actions: {current_actions}")
-    current_popup_window = current_popup_items[0][0]
+    current_popup_window = current_surface_entries[0][0]
     QTest.keyClick(current_popup_window, Qt.Key.Key_Escape)
     _pump(150)
 
@@ -322,30 +329,14 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
     )
     frame_delay_ms = int(os.environ.get("GITORA_BRANCH_MENU_FRAME_MS", "250"))
     _pump(frame_delay_ms)
-    popup_windows = [
-        window
-        for window in QApplication.allWindows()
-        if window is not root and window.isVisible()
-    ]
-    popup_items = [
-        (window, item)
-        for window in popup_windows
-        for item in _visual_items(window.contentItem())
-    ]
-    surface_entry = next(
-        (
-            (window, item)
-            for window, item in popup_items
-            if item.objectName() == "_popupSurface"
-        ),
-        None,
-    )
-    if surface_entry is None:
+    surface_entries = _visible_popup_surface_entries(QApplication)
+    if len(surface_entries) != 1:
         raise AssertionError("built-in branch action menu did not open")
-    popup_window, popup_surface = surface_entry
+    popup_window, popup_surface = surface_entries[0]
+    popup_items = list(_visual_items(popup_surface))
     action = next(
         item
-        for _, item in popup_items
+        for item in popup_items
         if _property(item, "text") == action_text
         and item.height() >= 30
         and item.isVisible()
