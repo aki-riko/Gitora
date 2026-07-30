@@ -48,9 +48,18 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         )
 
         self.assertIn("property bool includeAllRefs: false", source)
+        self.assertIn('property string currentBranch: ""', source)
         self.assertIn('objectName: "historyScopeCombo"', source)
-        self.assertIn('model: ["当前分支", "全部分支"]', source)
+        self.assertIn(
+            '"当前分支 · " + (root.currentBranch || "正在读取…")', source
+        )
         self.assertIn("function setHistoryScope(scopeIndex)", source)
+        self.assertIn("function requestCurrentBranch()", source)
+        self.assertIn("GitBridge.requestCurrentBranch()", source)
+        self.assertIn("readonly property bool pageActive:", source)
+        self.assertIn("!root.parent || root.parent.visible", source)
+        self.assertIn("onPageActiveChanged:", source)
+        self.assertIn("if (root.pageActive) root.refreshIncrementally()", source)
         self.assertIn(
             "root.pageSize, root.loadedCount, root.includeAllRefs", source
         )
@@ -63,7 +72,8 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn(
             'requestSearch(query, "all", root.includeAllRefs)', source
         )
-        self.assertIn('root.includeAllRefs ? " · 全部分支" : " · 当前分支"', source)
+        self.assertIn('? " · 全部分支"', source)
+        self.assertIn('root.currentBranch || "正在读取…"', source)
 
     def test_history_search_uses_progressive_results_and_cancellation(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(

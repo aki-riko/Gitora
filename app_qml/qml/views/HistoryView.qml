@@ -18,6 +18,10 @@ Item {
     property int refreshCount: 0
     property bool searchMode: false
     property bool includeAllRefs: false
+    property string currentBranch: ""
+    property bool initialized: false
+    readonly property bool pageActive: root.visible
+        && (!root.parent || root.parent.visible)
     property var selectedCommit: null
     property string pendingJumpHash: ""
     property var cherryPickBranches: []
@@ -32,6 +36,7 @@ Item {
     // ==================== 数据加载 ====================
     function resetAndLoad() {
         if (GitBridge) GitBridge.cancelSearch()
+        requestCurrentBranch()
         root.allCommits = []
         root.loadedCount = 0
         root.hasMore = true
@@ -46,8 +51,17 @@ Item {
     }
 
     function resetForRepoChange() {
+        root.currentBranch = ""
         searchInput.text = ""
         resetAndLoad()
+    }
+
+    function requestCurrentBranch() {
+        if (!GitBridge || !GitBridge.repoPath) {
+            root.currentBranch = ""
+            return
+        }
+        GitBridge.requestCurrentBranch()
     }
 
     function loadMore() {
@@ -64,6 +78,7 @@ Item {
     // 只有新数据返回后才替换数组,避免异步请求期间整个页面先变空。
     function refreshIncrementally() {
         if (!GitBridge || !GitBridge.repoPath) return
+        requestCurrentBranch()
         if (root.searchMode) {
             if (searchInput.text === "") { resetAndLoad(); return }
             root.refreshing = true
@@ -208,8 +223,9 @@ Item {
             root.resetForRepoChange()
         }
         function onBranchReady(repoPath, branch) {
-            if (!GitBridge || root.cherryPickRequestRepoPath !== repoPath
-                    || repoPath !== GitBridge.repoPath) return
+            if (!GitBridge || repoPath !== GitBridge.repoPath) return
+            root.currentBranch = branch
+            if (root.cherryPickRequestRepoPath !== repoPath) return
             root.cherryPickCurrentBranch = branch
             var targetIndex = root.cherryPickBranches.indexOf(branch)
             if (targetIndex >= 0)
@@ -269,7 +285,17 @@ Item {
         resetDanger.start()
     }
 
-    Component.onCompleted: root.resetAndLoad()
+    onPageActiveChanged: {
+        if (!root.pageActive || !root.initialized) return
+        Qt.callLater(function() {
+            if (root.pageActive) root.refreshIncrementally()
+        })
+    }
+
+    Component.onCompleted: {
+        root.initialized = true
+        root.resetAndLoad()
+    }
 
     CommitTimelineModel {
         id: historyTimelineModel
@@ -306,13 +332,19 @@ Item {
                     subtitle: (root.searchMode
                         ? root.allCommits.length + " 条搜索结果"
                         : root.allCommits.length + " 条提交")
-                        + (root.includeAllRefs ? " · 全部分支" : " · 当前分支")
+                        + (root.includeAllRefs
+                            ? " · 全部分支"
+                            : " · 当前分支: "
+                                + (root.currentBranch || "正在读取…"))
                         + (root.searchDeepening ? " · 后台补全中" : "")
                     Fluent.ComboBox {
                         id: historyScopeCombo
                         objectName: "historyScopeCombo"
-                        width: 112
-                        model: ["当前分支", "全部分支"]
+                        width: 176
+                        model: [
+                            "当前分支 · " + (root.currentBranch || "正在读取…"),
+                            "全部分支"
+                        ]
                         currentIndex: root.includeAllRefs ? 1 : 0
                         onActivated: function(scopeIndex) {
                             root.setHistoryScope(scopeIndex)

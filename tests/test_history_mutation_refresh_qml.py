@@ -8,7 +8,7 @@ import sys
 import tempfile
 from pathlib import Path
 
-from tests.git_test_utils import build_branched_repo
+from tests.git_test_utils import build_branched_repo, run_git
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -52,11 +52,14 @@ def test_real_branch_switch_refreshes_history_without_split_recursion() -> None:
         diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
         assert result.returncode == 0, diagnostic
         assert PROBE_MARKER in result.stdout, diagnostic
-        assert "counts=4,2,4 stack_overflows=0" in result.stdout, diagnostic
+        assert (
+            "counts=4,2,4 branches=master,side,master stack_overflows=0"
+            in result.stdout
+        ), diagnostic
 
 
 def _run_probe(repo: Path) -> int:
-    from PySide6.QtCore import qInstallMessageHandler
+    from PySide6.QtCore import QObject, qInstallMessageHandler
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
     from prismqml import register_types
@@ -82,38 +85,46 @@ def _run_probe(repo: Path) -> int:
 
     component, root = _create_scene(engine)
 
-    def wait_for_count(count: int) -> None:
+    def wait_for_state(count: int, branch: str) -> None:
         if not _wait_until(
             lambda: not root.property("probeLoading")
             and root.property("probeCommitCount") == count
+            and root.property("probeCurrentBranch") == branch
         ):
             raise AssertionError(
                 {
                     "expected_count": count,
                     "actual_count": root.property("probeCommitCount"),
+                    "expected_branch": branch,
+                    "actual_branch": root.property("probeCurrentBranch"),
                     "loading": root.property("probeLoading"),
                 }
             )
 
-    def checkout(branch: str) -> None:
-        finished: list[bool] = []
-        results: list[object] = []
-        task = bridge.checkoutBranch(branch)
-        task.succeeded.connect(results.append)
-        task.finished.connect(lambda: finished.append(True))
-        if not _wait_until(lambda: bool(finished)):
-            raise AssertionError(f"checkout {branch} did not finish")
-        if not results or not results[-1][0]:
-            raise AssertionError({"branch": branch, "results": results})
+    history_view = root.findChild(QObject, "historyScopeView")
+    if history_view is None:
+        raise AssertionError("missing history view")
+    page_host = root.findChild(QObject, "historyScopePageHost")
+    if page_host is None:
+        raise AssertionError("missing history page host")
 
-    wait_for_count(4)
+    wait_for_state(4, "master")
     initial_count = int(root.property("probeCommitCount"))
-    checkout("side")
-    wait_for_count(2)
+    initial_branch = str(root.property("probeCurrentBranch"))
+
+    page_host.setProperty("visible", False)
+    run_git(repo, "checkout", "side")
+    page_host.setProperty("visible", True)
+    wait_for_state(2, "side")
     side_count = int(root.property("probeCommitCount"))
-    checkout("master")
-    wait_for_count(4)
+    side_branch = str(root.property("probeCurrentBranch"))
+
+    page_host.setProperty("visible", False)
+    run_git(repo, "checkout", "master")
+    page_host.setProperty("visible", True)
+    wait_for_state(4, "master")
     restored_count = int(root.property("probeCommitCount"))
+    restored_branch = str(root.property("probeCurrentBranch"))
 
     root.setWidth(650)
     app.processEvents()
@@ -122,6 +133,7 @@ def _run_probe(repo: Path) -> int:
 
     print(
         f"{PROBE_MARKER} counts={initial_count},{side_count},{restored_count} "
+        f"branches={initial_branch},{side_branch},{restored_branch} "
         f"stack_overflows={len(stack_overflows)}"
     )
     root.close()

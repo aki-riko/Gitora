@@ -31,15 +31,22 @@ Window {
     readonly property int probeCommitCount: historyView.allCommits.length
     readonly property bool probeLoading: historyView.loading
     readonly property bool probeIncludeAllRefs: historyView.includeAllRefs
+    readonly property string probeCurrentBranch: historyView.currentBranch
 
     function showAllRefs() {
         historyView.setHistoryScope(1)
     }
 
-    HistoryView {
-        id: historyView
-        objectName: "historyScopeView"
+    Item {
+        id: pageHost
+        objectName: "historyScopePageHost"
         anchors.fill: parent
+
+        HistoryView {
+            id: historyView
+            objectName: "historyScopeView"
+            anchors.fill: parent
+        }
     }
 }
 """
