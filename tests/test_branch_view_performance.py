@@ -34,29 +34,33 @@ Window {
 """
 
 
-def test_branch_lists_are_virtualized_and_reuse_delegates() -> None:
+def test_branch_page_uses_one_virtualized_list_without_nesting() -> None:
     source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
         encoding="utf-8"
     )
 
-    assert source.count("type: Fluent.Enums.scroll.type_list") == 2
-    assert source.count("reuseItems: true") == 2
-    assert source.count("listCacheBuffer: root.branchItemHeight * 6") == 2
-    assert source.count("model: localModel") == 1
-    assert source.count("model: remoteModel") == 1
+    assert source.count("Fluent.ScrollArea {") == 1
+    assert source.count("type: Fluent.Enums.scroll.type_list") == 1
+    assert source.count("reuseItems: true") == 1
+    assert source.count("listCacheBuffer: root.branchItemHeight * 6") == 1
+    assert source.count("model: root.branchRows") == 1
     assert "Repeater {" not in source
-    assert "branchListMaxItems: 10" in source
+    assert "ListModel {" not in source
+    assert 'objectName: "branchList"' in source
+    assert 'objectName: "localBranchList"' not in source
+    assert 'objectName: "remoteBranchList"' not in source
 
 
-def test_branch_list_height_caps_each_viewport() -> None:
+def test_branch_sections_share_the_same_model_reset() -> None:
     source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
         encoding="utf-8"
     )
 
-    assert "return Math.min(" in source
-    assert "root.branchListMaxHeight)" in source
-    assert "height: root.branchListHeight(localModel.count)" in source
-    assert "height: root.branchListHeight(remoteModel.count)" in source
+    assert 'root._sectionRow("本地分支")' in source
+    assert 'root._sectionRow("远程分支")' in source
+    assert "root.branchRows = rows" in source
+    assert "rows = rows.concat(localRows)" in source
+    assert "rows = rows.concat([root._sectionRow" in source
 
 
 def test_real_large_branch_set_keeps_qml_delegates_bounded() -> None:
@@ -141,11 +145,20 @@ def _run_probe(repo: Path) -> int:
     if root is None:
         raise AssertionError(errors)
 
-    local_list = root.findChild(QObject, "localBranchList")
-    if local_list is None:
-        raise AssertionError("missing local branch virtual list")
-    if not _wait_until(lambda: local_list.property("count") == 121):
-        raise AssertionError(f"branch count={local_list.property('count')}")
+    branch_view = root.findChild(QObject, "branchView")
+    branch_list = root.findChild(QObject, "branchList")
+    if branch_view is None or branch_list is None:
+        raise AssertionError("missing branch view or virtual list")
+    if not _wait_until(
+        lambda: branch_view.property("branchCount") == 121
+        and branch_list.property("count") == 122
+    ):
+        raise AssertionError(
+            {
+                "branch_count": branch_view.property("branchCount"),
+                "row_count": branch_list.property("count"),
+            }
+        )
 
     def visual_items(item):
         yield item
@@ -160,7 +173,10 @@ def _run_probe(repo: Path) -> int:
     if rendered <= 0 or rendered >= 40:
         raise AssertionError(f"unexpected rendered delegate count={rendered}")
 
-    print(f"{PROBE_MARKER} branches={local_list.property('count')} rendered={rendered}")
+    print(
+        f"{PROBE_MARKER} branches={branch_view.property('branchCount')} "
+        f"rows={branch_list.property('count')} rendered={rendered}"
+    )
     root.close()
     root.deleteLater()
     component.deleteLater()

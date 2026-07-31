@@ -20,6 +20,7 @@ class ScrollAreaUsageTest(unittest.TestCase):
 
     def test_virtualized_lists_use_list_mode(self) -> None:
         expected_counts = {
+            "views/BranchView.qml": 1,
             "views/TagView.qml": 1,
             "views/RepoView.qml": 2,
             "components/CleanDialog.qml": 1,

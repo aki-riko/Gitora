@@ -31,9 +31,9 @@ def _probe_environment() -> dict[str, str]:
 
 
 def test_branch_actions_use_builtin_button_menus() -> None:
-    source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
-        encoding="utf-8"
-    )
+    source = (
+        ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
+    ).read_text(encoding="utf-8")
 
     assert "Fluent.MenuCore" not in source
     assert "menuItems:" in source
@@ -42,19 +42,15 @@ def test_branch_actions_use_builtin_button_menus() -> None:
 
 
 def test_branch_cards_collapse_secondary_actions_into_split_menus() -> None:
-    source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
-        encoding="utf-8"
-    )
-    local_section = source.split("// 本地分支", 1)[1].split("// 远程分支", 1)[0]
-    remote_section = source.split("// 远程分支", 1)[1].split("// 默认从 HEAD", 1)[0]
+    delegate_source = (
+        ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
+    ).read_text(encoding="utf-8")
 
-    assert local_section.count("Fluent.Button {") == 1
-    assert remote_section.count("Fluent.Button {") == 1
-    assert 'objectName: "localBranchActionButton"' in local_section
-    assert 'objectName: "remoteBranchActionButton"' in remote_section
-    assert "Fluent.Enums.button.feature_dropdown" in local_section
-    assert "Fluent.Enums.button.feature_split" in local_section
-    assert remote_section.count("feature: Fluent.Enums.button.feature_split") == 1
+    assert delegate_source.count("Fluent.Button {") == 1
+    assert '"remoteBranchActionButton"' in delegate_source
+    assert '"localBranchActionButton"' in delegate_source
+    assert "Fluent.Enums.button.feature_dropdown" in delegate_source
+    assert "Fluent.Enums.button.feature_split" in delegate_source
 
 
 def _run_delete_confirmation_probe(command: str, marker: str) -> None:

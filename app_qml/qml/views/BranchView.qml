@@ -18,29 +18,60 @@ Item {
     readonly property bool pageActive: root.visible
         && (!root.parent || root.parent.visible)
     property var _remotes: []
+    property var branchRows: []
+    property int branchCount: 0
     readonly property int branchItemHeight:
         Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.l * 2
-    readonly property int branchListMaxItems: 10
-    readonly property int branchListMaxHeight:
-        root.branchItemHeight * root.branchListMaxItems
-        + Fluent.Enums.spacing.m * (root.branchListMaxItems - 1)
-    ListModel { id: localModel }
-    ListModel { id: remoteModel }
 
-    function branchListHeight(count) {
-        if (count <= 0) return 0
-        return Math.min(
-            root.branchItemHeight * count
-                + Fluent.Enums.spacing.m * Math.max(0, count - 1),
-            root.branchListMaxHeight)
+    function _sectionRow(title) {
+        return {
+            "rowType": "section",
+            "sectionTitle": title,
+            "name": "",
+            "isCurrent": false,
+            "isRemote": false,
+            "tracking": "",
+            "ahead": 0,
+            "behind": 0
+        }
+    }
+
+    function _branchRow(branch) {
+        return {
+            "rowType": "branch",
+            "sectionTitle": "",
+            "name": branch.name || "",
+            "isCurrent": !!branch.isCurrent,
+            "isRemote": !!branch.isRemote,
+            "tracking": branch.tracking || "",
+            "ahead": branch.ahead || 0,
+            "behind": branch.behind || 0
+        }
+    }
+
+    function setBranches(list) {
+        var localRows = []
+        var remoteRows = []
+        for (var i = 0; i < list.length; i++) {
+            var row = root._branchRow(list[i])
+            if (row.isRemote) remoteRows.push(row)
+            else localRows.push(row)
+        }
+
+        var rows = [root._sectionRow("本地分支")]
+        rows = rows.concat(localRows)
+        if (remoteRows.length > 0)
+            rows = rows.concat([root._sectionRow("远程分支")], remoteRows)
+        root.branchCount = list.length
+        root.branchRows = rows
     }
 
     function clearModels() {
         root.currentBranch = ""
         root._remotes = []
         root._branchesRequestRepoPath = ""
-        localModel.clear()
-        remoteModel.clear()
+        root.branchCount = 0
+        root.branchRows = []
     }
 
     function reload() {
@@ -93,11 +124,7 @@ Item {
         }
         function onBranchesReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._branchesRequestRepoPath) return
-            localModel.clear(); remoteModel.clear()
-            for (var i = 0; i < list.length; i++) {
-                if (list[i].isRemote) remoteModel.append(list[i])
-                else localModel.append(list[i])
-            }
+            root.setBranches(list || [])
         }
     }
     onPageActiveChanged: {
@@ -112,217 +139,97 @@ Item {
         root.reload()
     }
 
-    Fluent.ScrollArea {
+    ColumnLayout {
         anchors.fill: parent
-        Column {
-            width: parent ? parent.width : 0
-            spacing: Fluent.Enums.spacing.l
-            topPadding: Fluent.Enums.spacing.xl
-            bottomPadding: Fluent.Enums.spacing.xl
-            property real sidePad: Math.max(Fluent.Enums.spacing.xxl, (width - 980) / 2)
-            leftPadding: sidePad
-            rightPadding: sidePad
-            readonly property real cw: width - sidePad * 2
+        anchors.margins: Fluent.Enums.spacing.xl
+        spacing: Fluent.Enums.spacing.l
 
-            // 标题栏
-            RowLayout {
-                width: parent.cw
-                Text {
-                    text: "分支"
-                    font.pixelSize: Fluent.Enums.typography.displayLarge
-                    font.bold: true
-                    color: Fluent.Enums.textColor.primary
-                    font.family: Fluent.Enums.fontFamily
-                }
-                Item { Layout.fillWidth: true }
-                Fluent.Button { text: "刷新全部远程"; icon: Fluent.Enums.icon.arrow_sync; onClicked: GitBridge.fetchAll() }
-                Fluent.Button {
-                    text: "远程"
-                    icon: Fluent.Enums.icon.globe
-                    onClicked: remoteManageDialog.openPanel()
-                }
-                Fluent.Button {
-                    text: "新建分支"
-                    style: Fluent.Enums.button.style_primary
-                    icon: Fluent.Enums.icon.add
-                    onClicked: createBranchDialog.openFor("HEAD", true)
-                }
+        // 标题栏固定在列表之外，页面只有下面一个滚动容器。
+        RowLayout {
+            Layout.fillWidth: true
+            Layout.maximumWidth: 980
+            Layout.alignment: Qt.AlignHCenter
+            Text {
+                text: "分支"
+                font.pixelSize: Fluent.Enums.typography.displayLarge
+                font.bold: true
+                color: Fluent.Enums.textColor.primary
+                font.family: Fluent.Enums.fontFamily
             }
+            Item { Layout.fillWidth: true }
+            Fluent.Button { text: "刷新全部远程"; icon: Fluent.Enums.icon.arrow_sync; onClicked: GitBridge.fetchAll() }
+            Fluent.Button {
+                text: "远程"
+                icon: Fluent.Enums.icon.globe
+                onClicked: remoteManageDialog.openPanel()
+            }
+            Fluent.Button {
+                text: "新建分支"
+                style: Fluent.Enums.button.style_primary
+                icon: Fluent.Enums.icon.add
+                onClicked: createBranchDialog.openFor("HEAD", true)
+            }
+        }
 
-            // 本地分支
-            Fluent.SettingsCardGroup {
-                title: "本地分支"
-                width: parent.cw
-                Fluent.ScrollArea {
-                    id: localBranchList
-                    objectName: "localBranchList"
-                    width: parent ? parent.width : 0
-                    height: root.branchListHeight(localModel.count)
-                    type: Fluent.Enums.scroll.type_list
-                    model: localModel
-                    itemHeight: root.branchItemHeight
-                    listSpacing: Fluent.Enums.spacing.m
-                    listCacheBuffer: root.branchItemHeight * 6
-                    reuseItems: true
-                    bounceEnabled: false
-                    padding: 0
-                    delegate: Fluent.Card {
-                        id: localBranchCard
-                        property string branchName: model.name
-                        property bool isCurrentBranch: model.isCurrent
-                        width: ListView.view ? ListView.view.width : 0
-                        height: root.branchItemHeight
+        // 本地、远程和分组标题共用一个虚拟列表，禁止嵌套滚动容器。
+        Fluent.ScrollArea {
+            id: branchList
+            objectName: "branchList"
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            Layout.maximumWidth: 980
+            Layout.alignment: Qt.AlignHCenter
+            type: Fluent.Enums.scroll.type_list
+            model: root.branchRows
+            itemHeight: root.branchItemHeight
+            listSpacing: Fluent.Enums.spacing.m
+            listCacheBuffer: root.branchItemHeight * 6
+            reuseItems: true
+            bounceEnabled: false
+            selectable: false
+            padding: 0
 
-                        RowLayout {
-                            id: lbRow
-                            anchors.fill: parent
-                            spacing: Fluent.Enums.spacing.m
-                            Fluent.Icon {
-                                icon: Fluent.Enums.icon.branch_fork
-                                iconSize: Fluent.Enums.iconSize.l
-                                color: model.isCurrent ? Fluent.Enums.accentColor : Fluent.Enums.textColor.tertiary
-                            }
-                            ColumnLayout {
-                                Layout.fillWidth: true
-                                spacing: 0
-                                Text {
-                                    text: model.name + (model.isCurrent ? "  (当前)" : "")
-                                    color: Fluent.Enums.textColor.primary
-                                    font.family: Fluent.Enums.fontFamily
-                                    font.pixelSize: Fluent.Enums.typography.body
-                                    font.bold: model.isCurrent
-                                }
-                                Text {
-                                    Layout.fillWidth: true
-                                    text: {
-                                        var parts = []
-                                        if (model.tracking) parts.push("跟踪 " + model.tracking)
-                                        if (model.ahead > 0) parts.push("↑" + model.ahead)
-                                        if (model.behind > 0) parts.push("↓" + model.behind)
-                                        return parts.length > 0 ? parts.join("  ") : "本地分支"
-                                    }
-                                    color: Fluent.Enums.textColor.tertiary
-                                    font.family: Fluent.Enums.fontFamily
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                    elide: Text.ElideRight
-                                }
-                            }
-                            Fluent.Button {
-                                id: localBranchActionButton
-                                property string branchName: localBranchCard.branchName
-                                objectName: "localBranchActionButton"
-                                text: localBranchCard.isCurrentBranch ? "管理" : "切换"
-                                feature: localBranchCard.isCurrentBranch
-                                    ? Fluent.Enums.button.feature_dropdown
-                                    : Fluent.Enums.button.feature_split
-                                menuItems: localBranchCard.isCurrentBranch ? [
-                                    { "text": "设置上游", "icon": Fluent.Enums.icon.branch_fork_link },
-                                    { "text": "重命名", "icon": Fluent.Enums.icon.rename }
-                                ] : [
-                                    { "text": "合并到当前分支", "icon": Fluent.Enums.icon.branch_compare },
-                                    { "text": "Rebase 到此分支", "icon": Fluent.Enums.icon.arrow_sync },
-                                    "-",
-                                    { "text": "设置上游", "icon": Fluent.Enums.icon.branch_fork_link },
-                                    { "text": "重命名", "icon": Fluent.Enums.icon.rename },
-                                    "-",
-                                    { "text": "删除分支", "icon": Fluent.Enums.icon.dismiss_circle },
-                                    { "text": "强制删除", "icon": Fluent.Enums.icon.warning }
-                                ]
-                                onClicked: {
-                                    if (!localBranchCard.isCurrentBranch)
-                                        root._op(GitBridge.checkoutBranch(localBranchCard.branchName))
-                                }
-                                onMenuItemClicked: function(index, actionText) {
-                                    if (actionText === "合并到当前分支") {
-                                        root._mergeTarget = localBranchCard.branchName
-                                        mergeConfirm.open()
-                                    } else if (actionText === "Rebase 到此分支") {
-                                        root._rebaseTarget = localBranchCard.branchName
-                                        rebaseDanger.start()
-                                    } else if (actionText === "设置上游") {
-                                        upstreamDialog._branch = localBranchCard.branchName
-                                        upstreamRemoteInput.text = root._defaultRemoteName()
-                                        upstreamBranchInput.text = localBranchCard.branchName
-                                        upstreamDialog.open()
-                                    } else if (actionText === "重命名") {
-                                        renameBranchDialog._oldBranch = localBranchCard.branchName
-                                        renameBranchInput.text = localBranchCard.branchName
-                                        renameBranchDialog.open()
-                                    } else if (actionText === "删除分支") {
-                                        deleteBranchConfirm._branch = localBranchCard.branchName
-                                        deleteBranchConfirm.open()
-                                    } else if (actionText === "强制删除") {
-                                        forceDeleteBranchDanger._branch = localBranchCard.branchName
-                                        forceDeleteBranchDanger.start()
-                                    }
-                                }
-                            }
-                        }
+            delegate: BranchRowDelegate {
+                required property var modelData
+                rowData: modelData
+                width: ListView.view ? ListView.view.width : 0
+                itemHeight: root.branchItemHeight
+                onPrimaryRequested: function(branchName, isRemote, isCurrent) {
+                    if (isRemote) {
+                        root._remoteCheckoutTarget = branchName
+                        remoteCheckoutLocalInput.text = root._localNameForRemote(branchName)
+                        remoteCheckoutDialog.open()
+                    } else if (!isCurrent) {
+                        root._op(GitBridge.checkoutBranch(branchName))
                     }
                 }
-            }
-
-            // 远程分支
-            Fluent.SettingsCardGroup {
-                title: "远程分支"
-                width: parent.cw
-                visible: remoteModel.count > 0
-                Fluent.ScrollArea {
-                    id: remoteBranchList
-                    objectName: "remoteBranchList"
-                    width: parent ? parent.width : 0
-                    height: root.branchListHeight(remoteModel.count)
-                    type: Fluent.Enums.scroll.type_list
-                    model: remoteModel
-                    itemHeight: root.branchItemHeight
-                    listSpacing: Fluent.Enums.spacing.m
-                    listCacheBuffer: root.branchItemHeight * 6
-                    reuseItems: true
-                    bounceEnabled: false
-                    padding: 0
-                    delegate: Fluent.Card {
-                        id: remoteBranchCard
-                        property string branchName: model.name
-                        width: ListView.view ? ListView.view.width : 0
-                        height: root.branchItemHeight
-
-                        RowLayout {
-                            id: rbRow
-                            anchors.fill: parent
-                            spacing: Fluent.Enums.spacing.m
-                            Fluent.Icon {
-                                icon: Fluent.Enums.icon.branch_fork
-                                iconSize: Fluent.Enums.iconSize.l
-                                color: Fluent.Enums.textColor.tertiary
-                            }
-                            Text {
-                                Layout.fillWidth: true
-                                text: model.name
-                                color: Fluent.Enums.textColor.primary
-                                font.family: Fluent.Enums.fontFamily
-                                font.pixelSize: Fluent.Enums.typography.body
-                            }
-                            Fluent.Button {
-                                property string branchName: remoteBranchCard.branchName
-                                objectName: "remoteBranchActionButton"
-                                text: "获取并检出"
-                                feature: Fluent.Enums.button.feature_split
-                                menuItems: [
-                                    { "text": "删除远程分支", "icon": Fluent.Enums.icon.warning }
-                                ]
-                                onClicked: {
-                                    root._remoteCheckoutTarget = remoteBranchCard.branchName
-                                    remoteCheckoutLocalInput.text = root._localNameForRemote(remoteBranchCard.branchName)
-                                    remoteCheckoutDialog.open()
-                                }
-                                onMenuItemClicked: function(index, actionText) {
-                                    if (actionText === "删除远程分支") {
-                                        root._remoteDeleteTarget = remoteBranchCard.branchName
-                                        deleteRemoteBranchDanger.start()
-                                    }
-                                }
-                            }
+                onMenuRequested: function(actionText, branchName, isRemote) {
+                    if (isRemote) {
+                        if (actionText === "删除远程分支") {
+                            root._remoteDeleteTarget = branchName
+                            deleteRemoteBranchDanger.start()
                         }
+                    } else if (actionText === "合并到当前分支") {
+                        root._mergeTarget = branchName
+                        mergeConfirm.open()
+                    } else if (actionText === "Rebase 到此分支") {
+                        root._rebaseTarget = branchName
+                        rebaseDanger.start()
+                    } else if (actionText === "设置上游") {
+                        upstreamDialog._branch = branchName
+                        upstreamRemoteInput.text = root._defaultRemoteName()
+                        upstreamBranchInput.text = branchName
+                        upstreamDialog.open()
+                    } else if (actionText === "重命名") {
+                        renameBranchDialog._oldBranch = branchName
+                        renameBranchInput.text = branchName
+                        renameBranchDialog.open()
+                    } else if (actionText === "删除分支") {
+                        deleteBranchConfirm._branch = branchName
+                        deleteBranchConfirm.open()
+                    } else if (actionText === "强制删除") {
+                        forceDeleteBranchDanger._branch = branchName
+                        forceDeleteBranchDanger.start()
                     }
                 }
             }
