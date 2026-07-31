@@ -18,8 +18,22 @@ Item {
     readonly property bool pageActive: root.visible
         && (!root.parent || root.parent.visible)
     property var _remotes: []
+    readonly property int branchItemHeight:
+        Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.l * 2
+    readonly property int branchListMaxItems: 10
+    readonly property int branchListMaxHeight:
+        root.branchItemHeight * root.branchListMaxItems
+        + Fluent.Enums.spacing.m * (root.branchListMaxItems - 1)
     ListModel { id: localModel }
     ListModel { id: remoteModel }
+
+    function branchListHeight(count) {
+        if (count <= 0) return 0
+        return Math.min(
+            root.branchItemHeight * count
+                + Fluent.Enums.spacing.m * Math.max(0, count - 1),
+            root.branchListMaxHeight)
+    }
 
     function clearModels() {
         root.currentBranch = ""
@@ -139,14 +153,26 @@ Item {
             Fluent.SettingsCardGroup {
                 title: "本地分支"
                 width: parent.cw
-                Repeater {
+                Fluent.ScrollArea {
+                    id: localBranchList
+                    objectName: "localBranchList"
+                    width: parent ? parent.width : 0
+                    height: root.branchListHeight(localModel.count)
+                    type: Fluent.Enums.scroll.type_list
                     model: localModel
+                    itemHeight: root.branchItemHeight
+                    listSpacing: Fluent.Enums.spacing.m
+                    listCacheBuffer: root.branchItemHeight * 6
+                    reuseItems: true
+                    bounceEnabled: false
+                    padding: 0
                     delegate: Fluent.Card {
                         id: localBranchCard
                         property string branchName: model.name
                         property bool isCurrentBranch: model.isCurrent
-                        width: parent ? parent.width : 0
-                        height: lbRow.implicitHeight + Fluent.Enums.spacing.l * 2
+                        width: ListView.view ? ListView.view.width : 0
+                        height: root.branchItemHeight
+
                         RowLayout {
                             id: lbRow
                             anchors.fill: parent
@@ -241,13 +267,25 @@ Item {
                 title: "远程分支"
                 width: parent.cw
                 visible: remoteModel.count > 0
-                Repeater {
+                Fluent.ScrollArea {
+                    id: remoteBranchList
+                    objectName: "remoteBranchList"
+                    width: parent ? parent.width : 0
+                    height: root.branchListHeight(remoteModel.count)
+                    type: Fluent.Enums.scroll.type_list
                     model: remoteModel
+                    itemHeight: root.branchItemHeight
+                    listSpacing: Fluent.Enums.spacing.m
+                    listCacheBuffer: root.branchItemHeight * 6
+                    reuseItems: true
+                    bounceEnabled: false
+                    padding: 0
                     delegate: Fluent.Card {
                         id: remoteBranchCard
                         property string branchName: model.name
-                        width: parent ? parent.width : 0
-                        height: rbRow.implicitHeight + Fluent.Enums.spacing.l * 2
+                        width: ListView.view ? ListView.view.width : 0
+                        height: root.branchItemHeight
+
                         RowLayout {
                             id: rbRow
                             anchors.fill: parent
