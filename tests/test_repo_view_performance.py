@@ -129,6 +129,22 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertNotIn("GitBridge.getWorktrees()", source)
         self.assertNotIn("GitBridge.getSubmodules()", source)
 
+    def test_advanced_view_worktree_cleanup_uses_dropdown_and_preview_dialog(self) -> None:
+        source = Path("app_qml/qml/views/AdvancedView.qml").read_text(encoding="utf-8")
+        dialog = Path(
+            "app_qml/qml/components/WorktreeCleanupDialog.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("feature: Fluent.Enums.button.feature_dropdown", source)
+        self.assertIn('menuItems: ["清理失效记录", "清理游离工作树"]', source)
+        self.assertIn("worktreeCleanupDialog.openPreview()", source)
+        self.assertIn("WorktreeCleanupDialog {", source)
+        self.assertNotIn('text: "清理失效项"', source)
+        self.assertIn("GitBridge.previewDetachedWorktreeCleanup()", dialog)
+        self.assertIn("GitBridge.removeDetachedWorktrees(paths)", dialog)
+        self.assertIn("Fluent.ScrollArea", dialog)
+        self.assertIn("预览后新增的改动仍会被跳过", dialog)
+
 
 if __name__ == "__main__":
     unittest.main()

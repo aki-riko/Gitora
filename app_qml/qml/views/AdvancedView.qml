@@ -212,9 +212,15 @@ Item {
                                 onClicked: root._op(GitBridge.addWorktree(worktreePathInput.text, worktreeBranchInput.text, worktreeCreateBranchCheck.checked))
                             }
                             Fluent.Button {
-                                text: "清理失效项"
+                                text: "清理"
                                 style: Fluent.Enums.button.style_transparent
-                                onClicked: root._op(GitBridge.pruneWorktrees())
+                                feature: Fluent.Enums.button.feature_dropdown
+                                toolTipText: "清理失效记录或批量清理游离工作树"
+                                menuItems: ["清理失效记录", "清理游离工作树"]
+                                onMenuItemClicked: function(index, text) {
+                                    if (index === 0) root._op(GitBridge.pruneWorktrees())
+                                    else if (index === 1) worktreeCleanupDialog.openPreview()
+                                }
                             }
                         }
                     }
@@ -489,4 +495,6 @@ Item {
             root._pendingWorktreeRemove = ""
         }
     }
+
+    WorktreeCleanupDialog { id: worktreeCleanupDialog }
 }

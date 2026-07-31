@@ -116,6 +116,8 @@ class WorktreeInfo:
     bare: bool = False
     prunable: bool = False
     prunable_reason: str = ""
+    locked: bool = False
+    locked_reason: str = ""
 
 
 @dataclass
@@ -2964,6 +2966,8 @@ class GitService(QObject):
                 bare=bool(current.get("bare", False)),
                 prunable=bool(current.get("prunable", False)),
                 prunable_reason=str(current.get("prunable_reason", "")),
+                locked=bool(current.get("locked", False)),
+                locked_reason=str(current.get("locked_reason", "")),
             ))
             current.clear()
 
@@ -2985,6 +2989,9 @@ class GitService(QObject):
             elif line.startswith("prunable"):
                 current["prunable"] = True
                 current["prunable_reason"] = line[len("prunable"):].strip()
+            elif line.startswith("locked"):
+                current["locked"] = True
+                current["locked_reason"] = line[len("locked"):].strip()
         flush()
         return items
 
@@ -3034,6 +3041,106 @@ class GitService(QObject):
             self.statusChanged.emit()
             return True, "已清理失效 worktree 记录"
         return False, self._friendly_git_error(stderr, "清理 worktree 失败")
+
+    @staticmethod
+    def _worktree_path_key(path: str) -> str:
+        return os.path.normcase(os.path.abspath(path))
+
+    def _worktree_cleanup_readiness(
+        self, worktree: WorktreeInfo
+    ) -> tuple[str, str]:
+        """返回 (ready/skip/error, reason)，不改变工作树。"""
+        if worktree.prunable or not os.path.isdir(worktree.path):
+            return "skip", "目录不存在，请先清理失效记录"
+        if worktree.locked:
+            return "skip", "工作树已锁定"
+        success, stdout, stderr = self._run_git_sync_at(
+            worktree.path,
+            ['status', '--porcelain=v1', '-z', '--untracked-files=normal'],
+            timeout=60,
+        )
+        if not success:
+            return "error", self._friendly_git_error(stderr, "读取工作树状态失败")
+        if stdout:
+            return "skip", "存在未提交修改或未跟踪文件"
+        return "ready", ""
+
+    def preview_detached_worktree_cleanup_at(
+        self, repo_path: str
+    ) -> tuple[bool, list[str], list[tuple[str, str]], str]:
+        """预览可安全移除的 detached linked worktree。"""
+        worktrees = self.list_worktrees_at(repo_path)
+        if not worktrees:
+            return False, [], [], "无法读取当前仓库的 worktree 列表"
+        removable: list[str] = []
+        skipped: list[tuple[str, str]] = []
+        for worktree in worktrees[1:]:
+            if not worktree.detached:
+                continue
+            state, reason = self._worktree_cleanup_readiness(worktree)
+            if state == "ready":
+                removable.append(worktree.path)
+            else:
+                skipped.append((worktree.path, reason))
+        return True, removable, skipped, ""
+
+    def _remove_detached_worktree_candidate(
+        self, repo_path: str, worktree: WorktreeInfo
+    ) -> tuple[str, str]:
+        state, reason = self._worktree_cleanup_readiness(worktree)
+        if state != "ready":
+            return state, reason
+        success, _, stderr = self._run_git_sync_at(
+            repo_path,
+            ['worktree', 'remove', worktree.path],
+            timeout=120,
+        )
+        if success:
+            return "removed", ""
+        return "error", self._friendly_git_error(stderr, "移除工作树失败")
+
+    def remove_detached_worktrees_at(
+        self, repo_path: str, requested_paths: list[str]
+    ) -> tuple[bool, str]:
+        """重新核验并移除指定的干净 detached linked worktree。"""
+        worktrees = self.list_worktrees_at(repo_path)
+        if not worktrees:
+            return False, "无法读取当前仓库的 worktree 列表"
+        candidates = {
+            self._worktree_path_key(worktree.path): worktree
+            for worktree in worktrees[1:]
+            if worktree.detached
+        }
+        removed = 0
+        skipped: list[str] = []
+        failures: list[str] = []
+        seen: set[str] = set()
+        for path in requested_paths:
+            key = self._worktree_path_key(str(path))
+            if key in seen:
+                continue
+            seen.add(key)
+            worktree = candidates.get(key)
+            if worktree is None:
+                skipped.append(f"{path}: 已不是可清理的游离工作树")
+                continue
+            state, reason = self._remove_detached_worktree_candidate(repo_path, worktree)
+            if state == "removed":
+                removed += 1
+            elif state == "skip":
+                skipped.append(f"{worktree.path}: {reason}")
+            else:
+                failures.append(f"{worktree.path}: {reason}")
+                logger.warning("批量移除游离工作树失败 %s: %s", worktree.path, reason)
+
+        if removed:
+            self.statusChanged.emit()
+        details = [f"已移除 {removed} 个游离工作树"]
+        if skipped:
+            details.append(f"跳过 {len(skipped)} 个有改动、锁定或已失效项")
+        if failures:
+            details.append(f"{len(failures)} 个移除失败")
+        return not failures, "；".join(details)
 
     def list_submodules(self) -> list[SubmoduleInfo]:
         """列出 submodule 状态。"""

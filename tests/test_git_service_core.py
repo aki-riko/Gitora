@@ -800,6 +800,74 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertFalse(worktree_path.exists())
 
+    def test_detached_worktree_cleanup_previews_and_rechecks_dirty_paths(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        clean_path = self.root / "repo-clean-detached"
+        dirty_path = self.root / "repo-dirty-detached"
+        attached_path = self.root / "repo-attached"
+        run_git(repo, "worktree", "add", "--detach", str(clean_path), "HEAD")
+        run_git(repo, "worktree", "add", "--detach", str(dirty_path), "HEAD")
+        run_git(repo, "worktree", "add", "-b", "topic", str(attached_path))
+        write_file(dirty_path, "untracked.txt", "keep\n")
+        service = self.service_for(repo)
+
+        ok, removable, skipped, message = service.preview_detached_worktree_cleanup_at(str(repo))
+        self.assertTrue(ok, message)
+        clean_path_text = str(clean_path).replace("\\", "/")
+        dirty_path_text = str(dirty_path).replace("\\", "/")
+        self.assertEqual([(path, reason) for path, reason in skipped], [
+            (dirty_path_text, "存在未提交修改或未跟踪文件"),
+        ])
+        self.assertEqual(removable, [clean_path_text])
+
+        write_file(clean_path, "changed-after-preview.txt", "keep\n")
+        ok, message = service.remove_detached_worktrees_at(
+            str(repo), [str(clean_path), str(dirty_path), str(attached_path)]
+        )
+        self.assertTrue(ok, message)
+        self.assertTrue(clean_path.exists())
+        self.assertTrue(dirty_path.exists())
+        self.assertTrue(attached_path.exists())
+        self.assertIn("已移除 0 个游离工作树", message)
+        self.assertIn("跳过 3 个", message)
+
+        (clean_path / "changed-after-preview.txt").unlink()
+        (dirty_path / "untracked.txt").unlink()
+        ok, message = service.remove_detached_worktrees_at(
+            str(repo), [str(clean_path), str(dirty_path)]
+        )
+        self.assertTrue(ok, message)
+        self.assertFalse(clean_path.exists())
+        self.assertFalse(dirty_path.exists())
+        self.assertTrue(attached_path.exists())
+
+    def test_detached_worktree_cleanup_skips_locked_paths(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        locked_path = self.root / "repo-locked-detached"
+        run_git(repo, "worktree", "add", "--detach", str(locked_path), "HEAD")
+        run_git(repo, "worktree", "lock", "--reason", "保留", str(locked_path))
+        service = self.service_for(repo)
+
+        worktrees = service.list_worktrees_at(str(repo))
+        locked = next(worktree for worktree in worktrees if worktree.detached)
+        self.assertTrue(locked.locked)
+        self.assertEqual(locked.locked_reason, "保留")
+        ok, removable, skipped, message = service.preview_detached_worktree_cleanup_at(str(repo))
+        self.assertTrue(ok, message)
+        self.assertEqual(removable, [])
+        self.assertEqual(skipped[0][1], "工作树已锁定")
+
+        ok, message = service.remove_detached_worktrees_at(
+            str(repo), [str(locked_path)]
+        )
+        self.assertTrue(ok, message)
+        self.assertTrue(locked_path.exists())
+        self.assertIn("跳过 1 个", message)
+
     def test_submodule_update_and_sync_use_real_repo(self) -> None:
         sub = init_repo(self.root / "sub")
         write_file(sub, "sub.txt", "sub\n")

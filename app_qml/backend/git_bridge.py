@@ -124,6 +124,8 @@ def _worktree_to_dict(w: WorktreeInfo) -> dict:
         "bare": w.bare,
         "prunable": w.prunable,
         "prunableReason": w.prunable_reason,
+        "locked": w.locked,
+        "lockedReason": w.locked_reason,
     }
 
 
@@ -547,6 +549,38 @@ class GitBridge(QObject):
     def pruneWorktrees(self):
         return self._submit_operation(
             "正在清理失效工作树...", self._svc.prune_worktrees
+        )
+
+    @Slot(result=QObject)
+    def previewDetachedWorktreeCleanup(self):
+        repo_path = self._svc.repo_path or ""
+
+        def query():
+            ok, removable, skipped, message = (
+                self._svc.preview_detached_worktree_cleanup_at(repo_path)
+            )
+            return {
+                "ok": ok,
+                "message": message,
+                "repoPath": repo_path,
+                "removable": removable,
+                "skipped": [
+                    {"path": path, "reason": reason}
+                    for path, reason in skipped
+                ],
+            }
+
+        return self._submit_query(query, label="预览游离工作树清理")
+
+    @Slot("QVariantList", result=QObject)
+    def removeDetachedWorktrees(self, paths: list):
+        repo_path = self._svc.repo_path or ""
+        requested_paths = [str(path) for path in (paths or [])]
+        return self._submit_operation(
+            "正在清理游离工作树...",
+            lambda: self._svc.remove_detached_worktrees_at(
+                repo_path, requested_paths
+            ),
         )
 
     def getSubmodules(self) -> list:

@@ -609,6 +609,51 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_worktree_cleanup_preview_and_remove_capture_repository_snapshot(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo-a"
+        preview_calls: list[str] = []
+        remove_calls: list[tuple[str, list[str]]] = []
+
+        def fake_preview(repo_path: str):
+            preview_calls.append(repo_path)
+            return True, ["clean"], [("dirty", "有改动")], ""
+
+        def fake_remove(repo_path: str, paths: list[str]):
+            remove_calls.append((repo_path, paths))
+            return True, "removed"
+
+        bridge._svc.preview_detached_worktree_cleanup_at = fake_preview  # type: ignore[method-assign]
+        bridge._svc.remove_detached_worktrees_at = fake_remove  # type: ignore[method-assign]
+        preview_results: list[dict] = []
+        remove_results: list[tuple[bool, str]] = []
+        bridge.operationFinished.connect(
+            lambda ok, message: remove_results.append((ok, message))
+        )
+
+        try:
+            preview_task = bridge.previewDetachedWorktreeCleanup()
+            preview_task.succeeded.connect(preview_results.append)
+            self.assertTrue(
+                self._wait_until(app, lambda: len(preview_results) == 1)
+            )
+            self.assertEqual(preview_calls, ["repo-a"])
+            self.assertEqual(preview_results[0]["removable"], ["clean"])
+            self.assertEqual(preview_results[0]["skipped"][0]["reason"], "有改动")
+
+            remove_task = bridge.removeDetachedWorktrees(["clean", "dirty"])
+            remove_task.succeeded.connect(lambda result: None)
+            self.assertTrue(
+                self._wait_until(app, lambda: len(remove_results) == 1)
+            )
+            self.assertEqual(remove_calls, [("repo-a", ["clean", "dirty"])])
+            self.assertEqual(remove_results, [(True, "removed")])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     @staticmethod
     def _wait_until(app: QCoreApplication, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout
