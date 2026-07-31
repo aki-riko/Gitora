@@ -175,10 +175,13 @@ class RemoteBranchDeletionTest(unittest.TestCase):
         delegate_source = (
             ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
         ).read_text(encoding="utf-8")
+        menu_source = (
+            ROOT / "app_qml" / "qml" / "components" / "BranchActionsMenu.qml"
+        ).read_text(encoding="utf-8")
 
-        self.assertIn('{ "text": "删除远程分支"', delegate_source)
-        self.assertIn("onMenuItemClicked:", delegate_source)
-        self.assertIn('"remoteBranchActionButton"', delegate_source)
+        self.assertIn('text: "删除远程分支"', menu_source)
+        self.assertNotIn("onMenuItemClicked:", delegate_source)
+        self.assertIn('objectName: "branchMoreButton"', delegate_source)
         self.assertIn('onMenuRequested:', view_source)
         self.assertIn('id: deleteRemoteBranchDanger', view_source)
         self.assertIn('title: "确认删除远程分支"', view_source)

@@ -42,13 +42,36 @@ def test_branch_page_uses_one_virtualized_list_without_nesting() -> None:
     assert source.count("Fluent.ScrollArea {") == 1
     assert source.count("type: Fluent.Enums.scroll.type_list") == 1
     assert source.count("reuseItems: true") == 1
-    assert source.count("listCacheBuffer: root.branchItemHeight * 6") == 1
+    assert source.count("listCacheBuffer: root.branchItemHeight * 2") == 1
     assert source.count("model: root.branchRows") == 1
     assert "Repeater {" not in source
     assert "ListModel {" not in source
     assert 'objectName: "branchList"' in source
     assert 'objectName: "localBranchList"' not in source
     assert 'objectName: "remoteBranchList"' not in source
+
+
+def test_branch_rows_lazy_load_lightweight_actions_and_share_one_menu() -> None:
+    delegate_source = (
+        ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
+    ).read_text(encoding="utf-8")
+    menu_source = (
+        ROOT / "app_qml" / "qml" / "components" / "BranchActionsMenu.qml"
+    ).read_text(encoding="utf-8")
+    view_source = (
+        ROOT / "app_qml" / "qml" / "views" / "BranchView.qml"
+    ).read_text(encoding="utf-8")
+
+    assert "HoverHandler {" in delegate_source
+    assert "rowHover.hovered || control.menuPinned" in delegate_source
+    assert delegate_source.count("Fluent.Button {") == 2
+    assert 'objectName: "branchMoreButton"' in delegate_source
+    assert "menuItems:" not in delegate_source
+    assert "feature_split" not in delegate_source
+    assert "feature_dropdown" not in delegate_source
+    assert view_source.count("BranchActionsMenu {") == 1
+    assert menu_source.count("Fluent.MenuCore {") == 1
+    assert "useInWindowPopup: true" in menu_source
 
 
 def test_branch_sections_share_the_same_model_reset() -> None:
@@ -105,7 +128,12 @@ def _build_large_branch_repo(root: Path) -> Path:
     write_file(repo, "root.txt", "root\n")
     commit_all(repo, "initial")
     for index in range(120):
-        run_git(repo, "branch", f"perf-{index:03d}")
+        run_git(
+            repo,
+            "update-ref",
+            f"refs/remotes/origin/perf-{index:03d}",
+            "HEAD",
+        )
     return repo
 
 
@@ -116,7 +144,7 @@ def _run_probe(repo: Path) -> int:
     from prismqml import register_types
 
     from app_qml.backend.git_bridge import GitBridge
-    from tests.test_history_scope_qml import _wait_until
+    from tests.test_history_scope_qml import _pump, _wait_until
 
     app = QApplication([str(Path(__file__))])
     engine = QQmlApplicationEngine()
@@ -135,8 +163,6 @@ def _run_probe(repo: Path) -> int:
     for _ in range(50):
         if component.status() != QQmlComponent.Status.Loading:
             break
-        from tests.test_history_scope_qml import _pump
-
         _pump(20)
     errors = [error.toString() for error in component.errors()]
     if component.status() != QQmlComponent.Status.Ready:
@@ -151,7 +177,7 @@ def _run_probe(repo: Path) -> int:
         raise AssertionError("missing branch view or virtual list")
     if not _wait_until(
         lambda: branch_view.property("branchCount") == 121
-        and branch_list.property("count") == 122
+        and branch_list.property("count") == 123
     ):
         raise AssertionError(
             {
@@ -165,17 +191,36 @@ def _run_probe(repo: Path) -> int:
         for child in item.childItems():
             yield from visual_items(child)
 
+    _pump(750)
+    items = list(visual_items(root.contentItem()))
     rendered = sum(
         1
-        for item in visual_items(root.contentItem())
-        if item.objectName() == "localBranchActionButton"
+        for item in items
+        if item.objectName() == "branchRowDelegate"
     )
     if rendered <= 0 or rendered >= 40:
         raise AssertionError(f"unexpected rendered delegate count={rendered}")
+    action_buttons = sum(
+        1
+        for item in items
+        if item.objectName() in {
+            "localBranchActionButton",
+            "remoteBranchActionButton",
+            "branchMoreButton",
+        }
+    )
+    if action_buttons != 0:
+        raise AssertionError(
+            f"off-hover branch actions were eagerly loaded={action_buttons}"
+        )
+    window_count = len(app.allWindows())
+    if window_count > 3:
+        raise AssertionError(f"too many branch-page windows={window_count}")
 
     print(
         f"{PROBE_MARKER} branches={branch_view.property('branchCount')} "
-        f"rows={branch_list.property('count')} rendered={rendered}"
+        f"rows={branch_list.property('count')} rendered={rendered} "
+        f"actions={action_buttons} windows={window_count}"
     )
     root.close()
     root.deleteLater()

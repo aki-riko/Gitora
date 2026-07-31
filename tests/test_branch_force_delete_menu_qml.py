@@ -1,5 +1,5 @@
 # coding: utf-8
-"""分支操作的内建分离按钮菜单回归测试。"""
+"""分支操作的共享菜单回归测试。"""
 from __future__ import annotations
 
 import os
@@ -30,27 +30,38 @@ def _probe_environment() -> dict[str, str]:
     return environment
 
 
-def test_branch_actions_use_builtin_button_menus() -> None:
-    source = (
+def test_branch_actions_use_one_shared_menu() -> None:
+    delegate_source = (
         ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
     ).read_text(encoding="utf-8")
+    menu_source = (
+        ROOT / "app_qml" / "qml" / "components" / "BranchActionsMenu.qml"
+    ).read_text(encoding="utf-8")
+    view_source = (
+        ROOT / "app_qml" / "qml" / "views" / "BranchView.qml"
+    ).read_text(encoding="utf-8")
 
-    assert "Fluent.MenuCore" not in source
-    assert "menuItems:" in source
-    assert "onMenuItemClicked:" in source
-    assert "menu: localBranchActionsMenu" not in source
+    assert "Fluent.MenuCore" not in delegate_source
+    assert "menuItems:" not in delegate_source
+    assert "onMenuItemClicked:" not in delegate_source
+    assert view_source.count("BranchActionsMenu {") == 1
+    assert menu_source.count("Fluent.MenuCore {") == 1
+    assert 'text: "强制删除"' in menu_source
+    assert 'text: "删除远程分支"' in menu_source
 
 
-def test_branch_cards_collapse_secondary_actions_into_split_menus() -> None:
+def test_branch_cards_lazy_load_plain_action_buttons() -> None:
     delegate_source = (
         ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
     ).read_text(encoding="utf-8")
 
-    assert delegate_source.count("Fluent.Button {") == 1
+    assert delegate_source.count("Fluent.Button {") == 2
     assert '"remoteBranchActionButton"' in delegate_source
     assert '"localBranchActionButton"' in delegate_source
-    assert "Fluent.Enums.button.feature_dropdown" in delegate_source
-    assert "Fluent.Enums.button.feature_split" in delegate_source
+    assert 'objectName: "branchMoreButton"' in delegate_source
+    assert "HoverHandler {" in delegate_source
+    assert "Fluent.Enums.button.feature_dropdown" not in delegate_source
+    assert "Fluent.Enums.button.feature_split" not in delegate_source
 
 
 def _run_delete_confirmation_probe(command: str, marker: str) -> None:
@@ -271,12 +282,24 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
         _pump(50)
 
     items = list(_visual_items(root.contentItem()))
-    button = next(
+    target_row = next(
         item
         for item in items
-        if item.objectName() == "localBranchActionButton"
+        if item.objectName() == "branchRowDelegate"
         and _property(item, "branchName") == TARGET_BRANCH
     )
+    current_row = next(
+        item
+        for item in items
+        if item.objectName() == "branchRowDelegate"
+        and _property(item, "branchName") == "main"
+    )
+    current_row_point = current_row.mapToScene(
+        QPointF(current_row.width() - 20, current_row.height() / 2)
+    ).toPoint()
+    QTest.mouseMove(root, current_row_point)
+    _pump(100)
+    items = list(_visual_items(root.contentItem()))
     current_button = next(
         item
         for item in items
@@ -306,7 +329,9 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
     current_actions = {
         _property(item, "text")
         for item in current_popup_items
-        if item.height() >= 30 and _property(item, "text")
+        if item.height() >= 30
+        and item.isVisible()
+        and _property(item, "text")
     }
     if current_actions != {"设置上游", "重命名"}:
         raise AssertionError(f"unexpected current-branch actions: {current_actions}")
@@ -314,20 +339,33 @@ def _probe(action_text: str, dialog_object_name: str, marker: str) -> int:
     QTest.keyClick(current_popup_window, Qt.Key.Key_Escape)
     _pump(150)
 
-    arrow = button.mapToScene(
-        QPointF(button.width() - 12, button.height() / 2)
+    target_row_point = target_row.mapToScene(
+        QPointF(target_row.width() - 20, target_row.height() / 2)
+    ).toPoint()
+    QTest.mouseMove(root, target_row_point)
+    _pump(100)
+    items = list(_visual_items(root.contentItem()))
+    more_button = next(
+        item
+        for item in items
+        if item.objectName() == "branchMoreButton"
+        and _property(item, "branchName") == TARGET_BRANCH
+        and item.isVisible()
+    )
+    more_button_point = more_button.mapToScene(
+        QPointF(more_button.width() / 2, more_button.height() / 2)
     ).toPoint()
     QTest.mouseClick(
         root,
         Qt.MouseButton.LeftButton,
         Qt.KeyboardModifier.NoModifier,
-        arrow,
+        more_button_point,
     )
     frame_delay_ms = int(os.environ.get("GITORA_BRANCH_MENU_FRAME_MS", "250"))
     _pump(frame_delay_ms)
     surface_entries = _visible_popup_surface_entries(QApplication)
     if len(surface_entries) != 1:
-        raise AssertionError("built-in branch action menu did not open")
+        raise AssertionError("shared branch action menu did not open")
     popup_window, popup_surface = surface_entries[0]
     popup_items = list(_visual_items(popup_surface))
     action = next(

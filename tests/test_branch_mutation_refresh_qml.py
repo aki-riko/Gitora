@@ -125,16 +125,19 @@ def _run_probe(repo: Path) -> int:
         for child in item.childItems():
             yield from visual_items(child)
 
-    def button_states() -> dict[str, str]:
+    def branch_states() -> dict[str, str]:
         return {
-            str(button.property("branchName")): str(button.property("text"))
-            for button in visual_items(root.contentItem())
-            if button.objectName() == "localBranchActionButton"
+            str(row.property("branchName")): (
+                "管理" if bool(row.property("isCurrentBranch")) else "切换"
+            )
+            for row in visual_items(root.contentItem())
+            if row.objectName() == "branchRowDelegate"
+            and not bool(row.property("isRemoteBranch"))
         }
 
     def wait_for_branch(branch: str) -> None:
         def matches() -> bool:
-            states = button_states()
+            states = branch_states()
             return (
                 root.property("probeCurrentBranch") == branch
                 and states.get(branch) == "管理"
@@ -147,7 +150,7 @@ def _run_probe(repo: Path) -> int:
                 {
                     "expected_branch": branch,
                     "actual_branch": root.property("probeCurrentBranch"),
-                    "button_states": button_states(),
+                    "branch_states": branch_states(),
                 }
             )
 

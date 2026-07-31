@@ -7,6 +7,7 @@ Item {
     id: control
 
     required property var rowData
+    property bool menuPinned: false
     property int itemHeight:
         Fluent.Enums.controlSize.buttonHeight + Fluent.Enums.spacing.l * 2
     readonly property bool isSection: rowData.rowType === "section"
@@ -15,9 +16,31 @@ Item {
     readonly property bool isRemoteBranch: !!rowData.isRemote
 
     signal primaryRequested(string branchName, bool isRemote, bool isCurrent)
-    signal menuRequested(string actionText, string branchName, bool isRemote)
+    signal menuRequested(
+        var anchor,
+        var owner,
+        string branchName,
+        bool isRemote,
+        bool isCurrent
+    )
 
+    objectName: isSection ? "branchSectionRow" : "branchRowDelegate"
     height: itemHeight
+
+    function openMenu(anchor) {
+        control.menuPinned = true
+        control.menuRequested(
+            anchor,
+            control,
+            control.branchName,
+            control.isRemoteBranch,
+            control.isCurrentBranch)
+    }
+
+    HoverHandler {
+        id: rowHover
+        enabled: !control.isSection
+    }
 
     Text {
         anchors.left: parent.left
@@ -75,43 +98,43 @@ Item {
                     elide: Text.ElideRight
                 }
             }
-            Fluent.Button {
-                property string branchName: control.branchName
-                objectName: control.isSection ? ""
-                    : (control.isRemoteBranch
-                        ? "remoteBranchActionButton"
-                        : "localBranchActionButton")
-                text: control.isRemoteBranch ? "获取并检出"
-                    : (control.isCurrentBranch ? "管理" : "切换")
-                feature: control.isRemoteBranch
-                    ? Fluent.Enums.button.feature_split
-                    : (control.isCurrentBranch
-                        ? Fluent.Enums.button.feature_dropdown
-                        : Fluent.Enums.button.feature_split)
-                menuItems: control.isRemoteBranch ? [
-                    { "text": "删除远程分支", "icon": Fluent.Enums.icon.warning }
-                ] : (control.isCurrentBranch ? [
-                    { "text": "设置上游", "icon": Fluent.Enums.icon.branch_fork_link },
-                    { "text": "重命名", "icon": Fluent.Enums.icon.rename }
-                ] : [
-                    { "text": "合并到当前分支", "icon": Fluent.Enums.icon.branch_compare },
-                    { "text": "Rebase 到此分支", "icon": Fluent.Enums.icon.arrow_sync },
-                    "-",
-                    { "text": "设置上游", "icon": Fluent.Enums.icon.branch_fork_link },
-                    { "text": "重命名", "icon": Fluent.Enums.icon.rename },
-                    "-",
-                    { "text": "删除分支", "icon": Fluent.Enums.icon.dismiss_circle },
-                    { "text": "强制删除", "icon": Fluent.Enums.icon.warning }
-                ])
-                onClicked: control.primaryRequested(
-                    control.branchName,
-                    control.isRemoteBranch,
-                    control.isCurrentBranch)
-                onMenuItemClicked: function(index, actionText) {
-                    control.menuRequested(
-                        actionText,
-                        control.branchName,
-                        control.isRemoteBranch)
+            Loader {
+                active: !control.isSection
+                    && (rowHover.hovered || control.menuPinned)
+                visible: active
+
+                sourceComponent: RowLayout {
+                    spacing: Fluent.Enums.spacing.xs
+
+                    Fluent.Button {
+                        id: primaryButton
+                        property string branchName: control.branchName
+                        objectName: control.isRemoteBranch
+                            ? "remoteBranchActionButton"
+                            : "localBranchActionButton"
+                        text: control.isRemoteBranch ? "获取并检出"
+                            : (control.isCurrentBranch ? "管理" : "切换")
+                        onClicked: {
+                            if (control.isCurrentBranch) {
+                                control.openMenu(primaryButton)
+                            } else {
+                                control.primaryRequested(
+                                    control.branchName,
+                                    control.isRemoteBranch,
+                                    control.isCurrentBranch)
+                            }
+                        }
+                    }
+
+                    Fluent.Button {
+                        id: moreButton
+                        property string branchName: control.branchName
+                        objectName: "branchMoreButton"
+                        visible: !control.isCurrentBranch
+                        icon: Fluent.Enums.icon.more_horizontal
+                        toolTipText: "更多操作"
+                        onClicked: control.openMenu(moreButton)
+                    }
                 }
             }
         }

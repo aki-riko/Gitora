@@ -14,6 +14,7 @@ Item {
     property string _remoteCheckoutTarget: ""
     property string _remoteDeleteTarget: ""
     property string _branchesRequestRepoPath: ""
+    property var _branchMenuOwner: null
     property bool initialized: false
     readonly property bool pageActive: root.visible
         && (!root.parent || root.parent.visible)
@@ -50,6 +51,8 @@ Item {
     }
 
     function setBranches(list) {
+        branchActionsMenu.close()
+        root._releaseBranchMenu()
         var localRows = []
         var remoteRows = []
         for (var i = 0; i < list.length; i++) {
@@ -67,6 +70,8 @@ Item {
     }
 
     function clearModels() {
+        branchActionsMenu.close()
+        root._releaseBranchMenu()
         root.currentBranch = ""
         root._remotes = []
         root._branchesRequestRepoPath = ""
@@ -108,6 +113,51 @@ Item {
     function _localNameForRemote(remoteBranch) {
         var idx = remoteBranch.indexOf("/")
         return idx >= 0 ? remoteBranch.substring(idx + 1) : remoteBranch
+    }
+
+    function _openBranchMenu(anchor, owner, branchName, isRemote, isCurrent) {
+        if (!anchor || !owner) return
+        if (root._branchMenuOwner && root._branchMenuOwner !== owner)
+            root._branchMenuOwner.menuPinned = false
+        root._branchMenuOwner = owner
+        branchActionsMenu.openFor(
+            anchor, branchName, isRemote, isCurrent)
+    }
+
+    function _releaseBranchMenu() {
+        var owner = root._branchMenuOwner
+        root._branchMenuOwner = null
+        if (owner) owner.menuPinned = false
+    }
+
+    function _handleBranchAction(actionText, branchName, isRemote) {
+        if (isRemote) {
+            if (actionText === "删除远程分支") {
+                root._remoteDeleteTarget = branchName
+                deleteRemoteBranchDanger.start()
+            }
+        } else if (actionText === "合并到当前分支") {
+            root._mergeTarget = branchName
+            mergeConfirm.open()
+        } else if (actionText === "Rebase 到此分支") {
+            root._rebaseTarget = branchName
+            rebaseDanger.start()
+        } else if (actionText === "设置上游") {
+            upstreamDialog._branch = branchName
+            upstreamRemoteInput.text = root._defaultRemoteName()
+            upstreamBranchInput.text = branchName
+            upstreamDialog.open()
+        } else if (actionText === "重命名") {
+            renameBranchDialog._oldBranch = branchName
+            renameBranchInput.text = branchName
+            renameBranchDialog.open()
+        } else if (actionText === "删除分支") {
+            deleteBranchConfirm._branch = branchName
+            deleteBranchConfirm.open()
+        } else if (actionText === "强制删除") {
+            forceDeleteBranchDanger._branch = branchName
+            forceDeleteBranchDanger.start()
+        }
     }
 
     Connections {
@@ -183,7 +233,7 @@ Item {
             model: root.branchRows
             itemHeight: root.branchItemHeight
             listSpacing: Fluent.Enums.spacing.m
-            listCacheBuffer: root.branchItemHeight * 6
+            listCacheBuffer: root.branchItemHeight * 2
             reuseItems: true
             bounceEnabled: false
             selectable: false
@@ -203,37 +253,23 @@ Item {
                         root._op(GitBridge.checkoutBranch(branchName))
                     }
                 }
-                onMenuRequested: function(actionText, branchName, isRemote) {
-                    if (isRemote) {
-                        if (actionText === "删除远程分支") {
-                            root._remoteDeleteTarget = branchName
-                            deleteRemoteBranchDanger.start()
-                        }
-                    } else if (actionText === "合并到当前分支") {
-                        root._mergeTarget = branchName
-                        mergeConfirm.open()
-                    } else if (actionText === "Rebase 到此分支") {
-                        root._rebaseTarget = branchName
-                        rebaseDanger.start()
-                    } else if (actionText === "设置上游") {
-                        upstreamDialog._branch = branchName
-                        upstreamRemoteInput.text = root._defaultRemoteName()
-                        upstreamBranchInput.text = branchName
-                        upstreamDialog.open()
-                    } else if (actionText === "重命名") {
-                        renameBranchDialog._oldBranch = branchName
-                        renameBranchInput.text = branchName
-                        renameBranchDialog.open()
-                    } else if (actionText === "删除分支") {
-                        deleteBranchConfirm._branch = branchName
-                        deleteBranchConfirm.open()
-                    } else if (actionText === "强制删除") {
-                        forceDeleteBranchDanger._branch = branchName
-                        forceDeleteBranchDanger.start()
-                    }
+                onMenuRequested: function(
+                    anchor, owner, branchName, isRemote, isCurrent
+                ) {
+                    root._openBranchMenu(
+                        anchor, owner, branchName, isRemote, isCurrent)
                 }
             }
         }
+    }
+
+    BranchActionsMenu {
+        id: branchActionsMenu
+        objectName: "branchActionsMenu"
+        onBranchActionRequested: function(actionText, branchName, isRemote) {
+            root._handleBranchAction(actionText, branchName, isRemote)
+        }
+        onDismissed: root._releaseBranchMenu()
     }
 
     // 默认从 HEAD 创建并切换；对话框内可改为任意提交并取消切换。
