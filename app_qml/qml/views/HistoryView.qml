@@ -32,6 +32,9 @@ Item {
     property var allCommits: []        // 已加载的提交(累积)
     readonly property var timelineItems: historyTimelineModel.items
     readonly property int graphLaneCount: historyTimelineModel.laneCount
+    property var renderedTimelineItems: []
+    property int renderedTimelineCommitCount: 0
+    property string renderedTimelineTopHash: ""
 
     // ==================== 数据加载 ====================
     function resetAndLoad() {
@@ -107,6 +110,24 @@ Item {
         // 提交已被 reset/改写时,详情面板不能继续展示过期数据。
         root.selectedCommit = null
     }
+
+    // PrismQML 0.3.3.7 的虚拟 Timeline 会把“行数相同且首个日期组相同”
+    // 误判为纯尾部追加，分支切换后 30 条替换成另 30 条时不会更新 ListModel。
+    // 真分页追加保留增量路径；其余替换先发空模型，使 Timeline 确实重建。
+    function _syncRenderedTimelineItems() {
+        var nextItems = root.timelineItems || []
+        var nextCount = root.allCommits.length
+        var nextTopHash = nextCount > 0 ? (root.allCommits[0].hash || "") : ""
+        var appendOnly = root.renderedTimelineCommitCount > 0
+            && nextCount > root.renderedTimelineCommitCount
+            && nextTopHash === root.renderedTimelineTopHash
+        if (!appendOnly) root.renderedTimelineItems = []
+        root.renderedTimelineItems = nextItems
+        root.renderedTimelineCommitCount = nextCount
+        root.renderedTimelineTopHash = nextTopHash
+    }
+
+    onTimelineItemsChanged: root._syncRenderedTimelineItems()
 
     function doSearch(query) {
         if (query === "") { resetAndLoad(); return }
@@ -297,6 +318,7 @@ Item {
 
     Component.onCompleted: {
         root.initialized = true
+        root._syncRenderedTimelineItems()
         root.resetAndLoad()
     }
 
@@ -395,7 +417,7 @@ Item {
                         type: Fluent.Enums.timeline.type_graph
                         virtualized: true
                         graphLaneCount: root.graphLaneCount
-                        items: root.timelineItems
+                        items: root.renderedTimelineItems
                         selectedRole: "hash"
                         selectedKey: root.selectedCommit ? root.selectedCommit.hash : undefined
                         onCardClickedData: function(groupIndex, cardIndex, cardData) {
