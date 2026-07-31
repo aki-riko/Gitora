@@ -169,18 +169,22 @@ class RemoteBranchDeletionTest(unittest.TestCase):
             app.processEvents()
 
     def test_branch_view_requires_danger_confirmation(self) -> None:
-        source = (
+        view_source = (
             ROOT / "app_qml" / "qml" / "views" / "BranchView.qml"
         ).read_text(encoding="utf-8")
+        delegate_source = (
+            ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
+        ).read_text(encoding="utf-8")
 
-        self.assertIn('{ "text": "删除远程分支"', source)
-        self.assertIn("onMenuItemClicked:", source)
-        self.assertIn('objectName: "remoteBranchActionButton"', source)
-        self.assertIn('id: deleteRemoteBranchDanger', source)
-        self.assertIn('title: "确认删除远程分支"', source)
-        self.assertIn('countdown: 3', source)
+        self.assertIn('{ "text": "删除远程分支"', delegate_source)
+        self.assertIn("onMenuItemClicked:", delegate_source)
+        self.assertIn('"remoteBranchActionButton"', delegate_source)
+        self.assertIn('onMenuRequested:', view_source)
+        self.assertIn('id: deleteRemoteBranchDanger', view_source)
+        self.assertIn('title: "确认删除远程分支"', view_source)
+        self.assertIn('countdown: 3', view_source)
         self.assertIn(
-            'GitBridge.deleteRemoteBranch(root._remoteDeleteTarget)', source
+            'GitBridge.deleteRemoteBranch(root._remoteDeleteTarget)', view_source
         )
 
     @staticmethod

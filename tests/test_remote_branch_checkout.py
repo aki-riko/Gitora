@@ -166,19 +166,22 @@ class RemoteBranchCheckoutTest(unittest.TestCase):
             app.processEvents()
 
     def test_branch_view_uses_combined_operation(self) -> None:
-        source = (
+        view_source = (
             ROOT / "app_qml" / "qml" / "views" / "BranchView.qml"
         ).read_text(encoding="utf-8")
+        delegate_source = (
+            ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
+        ).read_text(encoding="utf-8")
 
-        self.assertIn('text: "获取并检出"', source)
-        self.assertIn('objectName: "remoteCheckoutDialogTitle"', source)
-        self.assertIn('text: "获取并检出远程分支"', source)
-        self.assertIn('confirmText: "获取并检出"', source)
+        self.assertIn('text: control.isRemoteBranch ? "获取并检出"', delegate_source)
+        self.assertIn('objectName: "remoteCheckoutDialogTitle"', view_source)
+        self.assertIn('text: "获取并检出远程分支"', view_source)
+        self.assertIn('confirmText: "获取并检出"', view_source)
         self.assertIn(
-            "root._op(GitBridge.fetchAndCheckoutRemoteBranch(", source
+            "root._op(GitBridge.fetchAndCheckoutRemoteBranch(", view_source
         )
         self.assertNotIn(
-            "root._op(GitBridge.checkoutRemoteBranch(", source
+            "root._op(GitBridge.checkoutRemoteBranch(", view_source
         )
 
     @staticmethod

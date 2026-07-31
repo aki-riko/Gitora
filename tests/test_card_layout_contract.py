@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 QML_ROOT = ROOT / "app_qml" / "qml"
 CARD_FILES = {
     "views/AdvancedView.qml": 6,
-    "views/BranchView.qml": 2,
+    "components/BranchRowDelegate.qml": 1,
     "views/ConflictView.qml": 2,
     "views/StashView.qml": 1,
     "views/TagView.qml": 1,
