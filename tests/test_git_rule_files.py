@@ -96,6 +96,8 @@ class GitRuleFilesTest(unittest.TestCase):
         self.assertIn("acceptedButtons: Qt.NoButton", editor)
         self.assertIn("root._routeUnfocusedWheel(wheel)", editor)
         self.assertIn("scrollPassthroughTarget.smoothScrollBy", editor)
+        self.assertNotIn("parent: editor", editor)
+        self.assertIn("\n            MouseArea {", editor)
 
 
 if __name__ == "__main__":

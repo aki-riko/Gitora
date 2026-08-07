@@ -73,16 +73,15 @@ Fluent.Card {
             wrapMode: TextEdit.NoWrap
             showScrollIndicator: true
             placeholderText: "文件不存在时，保存会创建它"
-        }
 
-        MouseArea {
-            parent: editor
-            anchors.fill: parent
-            z: Fluent.Enums.zIndex.inputControls
-            enabled: !editor.focused
-                && root.scrollPassthroughTarget !== null
-            acceptedButtons: Qt.NoButton
-            onWheel: (wheel) => root._routeUnfocusedWheel(wheel)
+            MouseArea {
+                anchors.fill: parent
+                z: Fluent.Enums.zIndex.inputControls
+                enabled: !editor.focused
+                    && root.scrollPassthroughTarget !== null
+                acceptedButtons: Qt.NoButton
+                onWheel: (wheel) => root._routeUnfocusedWheel(wheel)
+            }
         }
 
         RowLayout {
