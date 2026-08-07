@@ -367,7 +367,7 @@ Item {
                         objectName: "historyScopeCombo"
                         width: 176
                         model: [
-                            "当前分支 · " + (root.currentBranch || "正在读取…"),
+                            "当前分支",
                             "全部分支"
                         ]
                         currentIndex: root.includeAllRefs ? 1 : 0

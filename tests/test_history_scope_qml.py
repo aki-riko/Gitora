@@ -168,6 +168,12 @@ def _render_probe(repo: Path, output: Path) -> int:
             }
         )
     current_count = int(root.property("probeCommitCount"))
+    combo = root.findChild(QObject, "historyScopeCombo")
+    current_scope_text = (
+        str(combo.property("currentText")) if combo is not None else ""
+    )
+    if current_scope_text != "当前分支":
+        raise AssertionError({"current_scope_text": current_scope_text})
 
     invoked = QMetaObject.invokeMethod(
         root, "showAllRefs", Qt.ConnectionType.DirectConnection
@@ -188,7 +194,6 @@ def _render_probe(repo: Path, output: Path) -> int:
             }
         )
 
-    combo = root.findChild(QObject, "historyScopeCombo")
     combo_index = int(combo.property("currentIndex")) if combo is not None else -1
     image = root.grabWindow()
     if combo_index != 1 or image.isNull() or not image.save(str(output), "PNG"):

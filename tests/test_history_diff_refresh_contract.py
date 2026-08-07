@@ -56,6 +56,9 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn('property string currentBranch: ""', source)
         self.assertIn('objectName: "historyScopeCombo"', source)
         self.assertIn(
+            '"当前分支",\n                            "全部分支"', source
+        )
+        self.assertNotIn(
             '"当前分支 · " + (root.currentBranch || "正在读取…")', source
         )
         self.assertIn("function setHistoryScope(scopeIndex)", source)
