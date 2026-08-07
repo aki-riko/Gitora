@@ -134,6 +134,7 @@ Item {
     }
 
     Fluent.ScrollArea {
+        id: advancedScrollArea
         anchors.fill: parent
 
         Column {
@@ -163,6 +164,7 @@ Item {
                     id: gitignoreEditor
                     width: parent ? parent.width : 0
                     fileName: ".gitignore"
+                    scrollPassthroughTarget: advancedScrollArea
                     onSaveRequested: function(content) {
                         root._saveRuleFile(gitignoreEditor, content)
                     }
@@ -172,6 +174,7 @@ Item {
                     id: gitattributesEditor
                     width: parent ? parent.width : 0
                     fileName: ".gitattributes"
+                    scrollPassthroughTarget: advancedScrollArea
                     onSaveRequested: function(content) {
                         root._saveRuleFile(gitattributesEditor, content)
                     }

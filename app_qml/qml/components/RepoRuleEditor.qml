@@ -9,6 +9,7 @@ Fluent.Card {
 
     property string fileName: ""
     property string _savedContent: ""
+    property var scrollPassthroughTarget: null
     readonly property bool dirty: editor.text !== root._savedContent
     signal saveRequested(string content)
 
@@ -21,6 +22,18 @@ Fluent.Card {
 
     function markSaved() {
         root._savedContent = editor.text
+    }
+
+    function _routeUnfocusedWheel(wheel) {
+        if (!root.scrollPassthroughTarget
+                || typeof root.scrollPassthroughTarget.smoothScrollBy !== "function") {
+            wheel.accepted = false
+            return
+        }
+        var delta = -wheel.angleDelta.y / 120
+            * root.scrollPassthroughTarget.scrollStep
+        root.scrollPassthroughTarget.smoothScrollBy(delta)
+        wheel.accepted = true
     }
 
     ColumnLayout {
@@ -60,6 +73,16 @@ Fluent.Card {
             wrapMode: TextEdit.NoWrap
             showScrollIndicator: true
             placeholderText: "文件不存在时，保存会创建它"
+        }
+
+        MouseArea {
+            parent: editor
+            anchors.fill: parent
+            z: Fluent.Enums.zIndex.inputControls
+            enabled: !editor.focused
+                && root.scrollPassthroughTarget !== null
+            acceptedButtons: Qt.NoButton
+            onWheel: (wheel) => root._routeUnfocusedWheel(wheel)
         }
 
         RowLayout {

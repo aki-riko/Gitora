@@ -77,6 +77,26 @@ class GitRuleFilesTest(unittest.TestCase):
         self.assertIn("textFormat: TextEdit.PlainText", editor)
         self.assertNotIn("readOnly: true", editor)
 
+    def test_rule_file_editors_only_capture_wheel_when_focused(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        advanced = (root / "app_qml" / "qml" / "views" / "AdvancedView.qml").read_text(
+            encoding="utf-8"
+        )
+        editor = (root / "app_qml" / "qml" / "components" / "RepoRuleEditor.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("id: advancedScrollArea", advanced)
+        self.assertEqual(
+            advanced.count("scrollPassthroughTarget: advancedScrollArea"),
+            2,
+        )
+        self.assertIn("property var scrollPassthroughTarget: null", editor)
+        self.assertIn("enabled: !editor.focused", editor)
+        self.assertIn("acceptedButtons: Qt.NoButton", editor)
+        self.assertIn("root._routeUnfocusedWheel(wheel)", editor)
+        self.assertIn("scrollPassthroughTarget.smoothScrollBy", editor)
+
 
 if __name__ == "__main__":
     unittest.main()
