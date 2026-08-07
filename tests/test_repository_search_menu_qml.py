@@ -8,10 +8,13 @@ import sys
 import tempfile
 from pathlib import Path
 
+import pytest
+
 
 ROOT = Path(__file__).resolve().parents[1]
 RENDER_MARKER = "[REPOSITORY_SEARCH_MENU_RENDER]"
 BEHAVIOR_MARKER = "[REPOSITORY_SEARCH_MENU_BEHAVIOR]"
+NATIVE_FIRST_CLICK_MARKER = "[REPOSITORY_SEARCH_MENU_NATIVE_FIRST_CLICK]"
 PROBE_SOURCE = """
 import QtQuick
 import QtQuick.Window
@@ -56,6 +59,7 @@ Window {
                 root.prepareScreenshotPaths()
             } else {
                 menu.prepareForOpen([
+                    "D:/API/new-api",
                     "D:/MinecraftProject/mojin",
                     "D:/API/kiro_rs",
                     "D:/PrismQML/Gitora",
@@ -77,15 +81,19 @@ Window {
 """.encode("utf-8")
 
 
-def _probe_environment() -> dict[str, str]:
+def _probe_environment(*, native_window: bool = False) -> dict[str, str]:
     environment = os.environ.copy()
-    environment.update(
-        {
-            "QT_QPA_PLATFORM": "offscreen",
-            "QT_QUICK_BACKEND": "software",
-            "PYTHONUTF8": "1",
-        }
-    )
+    environment["PYTHONUTF8"] = "1"
+    if native_window:
+        environment.pop("QT_QPA_PLATFORM", None)
+        environment.pop("QT_QUICK_BACKEND", None)
+    else:
+        environment.update(
+            {
+                "QT_QPA_PLATFORM": "offscreen",
+                "QT_QUICK_BACKEND": "software",
+            }
+        )
     windows_root = environment.get("WINDIR", "").strip()
     font_directory = Path(windows_root) / "Fonts"
     if os.name == "nt" and font_directory.is_dir():
@@ -93,7 +101,12 @@ def _probe_environment() -> dict[str, str]:
     return environment
 
 
-def _run_probe(mode: str, output: Path | None = None) -> subprocess.CompletedProcess[str]:
+def _run_probe(
+    mode: str,
+    output: Path | None = None,
+    *,
+    native_window: bool = False,
+) -> subprocess.CompletedProcess[str]:
     command = [
         sys.executable,
         "-m",
@@ -105,7 +118,7 @@ def _run_probe(mode: str, output: Path | None = None) -> subprocess.CompletedPro
     return subprocess.run(
         command,
         cwd=str(ROOT),
-        env=_probe_environment(),
+        env=_probe_environment(native_window=native_window),
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -123,6 +136,25 @@ def test_repository_search_menu_filters_and_keeps_original_path() -> None:
     assert "[WARNING]" not in result.stdout, diagnostic
     assert "[ERROR]" not in result.stdout, diagnostic
     assert result.stderr == "", diagnostic
+
+
+@pytest.mark.skipif(os.name != "nt", reason="需要 Windows 原生窗口事件循环")
+def test_repository_search_menu_native_first_click_switches_repository() -> None:
+    result = _run_probe("--native-first-click-probe", native_window=True)
+    diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert result.returncode == 0, diagnostic
+    assert NATIVE_FIRST_CLICK_MARKER in result.stdout, diagnostic
+    assert "[WARNING]" not in result.stdout, diagnostic
+    assert "[ERROR]" not in result.stdout, diagnostic
+    assert result.stderr == "", diagnostic
+
+
+def test_repository_search_menu_uses_in_window_popup() -> None:
+    source = (
+        ROOT / "app_qml" / "qml" / "components" / "RepositorySearchMenu.qml"
+    ).read_text(encoding="utf-8")
+    assert "useInWindowPopup: true" in source
+    assert "useQtPopupWindow: false" in source
 
 
 def test_repository_search_menu_renders_results_without_clipping() -> None:
@@ -215,6 +247,63 @@ def _click_trigger(root, trigger, arrow: bool) -> None:
     _pump(100)
 
 
+def _wait_for(predicate, timeout_ms: int = 1000) -> bool:
+    elapsed = 0
+    while elapsed < timeout_ms:
+        if predicate():
+            return True
+        _pump(5)
+        elapsed += 5
+    return bool(predicate())
+
+
+def _click_result_once(menu, index: int) -> int:
+    from PySide6.QtCore import QPointF, Qt
+    from PySide6.QtQuick import QQuickItem
+    from PySide6.QtTest import QTest
+
+    object_name = f"repositorySearchResult-{index}"
+    popup_content = menu.findChild(QQuickItem, "_popupContent")
+    if popup_content is None:
+        raise AssertionError("missing repository popup content")
+
+    def find_result_item():
+        pending = list(popup_content.childItems())
+        while pending:
+            item = pending.pop()
+            if item.objectName() == object_name:
+                return item
+            pending.extend(item.childItems())
+        return None
+
+    if not _wait_for(lambda: find_result_item() is not None):
+        raise AssertionError(f"missing repository result delegate: {object_name}")
+    if not _wait_for(
+        lambda: abs(
+            float(menu.property("_clipHeight"))
+            - float(menu.property("popupHeight"))
+        ) < 0.25
+    ):
+        raise AssertionError("repository popup animation did not settle")
+    item = find_result_item()
+    clicked_events: list[bool] = []
+    item.clicked.connect(lambda: clicked_events.append(True))
+    popup_window = item.window()
+    if popup_window is None:
+        raise AssertionError("repository result delegate has no window")
+    click_position = item.mapToScene(
+        QPointF(item.width() / 2, item.height() / 2)
+    ).toPoint()
+    QTest.mouseClick(
+        popup_window,
+        Qt.MouseButton.LeftButton,
+        Qt.KeyboardModifier.NoModifier,
+        click_position,
+    )
+    _pump(50)
+    return len(clicked_events)
+
+
 def _assert_screenshot_search_geometry(menu, search_input, result_area) -> tuple[float, float]:
     from PySide6.QtCore import QPointF
     from PySide6.QtQuick import QQuickItem
@@ -289,7 +378,7 @@ def _render_probe(output: Path) -> int:
     return 0
 
 
-def _behavior_probe() -> int:
+def _behavior_probe(*, first_click_only: bool = False) -> int:
     from PySide6.QtCore import Q_ARG, QMetaObject, Qt
     from PySide6.QtQml import QQmlApplicationEngine
     from PySide6.QtWidgets import QApplication
@@ -301,11 +390,13 @@ def _behavior_probe() -> int:
     app = QApplication([str(Path(__file__))])
     engine = QQmlApplicationEngine()
     register_types(engine)
-    component, root = _create_scene(engine, use_in_window_popup=False)
+    component, root = _create_scene(engine, use_in_window_popup=True)
     root.requestActivate()
     _pump(100)
     menu, search_input, _, _, empty_state = _scene_objects(root)
     trigger = _trigger(root)
+    selected: list[str] = []
+    menu.pathSelected.connect(selected.append)
 
     _click_trigger(root, trigger, arrow=False)
     if root.property("mainClickCount") != 1 or menu.property("isOpen"):
@@ -314,8 +405,20 @@ def _behavior_probe() -> int:
     if root.property("mainClickCount") != 1 or not menu.property("isOpen"):
         raise AssertionError("split arrow did not open the repository menu")
 
+    if first_click_only:
+        clicked_count = _click_result_once(menu, 0)
+        if clicked_count != 1 or selected != ["D:/API/new-api"]:
+            raise AssertionError(
+                {
+                    "first_click_selected": selected,
+                    "delegate_clicked_count": clicked_count,
+                }
+            )
+        print(f"{NATIVE_FIRST_CLICK_MARKER} selected={selected[0]}")
+        return 0
+
     original_paths = _filtered_paths(menu)
-    if len(original_paths) != 4:
+    if len(original_paths) != 5:
         raise AssertionError(original_paths)
     search_input.setProperty("text", "GITORA")
     _pump(50)
@@ -334,8 +437,7 @@ def _behavior_probe() -> int:
     if _filtered_paths(menu) != original_paths:
         raise AssertionError(_filtered_paths(menu))
 
-    selected: list[str] = []
-    menu.pathSelected.connect(selected.append)
+    selected.clear()
     search_input.setProperty("text", "minecraft")
     _pump(50)
     matches = _filtered_paths(menu)
@@ -362,9 +464,11 @@ def _behavior_probe() -> int:
 if __name__ == "__main__":
     if len(sys.argv) == 2 and sys.argv[1] == "--behavior-probe":
         raise SystemExit(_behavior_probe())
+    if len(sys.argv) == 2 and sys.argv[1] == "--native-first-click-probe":
+        raise SystemExit(_behavior_probe(first_click_only=True))
     if len(sys.argv) == 3 and sys.argv[1] == "--render-probe":
         raise SystemExit(_render_probe(Path(sys.argv[2])))
     raise SystemExit(
         "usage: test_repository_search_menu_qml.py "
-        "--behavior-probe | --render-probe OUTPUT"
+        "--behavior-probe | --native-first-click-probe | --render-probe OUTPUT"
     )

@@ -23,7 +23,8 @@ Fluent.PopupWindowCore {
         + _resultAreaHeight
         + Fluent.Enums.comboBoxMetrics.popupPadding
     closeOnClickOutside: true
-    useQtPopupWindow: true
+    useInWindowPopup: true
+    useQtPopupWindow: false
 
     onPopupHeightChanged: {
         if (!isOpen || isClosing) return
