@@ -393,20 +393,13 @@ Item {
                             color: Fluent.Enums.cardColor
                             border.width: Fluent.Enums.border.normal
                             border.color: Fluent.Enums.stateColor.border
-                            Fluent.ScrollArea {
+                            FocusableOutputView {
+                                id: lfsOutputView
+                                objectName: "lfsOutputView"
                                 anchors.fill: parent
                                 anchors.margins: Fluent.Enums.spacing.s
-                                padding: 0
-                                TextEdit {
-                                    readOnly: true
-                                    selectByMouse: true
-                                    textFormat: TextEdit.PlainText
-                                    wrapMode: TextEdit.NoWrap
-                                    font.family: "Consolas, monospace"
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                    color: Fluent.Enums.textColor.primary
-                                    text: root._lfsOutput
-                                }
+                                text: root._lfsOutput
+                                scrollPassthroughTarget: advancedScrollArea
                             }
                         }
                     }
@@ -465,20 +458,13 @@ Item {
                             color: Fluent.Enums.cardColor
                             border.width: Fluent.Enums.border.normal
                             border.color: Fluent.Enums.stateColor.border
-                            Fluent.ScrollArea {
+                            FocusableOutputView {
+                                id: bisectOutputView
+                                objectName: "bisectOutputView"
                                 anchors.fill: parent
                                 anchors.margins: Fluent.Enums.spacing.s
-                                padding: 0
-                                TextEdit {
-                                    readOnly: true
-                                    selectByMouse: true
-                                    textFormat: TextEdit.PlainText
-                                    wrapMode: TextEdit.NoWrap
-                                    font.family: "Consolas, monospace"
-                                    font.pixelSize: Fluent.Enums.typography.caption
-                                    color: Fluent.Enums.textColor.primary
-                                    text: root._bisectOutput
-                                }
+                                text: root._bisectOutput
+                                scrollPassthroughTarget: advancedScrollArea
                             }
                         }
                     }

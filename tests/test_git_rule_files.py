@@ -89,8 +89,10 @@ class GitRuleFilesTest(unittest.TestCase):
         self.assertIn("id: advancedScrollArea", advanced)
         self.assertEqual(
             advanced.count("scrollPassthroughTarget: advancedScrollArea"),
-            2,
+            4,
         )
+        self.assertEqual(advanced.count("RepoRuleEditor {"), 2)
+        self.assertEqual(advanced.count("FocusableOutputView {"), 2)
         self.assertIn("property var scrollPassthroughTarget: null", editor)
         self.assertIn("enabled: !editor.focused", editor)
         self.assertIn("acceptedButtons: Qt.NoButton", editor)
