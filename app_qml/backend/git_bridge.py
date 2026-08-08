@@ -397,6 +397,15 @@ class GitBridge(QObject):
             on_failure=lambda _exc: completed(False),
         )
 
+    @Slot()
+    def restoreLastRepoAsync(self):
+        """启动时异步恢复最近一次成功打开的仓库。"""
+        if self._svc.repo_path:
+            return
+        recent_repos = self.getRecentRepos()
+        if recent_repos:
+            self.openRepoAsync(recent_repos[0])
+
     @Slot(result="QVariantList")
     def getRecentRepos(self) -> list:
         """最近打开的仓库 -> [path, ...]"""

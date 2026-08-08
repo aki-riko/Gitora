@@ -129,6 +129,62 @@ class RecentReposTest(unittest.TestCase):
             recent_module.recentReposManager = previous_manager
             app.processEvents()
 
+    def test_restart_restores_last_opened_real_repo(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        repo_a = init_repo(self.root / "repo-a")
+        repo_b = init_repo(self.root / "repo-b")
+        config_path = self.root / "restart_recent_repos.json"
+        manager = RecentReposManager(config_path)
+        manager.add(str(repo_a))
+        manager.add(str(repo_b))
+
+        previous_manager = recent_module.recentReposManager
+        recent_module.recentReposManager = RecentReposManager(config_path)
+        bridge = GitBridge()
+        restored: list[tuple[bool, str]] = []
+        loop = QEventLoop()
+
+        def on_restored(ok: bool, payload: str) -> None:
+            restored.append((ok, payload))
+            loop.quit()
+
+        bridge.repoOpened.connect(on_restored)
+
+        try:
+            QTimer.singleShot(10000, loop.quit)
+            bridge.restoreLastRepoAsync()
+            loop.exec()
+
+            self.assertEqual(restored, [(True, str(repo_b))])
+            self.assertEqual(bridge.repoPath, str(repo_b))
+            self.assertEqual(
+                recent_module.recentReposManager.get_all(),
+                [str(repo_b), str(repo_a)],
+            )
+        finally:
+            bridge.repoOpened.disconnect(on_restored)
+            bridge._poll_timer.stop()
+            bridge.deleteLater()
+            recent_module.recentReposManager = previous_manager
+            app.processEvents()
+
+    def test_main_schedules_restore_only_after_qml_load(self) -> None:
+        source = (
+            Path(__file__).resolve().parents[1] / "app_qml" / "main_qml.py"
+        ).read_text(encoding="utf-8")
+        restore_call = "_QTimer.singleShot(0, git_bridge.restoreLastRepoAsync)"
+
+        self.assertIn(restore_call, source)
+        self.assertGreater(
+            source.index(restore_call),
+            source.index("if not engine.rootObjects():"),
+        )
+        self.assertIn(
+            'if not os.environ.get("GITESS_QML_SELFTEST"):\n'
+            "        " + restore_call,
+            source,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

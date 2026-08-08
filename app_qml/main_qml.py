@@ -440,6 +440,10 @@ def main() -> int:
         print("[ERROR] 加载 main.qml 失败,检查组件路径或语法")
         return -1
 
+    # 主窗口加载完成后恢复上次仓库；自检不读取用户的最近仓库状态。
+    if not os.environ.get("GITESS_QML_SELFTEST"):
+        _QTimer.singleShot(0, git_bridge.restoreLastRepoAsync)
+
     # 单实例激活:第二实例启动时,主实例把窗口提到前台(调 main.qml 的 activateWindow)
     if app._single_instance is not None:
         root_obj = engine.rootObjects()[0]
