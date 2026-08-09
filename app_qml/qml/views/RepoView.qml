@@ -348,7 +348,9 @@ Item {
                 Component.onCompleted: rebuildList()
                 onClicked: folderDialog.open()
                 onMenuAboutToOpen: {
-                    rebuildList()
+                    // Open the cached list immediately; path validation may block on a
+                    // sleeping or disconnected drive. 立即使用缓存列表打开；路径校验
+                    // 可能因休眠或断开的磁盘阻塞 UI 线程。
                     repositorySearchMenu.loading = (typeof RepoScanner !== "undefined")
                         && RepoScanner !== null && RepoScanner.scanning
                     repositorySearchMenu.prepareForOpen(pathList)

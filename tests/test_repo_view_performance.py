@@ -103,6 +103,9 @@ class RepoViewPerformanceTest(unittest.TestCase):
             "repositorySearchMenu.prepareForOpen(pathList)",
             source,
         )
+        menu_open_handler = source[source.index("onMenuAboutToOpen: {"):]
+        menu_open_handler = menu_open_handler[:menu_open_handler.index("\n                }")]
+        self.assertNotIn("rebuildList()", menu_open_handler)
         self.assertIn("feature: Fluent.Enums.button.feature_split", source)
         self.assertIn("menu: repositorySearchMenu", source)
         self.assertIn("GitBridge.getRecentRepos()", source)
