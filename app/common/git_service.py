@@ -365,6 +365,7 @@ class GitService(QObject):
             (("not a git repository", "operation must be run in a work tree"), "当前路径不是有效的 Git 仓库，请先打开或初始化仓库。"),
             (("does not have any commits yet", "bad revision 'head'"), "当前仓库还没有提交，请先完成首次提交。"),
             (("untracked working tree files would be overwritten",), "未跟踪文件会被本次操作覆盖，请先移动、删除或暂存这些文件。"),
+            (("contains modified or untracked files", "use --force to delete it"), "工作树中存在未提交修改或未跟踪文件；如确认不再需要，请从“移除”按钮的下拉菜单选择强制删除。"),
             (("would be overwritten by checkout", "would be overwritten by merge", "would be overwritten by switch", "commit your changes or stash them", "cannot rebase: you have unstaged changes", "cannot pull with rebase: you have unstaged changes"), "工作区有未提交的修改，请先提交、暂存或放弃修改后再重试。"),
             (("not fully merged",), "该分支尚未完全合并，删除可能会丢失未合并的提交；如确认不再需要，请选择强制删除。"),
             (("you have unmerged paths", "fix conflicts and then commit", "needs merge", "automatic merge failed", "mergeconflict", "you have not concluded your merge", "merge_head exists"), "当前存在未解决的合并冲突，请先解决冲突后再继续。"),
@@ -3021,14 +3022,20 @@ class GitService(QObject):
 
     def remove_worktree(self, path: str, force: bool = False) -> tuple[bool, str]:
         """移除 worktree。"""
+        return self.remove_worktree_at(self._repo_path or "", path, force)
+
+    def remove_worktree_at(
+        self, repo_path: str, path: str, force: bool = False
+    ) -> tuple[bool, str]:
+        """使用发起操作时的仓库快照移除 worktree。"""
         path = (path or "").strip()
         if not path:
             return False, "未指定 worktree 路径"
-        args = ['worktree', 'remove']
         if force:
-            args.append('--force')
+            return self._force_remove_detached_worktree_at(repo_path, path)
+        args = ['worktree', 'remove']
         args.append(path)
-        success, _, stderr = self._run_git_sync(args, timeout=120)
+        success, _, stderr = self._run_git_sync_at(repo_path, args, timeout=120)
         if success:
             self.statusChanged.emit()
             return True, f"已移除 worktree: {path}"
@@ -3045,6 +3052,51 @@ class GitService(QObject):
     @staticmethod
     def _worktree_path_key(path: str) -> str:
         return os.path.normcase(os.path.abspath(path))
+
+    def _force_remove_candidate_at(
+        self, repo_path: str, path: str
+    ) -> tuple[Optional[WorktreeInfo], str]:
+        """返回可强制移除的 detached linked worktree 与拒绝原因。"""
+        worktrees = self.list_worktrees_at(repo_path)
+        if not worktrees:
+            return None, "无法读取当前仓库的 worktree 列表"
+
+        target_key = self._worktree_path_key(path)
+        primary_key = self._worktree_path_key(worktrees[0].path)
+        if target_key in (primary_key, self._worktree_path_key(repo_path)):
+            return None, "不能强制删除当前工作树或主工作树"
+
+        target = next(
+            (item for item in worktrees[1:]
+             if self._worktree_path_key(item.path) == target_key),
+            None,
+        )
+        if target is None:
+            return None, "目标已不是当前仓库登记的关联工作树，请刷新后重试"
+        if not target.detached:
+            return None, "只能强制删除游离工作树；分支工作树请先按普通方式处理"
+        if target.locked:
+            return None, "该工作树已锁定，请先确认没有任务使用它，再解除锁定后重试。"
+        if target.prunable or not os.path.isdir(target.path):
+            return None, "工作树目录已失效，请改用“清理失效记录”"
+        return target, ""
+
+    def _force_remove_detached_worktree_at(
+        self, repo_path: str, path: str
+    ) -> tuple[bool, str]:
+        """实时核验并强制移除仓库快照登记的 detached linked worktree。"""
+        target, error = self._force_remove_candidate_at(repo_path, path)
+        if target is None:
+            return False, error
+        success, _, stderr = self._run_git_sync_at(
+            repo_path,
+            ['worktree', 'remove', '--force', target.path],
+            timeout=120,
+        )
+        if not success:
+            return False, self._friendly_git_error(stderr, "强制删除工作树失败")
+        self.statusChanged.emit()
+        return True, f"已强制删除游离工作树: {target.path}"
 
     def _worktree_cleanup_readiness(
         self, worktree: WorktreeInfo

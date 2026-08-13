@@ -654,6 +654,40 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_worktree_remove_captures_repository_snapshot(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo-a"
+        started = threading.Event()
+        release = threading.Event()
+        calls: list[tuple[str, str, bool]] = []
+        results: list[tuple[bool, str]] = []
+
+        def fake_remove(repo_path: str, path: str, force: bool):
+            started.set()
+            release.wait(5)
+            calls.append((repo_path, path, force))
+            return True, "removed"
+
+        bridge._svc.remove_worktree_at = fake_remove  # type: ignore[method-assign]
+        bridge.operationFinished.connect(
+            lambda ok, message: results.append((ok, message))
+        )
+
+        try:
+            bridge.removeWorktree("detached", True)
+            self.assertTrue(started.wait(5))
+            bridge._svc._repo_path = "repo-b"
+            release.set()
+            self.assertTrue(self._wait_until(app, lambda: len(results) == 1))
+            self.assertEqual(calls, [("repo-a", "detached", True)])
+            self.assertEqual(results, [(True, "removed")])
+        finally:
+            release.set()
+            bridge.deleteLater()
+            app.processEvents()
+
     @staticmethod
     def _wait_until(app: QCoreApplication, predicate, timeout: float = 5.0) -> bool:
         deadline = time.monotonic() + timeout

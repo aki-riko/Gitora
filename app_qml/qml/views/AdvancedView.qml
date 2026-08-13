@@ -266,9 +266,20 @@ Item {
                             Fluent.Button {
                                 text: "移除"
                                 style: Fluent.Enums.button.style_transparent
+                                feature: model.detached
+                                    ? Fluent.Enums.button.feature_split
+                                    : Fluent.Enums.button.feature_none
+                                menuItems: model.detached ? [
+                                    { "text": "强制删除", "icon": Fluent.Enums.icon.warning }
+                                ] : []
                                 onClicked: {
                                     root._pendingWorktreeRemove = model.path
                                     removeWorktreeDanger.start()
+                                }
+                                onMenuItemClicked: function(index, text) {
+                                    if (index !== 0) return
+                                    root._pendingWorktreeRemove = model.path
+                                    forceRemoveWorktreeDanger.start()
                                 }
                             }
                         }
@@ -483,6 +494,23 @@ Item {
                 root._op(GitBridge.removeWorktree(root._pendingWorktreeRemove, false))
             root._pendingWorktreeRemove = ""
         }
+        onRejected: root._pendingWorktreeRemove = ""
+    }
+
+    DangerDialog {
+        id: forceRemoveWorktreeDanger
+        objectName: "forceRemoveWorktreeDanger"
+        title: "确认强制删除游离工作树"
+        countdown: 3
+        content: "将强制删除游离工作树：\n" + root._pendingWorktreeRemove
+            + "\n该目录内未提交、已暂存、未跟踪及被 Git 忽略且未另行保存的文件都会永久删除。"
+            + "\n此操作不会自动创建提交、stash 或备份，且不可恢复。"
+        onConfirmed: {
+            if (root._pendingWorktreeRemove)
+                root._op(GitBridge.removeWorktree(root._pendingWorktreeRemove, true))
+            root._pendingWorktreeRemove = ""
+        }
+        onRejected: root._pendingWorktreeRemove = ""
     }
 
     WorktreeCleanupDialog { id: worktreeCleanupDialog }

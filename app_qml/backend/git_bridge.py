@@ -549,9 +549,10 @@ class GitBridge(QObject):
 
     @Slot(str, bool, result=QObject)
     def removeWorktree(self, path: str, force: bool):
+        repo_path = self._svc.repo_path or ""
         return self._submit_operation(
             "正在移除工作树...",
-            lambda: self._svc.remove_worktree(path, force),
+            lambda: self._svc.remove_worktree_at(repo_path, path, force),
         )
 
     @Slot(result=QObject)

@@ -800,6 +800,64 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(ok, msg)
         self.assertFalse(worktree_path.exists())
 
+    def test_force_remove_detached_worktree_discards_real_dirty_files(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        worktree_path = self.root / "repo-dirty-detached"
+        run_git(repo, "worktree", "add", "--detach", str(worktree_path), "HEAD")
+        write_file(worktree_path, "tracked.txt", "modified\n")
+        write_file(worktree_path, "untracked.txt", "discarded\n")
+        write_file(worktree_path, "staged.txt", "discarded after staging\n")
+        run_git(worktree_path, "add", "staged.txt")
+        write_file(worktree_path, ".gitignore", "ignored.txt\n")
+        write_file(worktree_path, "ignored.txt", "discarded while ignored\n")
+        service = self.service_for(repo)
+
+        ok, message = service.remove_worktree(str(worktree_path), force=False)
+        self.assertFalse(ok)
+        self.assertIn("强制删除", message)
+        self.assertTrue(worktree_path.exists())
+        status = run_git(worktree_path, "status", "--short").stdout.splitlines()
+        self.assertIn(" M tracked.txt", status)
+        self.assertIn("A  staged.txt", status)
+        self.assertIn("?? .gitignore", status)
+        self.assertIn("?? untracked.txt", status)
+        self.assertTrue((worktree_path / "ignored.txt").exists())
+
+        ok, message = service.remove_worktree(str(worktree_path), force=True)
+        self.assertTrue(ok, message)
+        self.assertFalse(worktree_path.exists())
+        self.assertFalse(any(
+            item.path.replace("\\", "/").endswith("repo-dirty-detached")
+            for item in service.list_worktrees()
+        ))
+
+    def test_force_remove_worktree_rejects_non_detached_locked_and_primary(self) -> None:
+        repo = init_repo(self.root / "repo")
+        write_file(repo, "tracked.txt", "base\n")
+        commit_all(repo, "base")
+        branch_path = self.root / "repo-topic"
+        locked_path = self.root / "repo-locked-detached"
+        run_git(repo, "worktree", "add", "-b", "topic", str(branch_path))
+        run_git(repo, "worktree", "add", "--detach", str(locked_path), "HEAD")
+        run_git(repo, "worktree", "lock", "--reason", "仍在使用", str(locked_path))
+        service = self.service_for(repo)
+
+        ok, message = service.remove_worktree(str(repo), force=True)
+        self.assertFalse(ok)
+        self.assertIn("主工作树", message)
+
+        ok, message = service.remove_worktree(str(branch_path), force=True)
+        self.assertFalse(ok)
+        self.assertIn("只能强制删除游离工作树", message)
+        self.assertTrue(branch_path.exists())
+
+        ok, message = service.remove_worktree(str(locked_path), force=True)
+        self.assertFalse(ok)
+        self.assertIn("已锁定", message)
+        self.assertTrue(locked_path.exists())
+
     def test_detached_worktree_cleanup_previews_and_rechecks_dirty_paths(self) -> None:
         repo = init_repo(self.root / "repo")
         write_file(repo, "tracked.txt", "base\n")
