@@ -14,8 +14,31 @@ Item {
     property string _advancedRequestRepoPath: ""
     property bool _advancedRequesting: false
     property bool _reloadPending: false
+    property string _worktreeSnapshot: ""
+    property string _submoduleSnapshot: ""
     ListModel { id: worktreeModel }
     ListModel { id: submoduleModel }
+
+    function _stateSnapshot(items, fields) {
+        var rows = []
+        for (var i = 0; i < items.length; i++) {
+            var item = items[i] || {}
+            var row = []
+            for (var j = 0; j < fields.length; j++)
+                row.push(item[fields[j]] === undefined ? null : item[fields[j]])
+            rows.push(row)
+        }
+        return JSON.stringify(rows)
+    }
+
+    function _updateModelIfChanged(model, items, fields, snapshotProperty) {
+        var snapshot = root._stateSnapshot(items, fields)
+        if (root[snapshotProperty] === snapshot) return false
+        model.clear()
+        for (var i = 0; i < items.length; i++) model.append(items[i])
+        root[snapshotProperty] = snapshot
+        return true
+    }
 
     function clearModels() {
         worktreeModel.clear()
@@ -27,6 +50,8 @@ Item {
         root._advancedRequestRepoPath = ""
         root._advancedRequesting = false
         root._reloadPending = false
+        root._worktreeSnapshot = ""
+        root._submoduleSnapshot = ""
     }
 
     function reload() {
@@ -101,10 +126,19 @@ Item {
         function onAdvancedStateReady(repoPath, worktrees, submodules) {
             if (!GitBridge || repoPath !== GitBridge.repoPath
                     || repoPath !== root._advancedRequestRepoPath) return
-            worktreeModel.clear()
-            for (var i = 0; i < worktrees.length; i++) worktreeModel.append(worktrees[i])
-            submoduleModel.clear()
-            for (var j = 0; j < submodules.length; j++) submoduleModel.append(submodules[j])
+            root._updateModelIfChanged(
+                worktreeModel,
+                worktrees,
+                ["path", "head", "branch", "detached", "bare", "prunable",
+                 "prunableReason", "locked", "lockedReason"],
+                "_worktreeSnapshot"
+            )
+            root._updateModelIfChanged(
+                submoduleModel,
+                submodules,
+                ["path", "hash", "status", "description"],
+                "_submoduleSnapshot"
+            )
             root._advancedRequesting = false
             root._advancedRequestRepoPath = ""
             if (root._reloadPending && root.visible)
@@ -135,6 +169,7 @@ Item {
 
     Fluent.ScrollArea {
         id: advancedScrollArea
+        objectName: "advancedScrollArea"
         anchors.fill: parent
 
         Column {
@@ -264,6 +299,8 @@ Item {
                                 }
                             }
                             Fluent.Button {
+                                objectName: "worktreeRemoveButton"
+                                property string worktreePath: model.path
                                 text: "移除"
                                 style: Fluent.Enums.button.style_transparent
                                 feature: model.detached

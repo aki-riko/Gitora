@@ -132,6 +132,21 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertNotIn("GitBridge.getWorktrees()", source)
         self.assertNotIn("GitBridge.getSubmodules()", source)
 
+    def test_advanced_view_does_not_rebuild_worktree_model_without_changes(self) -> None:
+        source = Path("app_qml/qml/views/AdvancedView.qml").read_text(encoding="utf-8")
+
+        self.assertIn('property string _worktreeSnapshot: ""', source)
+        self.assertIn('property string _submoduleSnapshot: ""', source)
+        self.assertIn("function _stateSnapshot(items, fields)", source)
+        self.assertIn("function _updateModelIfChanged", source)
+        self.assertIn('"_worktreeSnapshot"', source)
+        self.assertIn('"_submoduleSnapshot"', source)
+        self.assertIn("if (root[snapshotProperty] === snapshot) return false", source)
+        self.assertNotIn(
+            "worktreeModel.clear()\n            for (var i = 0; i < worktrees.length; i++)",
+            source,
+        )
+
     def test_advanced_view_worktree_cleanup_uses_dropdown_and_preview_dialog(self) -> None:
         source = Path("app_qml/qml/views/AdvancedView.qml").read_text(encoding="utf-8")
         dialog = Path(
