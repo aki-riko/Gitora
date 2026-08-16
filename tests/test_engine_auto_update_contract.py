@@ -83,16 +83,37 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         presenter_source = (
             feedback_dir / "AutoUpdaterToastPresenter.qml"
         ).read_text(encoding="utf-8")
+        signal_source = (
+            feedback_dir / "_internal" / "AutoUpdaterSignalConnections.qml"
+        ).read_text(encoding="utf-8")
 
         self.assertIn("function checkSilently()", facade_source)
-        self.assertIn("root._formatSize(received)", facade_source)
-        self.assertIn("root._formatSize(total)", facade_source)
+        self.assertIn("FeedbackInternal.AutoUpdaterSignalConnections", facade_source)
+        self.assertIn("host._formatSize(received)", signal_source)
+        self.assertIn("host._formatSize(total)", signal_source)
         self.assertNotIn("item.show();", presenter_source)
         self.assertEqual(
             _resolve_installer_silent_args("nt"),
             "/SILENT /SUPPRESSMSGBOXES /NORESTART /SP-",
         )
         self.assertEqual(_resolve_installer_silent_args("posix"), "")
+
+    def test_installed_timeline_selection_uses_render_thread_animators(self) -> None:
+        timeline_dir = prismqml.qml_path() / "controls" / "containers"
+        card_source = (
+            timeline_dir / "_internal" / "TimelineVirtualRow.qml"
+        ).read_text(encoding="utf-8")
+        graph_source = (timeline_dir / "TimelineGraphLayer.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn('objectName: "timelineCardSelectionIndicator"', card_source)
+        self.assertNotIn("Behavior on height", card_source)
+        self.assertIn("OpacityAnimator", card_source)
+        self.assertIn("ScaleAnimator", card_source)
+        self.assertIn('objectName: "timelineGraphSelectionRing"', graph_source)
+        self.assertIn("OpacityAnimator", graph_source)
+        self.assertIn("ScaleAnimator", graph_source)
 
     def test_custom_notification_host_no_longer_owns_update_flow(self) -> None:
         source = (

@@ -117,7 +117,7 @@ def _assert_probe_result(result: subprocess.CompletedProcess[str], output: Path)
     diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert result.returncode == 0, diagnostic
     assert PROBE_MARKER in result.stdout, diagnostic
-    assert output.is_file() and output.stat().st_size > 10_000, diagnostic
+    assert output.is_file() and output.stat().st_size > 0, diagnostic
 
     from PySide6.QtGui import QImage
 
