@@ -101,7 +101,7 @@ def _start_settings_navigation_selftest(engine, finish) -> None:
             and stack.property("_displayIndex") == target_index
         )
         if is_ready:
-            complete(True, "SettingsView 已加载")
+            complete(*_validate_appearance_settings(stack))
         elif time.monotonic() >= deadline:
             complete(False, "SettingsView 在超时前未加载并显示")
         else:
@@ -115,6 +115,29 @@ def _start_settings_navigation_selftest(engine, finish) -> None:
         complete(False, "无法切换到设置页索引")
         return
     QTimer.singleShot(0, poll)
+
+
+def _validate_appearance_settings(stack) -> tuple[bool, str]:
+    """确认设置页外观选项与持久化配置保持一致。"""
+    from PySide6.QtCore import QObject
+
+    page_loader = stack.property("currentWidget")
+    page = page_loader.property("item") if page_loader is not None else None
+    if page is None:
+        return False, "SettingsView 页面实例不可用"
+    manager = getConfigManager()
+    checks = (
+        ("themeSettingsCard", list(manager.themeOptions), manager.theme),
+        ("skinSettingsCard", list(manager.skinOptions), manager.skin),
+    )
+    for object_name, options, value in checks:
+        card = page.findChild(QObject, object_name)
+        if card is None:
+            return False, f"SettingsView 缺少 {object_name}"
+        expected = options.index(value) if value in options else -1
+        if card.property("currentIndex") != expected:
+            return False, f"{object_name} 未跟随配置 {value}"
+    return True, "SettingsView 已加载"
 
 
 def _start_splash_dismissal_selftest(engine, finish) -> None:

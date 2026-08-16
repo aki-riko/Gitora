@@ -176,22 +176,47 @@ Item {
 
                 // 应用主题
                 Fluent.SettingsCard {
+                    id: themeCard
+
+                    readonly property var themeValues:
+                        ConfigManager ? ConfigManager.themeOptions : []
+                    readonly property int themeIndex: ConfigManager
+                        ? themeValues.indexOf(ConfigManager.theme) : -1
+
+                    objectName: "themeSettingsCard"
                     width: parent ? parent.width : 0
                     title: "应用主题"
                     content: "调整应用的外观"
                     icon: Fluent.Enums.icon.dark_theme
                     type: Fluent.Enums.settingCard.type_combobox
                     model: ["跟随系统", "浅色", "深色"]
-                    property var themeValues: ["auto", "light", "dark"]
-                    Component.onCompleted: {
-                        if (ThemeManager) {
-                            var idx = themeValues.indexOf(ThemeManager.theme)
-                            currentIndex = idx >= 0 ? idx : 0
-                        }
-                    }
+                    currentIndex: themeIndex >= 0 ? themeIndex : 0
                     onIndexSelected: function(idx) {
-                        if (ThemeManager && idx >= 0)
-                            ThemeManager.setThemeFromQml(themeValues[idx])
+                        if (ConfigManager && idx >= 0 && idx < themeValues.length)
+                            ConfigManager.setTheme(themeValues[idx])
+                    }
+                }
+
+                // 应用皮肤
+                Fluent.SettingsCard {
+                    id: skinCard
+
+                    readonly property var skinValues:
+                        ConfigManager ? ConfigManager.skinOptions : []
+                    readonly property int skinIndex: ConfigManager
+                        ? skinValues.indexOf(ConfigManager.skin) : -1
+
+                    objectName: "skinSettingsCard"
+                    width: parent ? parent.width : 0
+                    title: "应用皮肤"
+                    content: "切换界面视觉风格"
+                    icon: Fluent.Enums.icon.color
+                    type: Fluent.Enums.settingCard.type_combobox
+                    model: ["流畅设计", "新粗野主义", "复古票据", "新拟态"]
+                    currentIndex: skinIndex >= 0 ? skinIndex : 0
+                    onIndexSelected: function(idx) {
+                        if (ConfigManager && idx >= 0 && idx < skinValues.length)
+                            ConfigManager.setSkin(skinValues[idx])
                     }
                 }
 

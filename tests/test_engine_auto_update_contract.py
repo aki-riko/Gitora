@@ -75,6 +75,31 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertNotIn("this._splashInstance =", main_source)
         self.assertNotIn("root.splashComponent.createObject", main_source)
 
+    def test_settings_appearance_follows_persistent_engine_config(self) -> None:
+        settings_source = (
+            ROOT / "app_qml" / "qml" / "views" / "SettingsView.qml"
+        ).read_text(encoding="utf-8")
+        main_source = (ROOT / "app_qml" / "main_qml.py").read_text(
+            encoding="utf-8"
+        )
+
+        for contract in (
+            'objectName: "themeSettingsCard"',
+            "ConfigManager ? ConfigManager.themeOptions : []",
+            "themeValues.indexOf(ConfigManager.theme)",
+            "ConfigManager.setTheme(themeValues[idx])",
+            'objectName: "skinSettingsCard"',
+            "ConfigManager ? ConfigManager.skinOptions : []",
+            "skinValues.indexOf(ConfigManager.skin)",
+            "ConfigManager.setSkin(skinValues[idx])",
+        ):
+            self.assertIn(contract, settings_source)
+        self.assertNotIn("ThemeManager.setThemeFromQml", settings_source)
+        self.assertIn("_validate_appearance_settings(stack)", main_source)
+        self.assertIn('page_loader.property("item")', main_source)
+        self.assertIn('(\"themeSettingsCard\",', main_source)
+        self.assertIn('(\"skinSettingsCard\",', main_source)
+
     def test_installed_engine_exposes_in_place_download_feedback(self) -> None:
         feedback_dir = prismqml.qml_path() / "controls" / "feedback"
         facade_source = (feedback_dir / "AutoUpdater.qml").read_text(
