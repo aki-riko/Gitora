@@ -11,7 +11,7 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2025
 AUTHOR = "aki-riko"
-VERSION = "v1.6.0"
+VERSION = "v1.6.1"
 APP_NAME = "Gitora"
 APP_USER_MODEL_ID = "PrismQML.Gitora"
 # 项目地址
@@ -53,3 +53,5 @@ CONFIG_FOLDER = _resolve_config_folder()
 
 CONFIG_FOLDER.mkdir(parents=True, exist_ok=True)
 CONFIG_FILE = CONFIG_FOLDER / "config.json"
+# PrismQML 引擎配置使用 Gitora 自己的用户目录，避免与 Gallery 共用 ~/.prismqml/app.json。
+PRISMQML_CONFIG_FILE = CONFIG_FOLDER / "prismqml.json"

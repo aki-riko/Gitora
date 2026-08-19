@@ -2,7 +2,12 @@
 from __future__ import annotations
 
 import importlib.metadata
+import json
+import os
 import re
+import subprocess
+import sys
+import tempfile
 import unittest
 from pathlib import Path
 
@@ -43,6 +48,94 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertNotIn("from prismqml import Updater", source)
         self.assertNotIn('setContextProperty("Updater"', source)
         self.assertNotIn("app._updater =", source)
+
+    def test_python_entry_uses_gitora_owned_engine_config(self) -> None:
+        source = (ROOT / "app_qml" / "main_qml.py").read_text(
+            encoding="utf-8"
+        )
+        setting_source = (ROOT / "app" / "common" / "setting.py").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn(
+            'PRISMQML_CONFIG_FILE = CONFIG_FOLDER / "prismqml.json"',
+            setting_source,
+        )
+        self.assertIn("config_path=PRISMQML_CONFIG_FILE", source)
+        self.assertIn("persist_appearance=True", source)
+        self.assertIn("getConfigManager(\n        str(PRISMQML_CONFIG_FILE)", source)
+
+    def test_gitora_config_wins_when_gallery_config_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary_directory:
+            temporary_root = Path(temporary_directory)
+            gallery_path = temporary_root / "gallery.json"
+            gitora_path = temporary_root / "local" / "Gitora" / "prismqml.json"
+            gitora_path.parent.mkdir(parents=True)
+            gallery_path.write_text(
+                json.dumps(
+                    {
+                        "Appearance": {
+                            "Theme": "dark",
+                            "Skin": "vintage_ticket",
+                            "Language": "zh_CN",
+                            "AccentColor": "#123456",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            gitora_path.write_text(
+                json.dumps(
+                    {
+                        "Appearance": {
+                            "Theme": "light",
+                            "Skin": "fluent",
+                            "Language": "en",
+                            "AccentColor": "#654321",
+                        }
+                    }
+                ),
+                encoding="utf-8",
+            )
+            environment = os.environ.copy()
+            environment.update(
+                {
+                    "LOCALAPPDATA": str(temporary_root / "local"),
+                    "PRISMQML_CONFIG_FILE": str(gallery_path),
+                    "PYTHONIOENCODING": "utf-8",
+                    "QT_QPA_PLATFORM": "offscreen",
+                }
+            )
+            script = """
+from pathlib import Path
+from PySide6.QtCore import QTimer
+from app.common.setting import PRISMQML_CONFIG_FILE
+from prismqml import App
+from prismqml.python.config import getConfigManager
+
+app = App([], config_path=PRISMQML_CONFIG_FILE, persist_appearance=True)
+manager = getConfigManager(str(PRISMQML_CONFIG_FILE), persist_appearance=True)
+assert Path(manager.getConfigPath()).resolve() == PRISMQML_CONFIG_FILE.resolve()
+assert manager.theme == "light"
+assert manager.skin == "fluent"
+assert manager.language == "en"
+assert manager.accentColor == "#654321"
+QTimer.singleShot(0, app.quit)
+raise SystemExit(app.exec())
+"""
+            result = subprocess.run(
+                [sys.executable, "-c", script],
+                cwd=ROOT,
+                env=environment,
+                capture_output=True,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=30,
+                check=False,
+            )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
     def test_qml_uses_one_engine_auto_updater_facade(self) -> None:
         main_source = (

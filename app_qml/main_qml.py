@@ -340,7 +340,7 @@ os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 
 from PySide6.QtCore import QUrl  # noqa: E402
 
-from app.common.setting import APP_USER_MODEL_ID  # noqa: E402
+from app.common.setting import APP_USER_MODEL_ID, PRISMQML_CONFIG_FILE  # noqa: E402
 
 os.environ.setdefault("PRISMQML_APP_USER_MODEL_ID", APP_USER_MODEL_ID)
 
@@ -356,7 +356,11 @@ from app_qml.backend.window_icon_bridge import WindowIconBridge  # noqa: E402
 
 
 def main() -> int:
-    app = App(sys.argv)
+    app = App(
+        sys.argv,
+        config_path=PRISMQML_CONFIG_FILE,
+        persist_appearance=True,
+    )
     engine = app.engine
 
     # 单实例检查(PrismQML SingleInstance:Windows Named Mutex + 本地套接字 IPC);
@@ -388,7 +392,10 @@ def main() -> int:
     ai_commit_plan_bridge = AiCommitPlanBridge(
         git_bridge.service, ai_commit_bridge
     )
-    config_manager = getConfigManager()
+    config_manager = getConfigManager(
+        str(PRISMQML_CONFIG_FILE),
+        persist_appearance=True,
+    )
     from app_qml.backend.repo_scanner import RepoScanner
     repo_scanner = RepoScanner()
     qml_render_bridge = QmlRenderBridge()
