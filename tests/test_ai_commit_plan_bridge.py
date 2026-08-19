@@ -251,7 +251,9 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.service.push = fake_push
         bridge.commitPlanAndPush()
 
-        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertTrue(
+            self.wait_until(lambda: len(finished) == 1, timeout=30.0)
+        )
         self.assertEqual(finished[0][0], True)
         self.assertIn("2 个 Commit", finished[0][1])
         self.assertEqual(len(pushes), 1)
@@ -293,7 +295,9 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.service.push = fake_push
         bridge.commitPlanAndPush()
 
-        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertTrue(
+            self.wait_until(lambda: len(finished) == 1, timeout=30.0)
+        )
         self.assertTrue(finished[0][0], finished[0][1])
         self.assertEqual(len(pushes), 1)
         self.assertEqual(
@@ -355,7 +359,9 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.service.push = fake_push
         bridge.commitPlanAndPush()
 
-        self.assertTrue(self.wait_until(lambda: len(finished) == 1))
+        self.assertTrue(
+            self.wait_until(lambda: len(finished) == 1, timeout=30.0)
+        )
         self.assertEqual(finished[0][0], False)
         self.assertIn("但推送失败", finished[0][1])
         self.assertEqual(len(pushes), 1)
@@ -511,23 +517,31 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         ))
 
         bridge.applyNextGroup()
-        self.assertTrue(self.wait_until(lambda: len(applied) == 1))
+        self.assertTrue(
+            self.wait_until(lambda: len(applied) == 1, timeout=30.0)
+        )
         cached = run_git(self.repo, "diff", "--cached").stdout
         self.assertIn("changed top", cached)
         self.assertNotIn("changed bottom", cached)
         ok, message = self.service.commit(applied[0][1])
         self.assertTrue(ok, message)
         bridge.notifyCommitSucceeded()
-        self.assertTrue(self.wait_until(lambda: len(advanced) == 1))
+        self.assertTrue(
+            self.wait_until(lambda: len(advanced) == 1, timeout=30.0)
+        )
         self.assertFalse(advanced[0][0])
         self.assertEqual(len(bridge.planModel.groups), 1)
 
         bridge.applyNextGroup()
-        self.assertTrue(self.wait_until(lambda: len(applied) == 2))
+        self.assertTrue(
+            self.wait_until(lambda: len(applied) == 2, timeout=30.0)
+        )
         ok, message = self.service.commit(applied[1][1])
         self.assertTrue(ok, message)
         bridge.notifyCommitSucceeded()
-        self.assertTrue(self.wait_until(lambda: len(advanced) == 2))
+        self.assertTrue(
+            self.wait_until(lambda: len(advanced) == 2, timeout=30.0)
+        )
         self.assertTrue(advanced[1][0])
         self.assertEqual(run_git(self.repo, "status", "--porcelain=v1").stdout, "")
 

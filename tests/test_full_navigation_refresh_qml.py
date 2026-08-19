@@ -185,10 +185,7 @@ def _run_probe(repo: Path, target_branch: str, checkout_commit: str) -> int:
                 point,
             )
 
-        def hover_branch_row(branch_view, branch_name: str) -> None:
-            from PySide6.QtCore import QPointF
-            from PySide6.QtTest import QTest
-
+        def expose_branch_actions(branch_view, branch_name: str) -> None:
             row = find_visual(
                 branch_view,
                 lambda item: item.objectName() == "branchRowDelegate"
@@ -196,10 +193,9 @@ def _run_probe(repo: Path, target_branch: str, checkout_commit: str) -> int:
             )
             if row is None:
                 return
-            point = row.mapToScene(
-                QPointF(row.width() - 20, row.height() / 2)
-            ).toPoint()
-            QTest.mouseMove(window, point)
+            # The offscreen platform cannot synthesize a native hover reliably.
+            # menuPinned exercises the same Loader visibility contract.
+            row.setProperty("menuPinned", True)
 
         def poll() -> None:
             if monotonic() >= state["deadline"]:
@@ -253,7 +249,7 @@ def _run_probe(repo: Path, target_branch: str, checkout_commit: str) -> int:
                     and stack.property("_displayIndex") == 2
                     and branch_view.property("currentBranch") == initial_branch
                 ):
-                    hover_branch_row(branch_view, target_branch)
+                    expose_branch_actions(branch_view, target_branch)
                     button = find_visual(
                         branch_view,
                         lambda item: item.objectName() == "localBranchActionButton"
@@ -266,7 +262,7 @@ def _run_probe(repo: Path, target_branch: str, checkout_commit: str) -> int:
             elif phase == "wait_branch_page":
                 stack, branch_view = stack_and_item(2)
                 if branch_view is not None:
-                    hover_branch_row(branch_view, target_branch)
+                    expose_branch_actions(branch_view, target_branch)
                 current_button = (
                     find_visual(
                         branch_view,
