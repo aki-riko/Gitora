@@ -26,6 +26,8 @@ _SKIP_DIRS = {
     ".cache", ".cargo", ".rustup", ".gradle", ".m2", ".nuget",
     "target", "build", "dist", "vendor", "Library",
 }
+_MAX_SCANNED_REPOSITORIES = 5000
+_PROGRESS_EVERY_DIRECTORIES = 100
 
 
 def _list_fixed_drives() -> List[str]:
@@ -42,14 +44,18 @@ def _scan_repositories(roots: List[str]) -> int:
     """在线程池扫描仓库，并通过引擎进度通道发布结果。"""
     task = current_task()
     count = 0
+    visited = 0
     for root in roots:
         task.raise_if_cancelled()
         for dirpath, dirnames, _filenames in os.walk(root, topdown=True):
             task.raise_if_cancelled()
+            visited += 1
             # 命中 .git 则记录该目录为仓库,并剪枝(不再深入)
             if ".git" in dirnames or os.path.isdir(os.path.join(dirpath, ".git")):
                 count += 1
                 task.report_progress(("repo", dirpath))
+                if count >= _MAX_SCANNED_REPOSITORIES:
+                    return count
                 dirnames[:] = []  # 剪枝:不进入仓库内部子目录
                 continue
             # 原地过滤要跳过的目录(topdown=True 时修改 dirnames 生效)
@@ -57,7 +63,8 @@ def _scan_repositories(roots: List[str]) -> int:
                 d for d in dirnames
                 if d not in _SKIP_DIRS and not d.startswith(".")
             ]
-            task.report_progress(("progress", dirpath))
+            if visited % _PROGRESS_EVERY_DIRECTORIES == 0:
+                task.report_progress(("progress", dirpath))
     return count
 
 

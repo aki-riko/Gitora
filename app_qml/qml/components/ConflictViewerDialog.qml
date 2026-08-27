@@ -9,22 +9,43 @@ import PrismQML as Fluent
 Fluent.MessageBox {
     id: dlg
     property string _displayTitle: "冲突内容"
+    property string _requestRepoPath: ""
+    property string _requestPath: ""
+    property bool loading: false
+    property bool truncated: false
+    property var lineRows: []
     title: ""
     confirmText: "关闭"
     cancelButtonVisible: false
 
-    ListModel { id: lineModel }
-
     function openFor(path) {
         dlg._displayTitle = "冲突内容 - " + path
-        lineModel.clear()
-        var content = GitBridge.readConflictFile(path) || ""
-        if (content !== "") {
-            var lines = content.split("\n")
-            for (var i = 0; i < lines.length; i++)
-                lineModel.append({ "line": lines[i] })
-        }
+        dlg.lineRows = []
+        dlg._requestRepoPath = GitBridge && GitBridge.repoPath
+            ? GitBridge.repoPath : ""
+        dlg._requestPath = path
+        dlg.loading = true
+        dlg.truncated = false
+        GitBridge.requestConflictFile(path)
         dlg.open()
+    }
+
+    Connections {
+        target: GitBridge
+        function onRepoPathChanged(path) {
+            dlg._requestRepoPath = ""
+            dlg._requestPath = ""
+            dlg.loading = false
+            dlg.lineRows = []
+        }
+        function onConflictFileReady(repoPath, path, lines, isTruncated) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || repoPath !== dlg._requestRepoPath || path !== dlg._requestPath)
+                return
+            dlg.lineRows = lines || []
+            dlg.loading = false
+            dlg.truncated = !!isTruncated
+        }
     }
 
     function _lineColor(line) {
@@ -40,7 +61,7 @@ Fluent.MessageBox {
 
         DialogTitle {
             objectName: "conflictViewerDialogTitle"
-            text: dlg._displayTitle
+            text: dlg._displayTitle + (dlg.truncated ? "（内容已截断）" : "")
         }
 
         Rectangle {
@@ -60,18 +81,26 @@ Fluent.MessageBox {
                 reuseItems: true
                 bounceEnabled: false
                 padding: 0
-                model: lineModel
+                model: dlg.lineRows
                 delegate: Text {
                     width: ListView.view ? ListView.view.width : 0
                     height: lineList.itemHeight
-                    text: model.line
-                    color: dlg._lineColor(model.line)
+                    text: modelData
+                    color: dlg._lineColor(modelData)
                     font.family: "Consolas, monospace"
                     font.pixelSize: Fluent.Enums.typography.caption
                     textFormat: Text.PlainText
                     wrapMode: Text.NoWrap
                     verticalAlignment: Text.AlignVCenter
                 }
+            }
+            Text {
+                anchors.centerIn: parent
+                visible: dlg.loading
+                text: "正在读取..."
+                color: Fluent.Enums.textColor.tertiary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.body
             }
         }
     }

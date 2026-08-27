@@ -35,6 +35,8 @@ MAX_HISTORY_RESULTS = 2000
 MAX_COMMIT_FILE_PREVIEW = 500
 MAX_COMMIT_DIFF_SIZE = 100 * 1024
 MAX_BRANCH_RESULTS = 5000
+MAX_CLEAN_PREVIEW = 500
+MAX_CONFLICT_FILE_SIZE = 100 * 1024
 
 
 class FileStatus(Enum):
@@ -903,10 +905,16 @@ class GitService(QObject):
         self, repo_path: str, count: int = 50, skip: int = 0, fast_mode: bool = False
     ) -> list[CommitInfo]:
         """获取指定仓库快照的提交历史。"""
+        safe_skip = max(0, skip)
+        safe_count = min(
+            max(0, count), max(0, MAX_HISTORY_RESULTS - safe_skip)
+        )
+        if safe_count == 0:
+            return []
         format_str = '%H|%h|%an|%ae|%ad|%s'
         cmd = [
             'log',
-            f'-{count}',
+            f'-{safe_count}',
             f'--format={format_str}',
             '--date=format:%Y-%m-%d %H:%M'
         ]
@@ -915,8 +923,8 @@ class GitService(QObject):
         if fast_mode:
             cmd.append('--first-parent')  # 仅显示第一父提交，加速查询
         
-        if skip > 0:
-            cmd.append(f'--skip={skip}')
+        if safe_skip > 0:
+            cmd.append(f'--skip={safe_skip}')
 
         success, stdout, _ = self._run_git_sync_at(repo_path, cmd)
 
@@ -3702,6 +3710,24 @@ class GitService(QObject):
             if line.startswith('Would remove '):
                 files.append(line[13:])
         return files
+
+    def clean_preview_limited(
+        self, limit: int = MAX_CLEAN_PREVIEW
+    ) -> tuple[list[str], int, bool]:
+        """获取有界清理预览及总数。"""
+        success, stdout, _ = self._run_git_sync(['clean', '-n', '-d'])
+        if not success:
+            return [], 0, False
+        safe_limit = min(max(0, limit), MAX_CLEAN_PREVIEW)
+        files: list[str] = []
+        total = 0
+        for line in stdout.strip().split('\n'):
+            if not line.startswith('Would remove '):
+                continue
+            total += 1
+            if len(files) < safe_limit:
+                files.append(line[13:])
+        return files, total, total > len(files)
 
     def clean(self, include_directories: bool = True) -> tuple[bool, str]:
         """清理未跟踪文件（危险操作）"""

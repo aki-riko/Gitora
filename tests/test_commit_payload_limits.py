@@ -7,11 +7,14 @@ from pathlib import Path
 
 from app.common.git_service import (
     MAX_BRANCH_RESULTS,
+    MAX_CLEAN_PREVIEW,
+    MAX_CONFLICT_FILE_SIZE,
     MAX_COMMIT_DIFF_SIZE,
     MAX_COMMIT_FILE_PREVIEW,
     GitService,
 )
 from tests.git_test_utils import commit_all, init_repo, write_file
+from app_qml.backend.git_bridge import GitBridge
 
 
 class CommitPayloadLimitsTest(unittest.TestCase):
@@ -80,6 +83,33 @@ class CommitPayloadLimitsTest(unittest.TestCase):
         service._run_git_sync = fake_run  # type: ignore[method-assign]
 
         self.assertEqual(len(service.get_branches()), MAX_BRANCH_RESULTS)
+
+    def test_clean_preview_is_bounded(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gitora-clean-preview-") as temp_dir:
+            repo = init_repo(Path(temp_dir) / "repo")
+            for index in range(MAX_CLEAN_PREVIEW + 11):
+                write_file(repo, f"untracked-{index:04d}.txt", "x\n")
+            service = GitService()
+            service.set_repo_path(str(repo), emit_status=False)
+
+            files, total, truncated = service.clean_preview_limited()
+
+            self.assertEqual(len(files), MAX_CLEAN_PREVIEW)
+            self.assertEqual(total, MAX_CLEAN_PREVIEW + 11)
+            self.assertTrue(truncated)
+
+    def test_conflict_file_reader_caps_bytes(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gitora-conflict-file-") as temp_dir:
+            repo = init_repo(Path(temp_dir) / "repo")
+            payload = "x" * (MAX_CONFLICT_FILE_SIZE + 10)
+            write_file(repo, "conflict.txt", payload)
+
+            content, truncated = GitBridge._read_conflict_file_at(
+                str(repo), "conflict.txt"
+            )
+
+            self.assertEqual(len(content), MAX_CONFLICT_FILE_SIZE)
+            self.assertTrue(truncated)
 
 
 if __name__ == "__main__":

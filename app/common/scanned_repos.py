@@ -11,6 +11,7 @@ from .setting import CONFIG_FOLDER
 
 
 logger = get_logger("ScannedRepos")
+MAX_SCANNED_REPOSITORIES = 5000
 
 
 class ScannedReposCache:
@@ -88,6 +89,8 @@ class ScannedReposCache:
         path_key = self._path_key(normalized_path)
         if path_key in self._repo_keys:
             return normalized_path, False
+        if len(self._repos) >= MAX_SCANNED_REPOSITORIES:
+            return normalized_path, False
         self._repos.append(normalized_path)
         self._repo_keys.add(path_key)
         return normalized_path, True
@@ -97,7 +100,7 @@ class ScannedReposCache:
         if valid_repos != self._repos:
             self._replace_repos(valid_repos)
             self.save()
-        return list(self._repos)
+        return list(self._repos[:MAX_SCANNED_REPOSITORIES])
 
     def save(self) -> None:
         try:

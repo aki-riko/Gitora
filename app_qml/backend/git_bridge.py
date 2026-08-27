@@ -19,6 +19,7 @@ from prismqml import current_task
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
     WorktreeInfo, SubmoduleInfo, DiffFile,
+    MAX_CLEAN_PREVIEW, MAX_CONFLICT_FILE_SIZE,
 )
 from app.common.logger import get_logger
 from app.common.prism_task import submit_to_pool
@@ -180,11 +181,13 @@ class GitBridge(QObject):
     fileHistoryReady = Signal(str, str, "QVariantList")  # (repoPath, path, 提交列表)
     conflictsReady = Signal(str, "QVariantList")         # (repoPath, 冲突文件列表)
     conflictStateReady = Signal(str, str)                 # (repoPath, 操作类型)
+    conflictFileReady = Signal(str, str, "QVariantList", bool)  # (repoPath, path, lines, truncated)
     commitFilesReady = Signal(str, str, "QVariantList", int, bool)  # (repoPath, hash, 预览, 总数, 是否截断)
     fileContentReady = Signal(str, str, str, str)        # (repoPath, path, hash, 内容)
     diffBetweenReady = Signal(str, str, str, str, str)   # (repoPath, path, c1, c2, diff)
     stashListReady = Signal(str, "QVariantList")         # (repoPath, stash 列表)
-    cleanPreviewReady = Signal(str, "QVariantList")      # (repoPath, 待清理文件列表)
+    cleanPreviewReady = Signal(str, "QVariantList", int, bool)  # (repoPath, 预览, 总数, 是否截断)
+    repoRuleFileReady = Signal(str, str, str)             # (repoPath, name, content)
     reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
     advancedStateReady = Signal(str, "QVariantList", "QVariantList")  # (repoPath, worktree, submodule)
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
@@ -483,13 +486,17 @@ class GitBridge(QObject):
     # ==================== 仓库维护 ====================
     @Slot()
     def requestCleanPreview(self):
-        """后台预览待清理文件,完成发 cleanPreviewReady(repoPath,list)。"""
+        """后台获取有界清理预览。"""
         repo = self._svc.repo_path or ""
         return self._submit_query(
-            self._svc.clean_preview,
+            self._svc.clean_preview_limited,
             label="预览待清理文件",
-            on_success=lambda data: self.cleanPreviewReady.emit(repo, data),
-            on_failure=lambda _exc: self.cleanPreviewReady.emit(repo, []),
+            on_success=lambda data: self.cleanPreviewReady.emit(
+                repo, data[0], data[1], data[2]
+            ),
+            on_failure=lambda _exc: self.cleanPreviewReady.emit(
+                repo, [], 0, False
+            ),
         )
 
     @Slot(bool, result=QObject)
@@ -1491,29 +1498,60 @@ class GitBridge(QObject):
         )
 
     # ==================== 冲突文件内容 ====================
-    @Slot(str, result=str)
-    def readConflictFile(self, path: str) -> str:
-        """读取工作区冲突文件原始内容(带冲突标记);路径越界保护。"""
-        import os
-        repo = self._svc.repo_path
+    @staticmethod
+    def _read_conflict_file_at(
+        repo: str, path: str
+    ) -> tuple[str, bool]:
         if not repo:
-            return ""
+            return "", False
         full_path = os.path.join(repo, path)
         real_path = os.path.realpath(full_path)
         repo_real = os.path.realpath(repo)
         if not real_path.startswith(repo_real + os.sep):
             logger.warning(f"拒绝读取仓库外路径: {path}")
-            return ""
+            return "", False
         try:
-            with open(real_path, "r", encoding="utf-8", errors="ignore") as f:
-                return f.read()
-        except OSError as e:
-            logger.warning(f"读取冲突文件失败 {path}: {e}")
-            return ""
+            with open(real_path, "r", encoding="utf-8", errors="ignore") as handle:
+                content = handle.read(MAX_CONFLICT_FILE_SIZE + 1)
+            truncated = len(content) > MAX_CONFLICT_FILE_SIZE
+            return content[:MAX_CONFLICT_FILE_SIZE], truncated
+        except OSError as exc:
+            logger.warning(f"读取冲突文件失败 {path}: {exc}")
+            return "", False
 
-    def _repo_rule_file_path(self, name: str) -> tuple[Path | None, str]:
+    @Slot(str, result=str)
+    def readConflictFile(self, path: str) -> str:
+        """兼容同步调用；QML 使用 requestConflictFile。"""
+        return self._read_conflict_file_at(self._svc.repo_path or "", path)[0]
+
+    @Slot(str, result=QObject)
+    def requestConflictFile(self, path: str):
+        """后台读取有界冲突文件内容。"""
+        repo = self._svc.repo_path or ""
+
+        def work() -> tuple[list[str], bool]:
+            content, truncated = self._read_conflict_file_at(repo, path)
+            lines = content.split('\n')
+            line_limit = 5000
+            visible_lines = lines[:line_limit]
+            return visible_lines, truncated or len(lines) > line_limit
+
+        return self._submit_query(
+            work,
+            label="读取冲突文件",
+            on_success=lambda data: self.conflictFileReady.emit(
+                repo, path, data[0], data[1]
+            ),
+            on_failure=lambda _exc: self.conflictFileReady.emit(
+                repo, path, [], False
+            ),
+        )
+
+    def _repo_rule_file_path(
+        self, name: str, repo: str | None = None
+    ) -> tuple[Path | None, str]:
         """解析仓库根目录规则文件，并拒绝越界/未知文件名。"""
-        repo = self._svc.repo_path
+        repo = repo if repo is not None else self._svc.repo_path
         if not repo:
             return None, "当前没有打开仓库"
         if name not in self._REPO_RULE_FILES:
@@ -1531,7 +1569,10 @@ class GitBridge(QObject):
     @Slot(str, result=str)
     def readRepoRuleFile(self, name: str) -> str:
         """读取仓库根目录的 .gitignore/.gitattributes，不存在时返回空文本。"""
-        path, error = self._repo_rule_file_path(name)
+        return self._read_repo_rule_file_at(self._svc.repo_path or "", name)
+
+    def _read_repo_rule_file_at(self, repo: str, name: str) -> str:
+        path, error = self._repo_rule_file_path(name, repo)
         if path is None:
             if error != "当前没有打开仓库":
                 logger.warning(f"读取规则文件被拒绝 {name}: {error}")
@@ -1544,10 +1585,36 @@ class GitBridge(QObject):
             logger.warning(f"读取规则文件失败 {name}: {e}")
             return ""
 
+    @Slot(str, result=QObject)
+    def requestRepoRuleFile(self, name: str):
+        """后台读取仓库根目录规则文件。"""
+        repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: self._read_repo_rule_file_at(repo, name),
+            label=f"读取规则文件 {name}",
+            on_success=lambda content: self.repoRuleFileReady.emit(
+                repo, name, content
+            ),
+            on_failure=lambda _exc: self.repoRuleFileReady.emit(
+                repo, name, ""
+            ),
+        )
+
     @Slot(str, str, result="QVariantList")
     def saveRepoRuleFile(self, name: str, content: str) -> list:
-        """原子保存仓库根目录的 .gitignore/.gitattributes。"""
-        path, error = self._repo_rule_file_path(name)
+        """兼容同步调用；QML 使用 saveRepoRuleFileAsync。"""
+        result = self._save_repo_rule_file_at(
+            self._svc.repo_path or "", name, content
+        )
+        if result[0]:
+            self._reset_poll_baseline()
+            self.statusChanged.emit()
+        return result
+
+    def _save_repo_rule_file_at(
+        self, repo: str, name: str, content: str
+    ) -> list:
+        path, error = self._repo_rule_file_path(name, repo)
         if path is None:
             logger.warning(f"保存规则文件被拒绝 {name}: {error}")
             return [False, error]
@@ -1571,7 +1638,21 @@ class GitBridge(QObject):
                 except OSError as e:
                     logger.warning(f"清理规则文件临时文件失败 {temp_name}: {e}")
 
-        # 规则文件属于工作区变更，立即通知状态页，并让轮询从新基线开始。
-        self._reset_poll_baseline()
-        self.statusChanged.emit()
         return [True, f"已保存 {name}"]
+
+    @Slot(str, str, result=QObject)
+    def saveRepoRuleFileAsync(self, name: str, content: str):
+        """后台原子保存仓库根目录规则文件。"""
+        repo = self._svc.repo_path or ""
+
+        def completed(result: list) -> None:
+            if result and result[0] and repo == (self._svc.repo_path or ""):
+                self._reset_poll_baseline()
+                self.statusChanged.emit()
+
+        return self._submit_query(
+            lambda: self._save_repo_rule_file_at(repo, name, content),
+            label=f"保存规则文件 {name}",
+            on_success=completed,
+            on_failure=lambda _exc: completed([False, "保存规则文件失败"]),
+        )

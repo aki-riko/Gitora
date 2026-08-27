@@ -14,6 +14,8 @@ Item {
     property string _advancedRequestRepoPath: ""
     property bool _advancedRequesting: false
     property bool _reloadPending: false
+    property string _ruleRequestRepoPath: ""
+    property bool _ruleReloadPending: true
     property string _worktreeSnapshot: ""
     property string _submoduleSnapshot: ""
     ListModel { id: worktreeModel }
@@ -50,6 +52,8 @@ Item {
         root._advancedRequestRepoPath = ""
         root._advancedRequesting = false
         root._reloadPending = false
+        root._ruleRequestRepoPath = ""
+        root._ruleReloadPending = true
         root._worktreeSnapshot = ""
         root._submoduleSnapshot = ""
     }
@@ -76,24 +80,30 @@ Item {
 
     function _loadRuleFiles() {
         if (!GitBridge || !GitBridge.repoPath) return
+        if (!root._ruleReloadPending) return
+        root._ruleReloadPending = false
+        root._ruleRequestRepoPath = GitBridge.repoPath
         if (!gitignoreEditor.dirty)
-            gitignoreEditor.loadContent(GitBridge.readRepoRuleFile(".gitignore"))
+            GitBridge.requestRepoRuleFile(".gitignore")
         if (!gitattributesEditor.dirty)
-            gitattributesEditor.loadContent(
-                GitBridge.readRepoRuleFile(".gitattributes")
-            )
+            GitBridge.requestRepoRuleFile(".gitattributes")
     }
 
     function _saveRuleFile(editor, content) {
         if (!GitBridge || !GitBridge.repoPath) return
-        var result = GitBridge.saveRepoRuleFile(editor.fileName, content)
-        if (result[0]) {
+        var requestRepo = GitBridge.repoPath
+        var task = GitBridge.saveRepoRuleFileAsync(editor.fileName, content)
+        task.succeeded.connect(function(result) {
+            if (!result || !result[0]) {
+                Fluent.NotificationManager.desktop.error(
+                    "失败", result ? result[1] : "保存规则文件失败")
+                return
+            }
+            if (!GitBridge || GitBridge.repoPath !== requestRepo) return
             editor.markSaved()
             Fluent.NotificationManager.desktop.success("成功", result[1])
             root.reload()
-        } else {
-            Fluent.NotificationManager.desktop.error("失败", result[1] || "保存规则文件失败")
-        }
+        })
     }
 
     function _op(task) {
@@ -115,11 +125,13 @@ Item {
     Connections {
         target: GitBridge
         function onStatusChanged() {
+            root._ruleReloadPending = true
             root._reloadPending = true
             if (root.visible) root.reload()
         }
         function onRepoPathChanged(path) {
             root.clearModels()
+            root._ruleReloadPending = true
             root._reloadPending = true
             if (root.visible) Qt.callLater(function() { root.reload() })
         }
@@ -143,6 +155,14 @@ Item {
             root._advancedRequestRepoPath = ""
             if (root._reloadPending && root.visible)
                 Qt.callLater(function() { root.reload() })
+        }
+        function onRepoRuleFileReady(repoPath, name, content) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || repoPath !== root._ruleRequestRepoPath) return
+            if (name === ".gitignore" && !gitignoreEditor.dirty)
+                gitignoreEditor.loadContent(content || "")
+            else if (name === ".gitattributes" && !gitattributesEditor.dirty)
+                gitattributesEditor.loadContent(content || "")
         }
     }
 
