@@ -628,7 +628,7 @@ class GitService(QObject):
         )
         if not success:
             return []
-        return self._parse_status_output(stdout)[:MAX_STATUS_CHANGES]
+        return self._parse_status_output(stdout)
 
     def get_status_at(self, repo_path: str) -> list[FileChange]:
         """获取指定仓库路径的工作区状态,不读取当前 self._repo_path。"""
