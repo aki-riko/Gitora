@@ -58,8 +58,8 @@ class ScannedReposCache:
         return cls._normalize_repos([*priority_paths, *fallback_paths])
 
     def _replace_repos(self, repos: list[str]) -> None:
-        self._repos = repos
-        self._repo_keys = {self._path_key(path) for path in repos}
+        self._repos = repos[:MAX_SCANNED_REPOSITORIES]
+        self._repo_keys = {self._path_key(path) for path in self._repos}
 
     @staticmethod
     def _is_repository(repo_path: str) -> bool:
@@ -67,7 +67,11 @@ class ScannedReposCache:
 
     @classmethod
     def _valid_repos(cls, repos: list[str]) -> list[str]:
-        return [repo_path for repo_path in repos if cls._is_repository(repo_path)]
+        return [
+            repo_path
+            for repo_path in repos[:MAX_SCANNED_REPOSITORIES]
+            if cls._is_repository(repo_path)
+        ]
 
     def _load(self) -> list[str]:
         if not self.file_path.exists():

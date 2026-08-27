@@ -19,7 +19,7 @@ from prismqml import current_task
 from app.common.git_service import (
     GitService, FileChange, CommitInfo, BranchInfo, ConflictInfo,
     WorktreeInfo, SubmoduleInfo, DiffFile,
-    MAX_CLEAN_PREVIEW, MAX_CONFLICT_FILE_SIZE,
+    MAX_CLEAN_PREVIEW, MAX_CONFLICT_FILE_SIZE, MAX_RULE_FILE_SIZE,
 )
 from app.common.logger import get_logger
 from app.common.prism_task import submit_to_pool
@@ -182,7 +182,7 @@ class GitBridge(QObject):
     conflictsReady = Signal(str, "QVariantList")         # (repoPath, 冲突文件列表)
     conflictStateReady = Signal(str, str)                 # (repoPath, 操作类型)
     conflictFileReady = Signal(str, str, "QVariantList", bool)  # (repoPath, path, lines, truncated)
-    commitFilesReady = Signal(str, str, "QVariantList", int, bool)  # (repoPath, hash, 预览, 总数, 是否截断)
+    commitFilesReady = Signal(str, str, "QVariantList", int, bool, "QVariantMap")  # (repoPath, hash, 预览, 总数, 是否截断, 状态统计)
     fileContentReady = Signal(str, str, str, str)        # (repoPath, path, hash, 内容)
     diffBetweenReady = Signal(str, str, str, str, str)   # (repoPath, path, c1, c2, diff)
     stashListReady = Signal(str, "QVariantList")         # (repoPath, stash 列表)
@@ -1433,22 +1433,22 @@ class GitBridge(QObject):
         """后台获取有界提交文件预览。"""
         repo = self._svc.repo_path or ""
 
-        def work() -> tuple[list[dict], int, bool]:
-            files, total, truncated = self._svc.get_commit_files_preview(
+        def work() -> tuple[list[dict], int, bool, dict[str, int]]:
+            files, total, truncated, status_counts = self._svc.get_commit_files_preview(
                 commit_hash
             )
             return [
                 _file_change_to_dict(file_change) for file_change in files
-            ], total, truncated
+            ], total, truncated, status_counts
 
         return self._submit_query(
             work,
             label="获取提交文件",
             on_success=lambda data: self.commitFilesReady.emit(
-                repo, commit_hash, data[0], data[1], data[2]
+                repo, commit_hash, data[0], data[1], data[2], data[3]
             ),
             on_failure=lambda _exc: self.commitFilesReady.emit(
-                repo, commit_hash, [], 0, False
+                repo, commit_hash, [], 0, False, {}
             ),
         )
 
@@ -1511,10 +1511,13 @@ class GitBridge(QObject):
             logger.warning(f"拒绝读取仓库外路径: {path}")
             return "", False
         try:
-            with open(real_path, "r", encoding="utf-8", errors="ignore") as handle:
-                content = handle.read(MAX_CONFLICT_FILE_SIZE + 1)
-            truncated = len(content) > MAX_CONFLICT_FILE_SIZE
-            return content[:MAX_CONFLICT_FILE_SIZE], truncated
+            with open(real_path, "rb") as handle:
+                raw = handle.read(MAX_CONFLICT_FILE_SIZE + 1)
+            truncated = len(raw) > MAX_CONFLICT_FILE_SIZE
+            content = raw[:MAX_CONFLICT_FILE_SIZE].decode(
+                "utf-8", errors="ignore"
+            )
+            return content, truncated
         except OSError as exc:
             logger.warning(f"读取冲突文件失败 {path}: {exc}")
             return "", False
@@ -1578,7 +1581,11 @@ class GitBridge(QObject):
                 logger.warning(f"读取规则文件被拒绝 {name}: {error}")
             return ""
         try:
-            return path.read_text(encoding="utf-8", errors="replace")
+            with path.open("rb") as handle:
+                raw = handle.read(MAX_RULE_FILE_SIZE + 1)
+            return raw[:MAX_RULE_FILE_SIZE].decode(
+                "utf-8", errors="replace"
+            ).replace("\r\n", "\n").replace("\r", "\n")
         except FileNotFoundError:
             return ""
         except OSError as e:
@@ -1618,6 +1625,8 @@ class GitBridge(QObject):
         if path is None:
             logger.warning(f"保存规则文件被拒绝 {name}: {error}")
             return [False, error]
+        if len(content.encode("utf-8")) > MAX_RULE_FILE_SIZE:
+            return [False, f"{name} 内容超过 {MAX_RULE_FILE_SIZE // 1024} KiB 上限"]
 
         temp_name = ""
         try:

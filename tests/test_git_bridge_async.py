@@ -331,6 +331,34 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_commit_file_preview_signal_carries_total_and_status_counts(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        bridge._svc.get_commit_files_preview = lambda _hash: (  # type: ignore[method-assign]
+            [FileChange("one.txt", FileStatus.ADDED, False)],
+            501,
+            True,
+            {"A": 500, "M": 1},
+        )
+        emitted: list[tuple] = []
+        bridge.commitFilesReady.connect(
+            lambda repo, commit_hash, files, total, truncated, counts: emitted.append(
+                (repo, commit_hash, files, total, truncated, counts)
+            )
+        )
+
+        try:
+            bridge.requestCommitFiles("abc123")
+            self.assertTrue(self._wait_until(app, lambda: len(emitted) == 1))
+            self.assertEqual(emitted[0][0], "repo")
+            self.assertEqual(emitted[0][1], "abc123")
+            self.assertEqual(emitted[0][3:], (501, True, {"A": 500, "M": 1}))
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_history_scope_slots_expose_boolean_argument_to_qml(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

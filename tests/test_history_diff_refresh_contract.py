@@ -131,7 +131,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("root.displayPath(modelData.path)", source)
         self.assertIn("property var fileRows: []", source)
         self.assertIn("root.fileRows = files || []", source)
-        self.assertIn("function onCommitFilesReady(repoPath, hash, files, total, isTruncated)", source)
+        self.assertIn("function onCommitFilesReady(repoPath, hash, files, total, isTruncated, counts)", source)
         self.assertNotIn("commitFilesModel.append", source)
         self.assertNotIn(
             "Item { Layout.fillHeight: true }\n\n                    Fluent.Separator",
@@ -252,7 +252,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         )[0]
 
         self.assertIn("GitBridge.requestCommitFiles(hash)", open_for)
-        self.assertNotIn("GitBridge.requestCommitDiff(hash)", open_for)
+        self.assertIn("GitBridge.requestCommitDiff(hash)", open_for)
         self.assertIn("GitBridge.requestCommitFileDiff(", source)
         self.assertIn("function onCommitFileDiffReady", source)
         self.assertIn("path !== dlg._selectedFilePath", source)

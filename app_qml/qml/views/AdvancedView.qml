@@ -104,6 +104,11 @@ Item {
             Fluent.NotificationManager.desktop.success("成功", result[1])
             root.reload()
         })
+        task.failed.connect(function() {
+            if (GitBridge && GitBridge.repoPath === requestRepo)
+                Fluent.NotificationManager.desktop.error(
+                    "失败", "保存规则文件失败")
+        })
     }
 
     function _op(task) {

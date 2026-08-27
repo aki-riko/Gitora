@@ -17,6 +17,7 @@ Rectangle {
     property var fileRows: []
     property int totalCount: 0
     property bool truncated: false
+    property var statusCounts: ({})
     property string requestRepoPath: ""
     property string requestHash: ""
     property bool componentReady: false
@@ -25,6 +26,7 @@ Rectangle {
         root.fileRows = []
         root.totalCount = 0
         root.truncated = false
+        root.statusCounts = ({})
         root.loading = false
         root.requestRepoPath = ""
         root.requestHash = ""
@@ -40,9 +42,10 @@ Rectangle {
 
     function countStatus(status) {
         var count = 0
-        for (var i = 0; i < root.fileRows.length; i++) {
+        if (root.statusCounts[status] !== undefined)
+            return root.statusCounts[status]
+        for (var i = 0; i < root.fileRows.length; i++)
             if (root.fileRows[i].status === status) count++
-        }
         return count
     }
 
@@ -58,13 +61,14 @@ Rectangle {
 
     Connections {
         target: GitBridge
-        function onCommitFilesReady(repoPath, hash, files, total, isTruncated) {
+        function onCommitFilesReady(repoPath, hash, files, total, isTruncated, counts) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
             if (repoPath !== root.requestRepoPath || hash !== root.requestHash) return
             if (!root.commit || root.commit.hash !== hash) return
             root.fileRows = files || []
             root.totalCount = total || root.fileRows.length
             root.truncated = !!isTruncated
+            root.statusCounts = counts || ({})
             root.loading = false
         }
     }

@@ -37,6 +37,14 @@ MAX_COMMIT_DIFF_SIZE = 100 * 1024
 MAX_BRANCH_RESULTS = 5000
 MAX_CLEAN_PREVIEW = 500
 MAX_CONFLICT_FILE_SIZE = 100 * 1024
+MAX_STATUS_CHANGES = 5000
+MAX_TAG_RESULTS = 5000
+MAX_FILE_HISTORY_RESULTS = 500
+MAX_STASH_RESULTS = 500
+MAX_REFLOG_RESULTS = 500
+MAX_CONFLICT_RESULTS = 5000
+MAX_FILE_CONTENT_SIZE = 100 * 1024
+MAX_RULE_FILE_SIZE = 256 * 1024
 
 
 class FileStatus(Enum):
@@ -620,7 +628,7 @@ class GitService(QObject):
         )
         if not success:
             return []
-        return self._parse_status_output(stdout)
+        return self._parse_status_output(stdout)[:MAX_STATUS_CHANGES]
 
     def get_status_at(self, repo_path: str) -> list[FileChange]:
         """获取指定仓库路径的工作区状态,不读取当前 self._repo_path。"""
@@ -629,7 +637,7 @@ class GitService(QObject):
         )
         if not success:
             return []
-        return self._parse_status_output(stdout)
+        return self._parse_status_output(stdout)[:MAX_STATUS_CHANGES]
 
     def _parse_status_output(self, stdout: str) -> list[FileChange]:
         """解析 git status --porcelain=v1 输出。"""
@@ -2438,6 +2446,8 @@ class GitService(QObject):
         conflict_codes = {"DD", "AU", "UD", "UA", "DU", "AA", "UU"}
         seen = set()
         for line in stdout.split('\n'):
+            if len(conflicts) >= MAX_CONFLICT_RESULTS:
+                break
             if len(line) < 3:
                 continue
             xy = line[:2]
@@ -2469,6 +2479,8 @@ class GitService(QObject):
                 logger.debug(f"读取冲突文件失败 {path}: {e}")
 
             conflicts.append(conflict)
+            if len(conflicts) >= MAX_CONFLICT_RESULTS:
+                break
         
         return conflicts
 
@@ -2687,7 +2699,9 @@ class GitService(QObject):
         Returns:
             list of (stash_id, message)
         """
-        success, stdout, stderr = self._run_git_sync(['stash', 'list'])
+        success, stdout, stderr = self._run_git_sync(
+            ['stash', 'list', f'-{MAX_STASH_RESULTS}']
+        )
         if not success:
             return []
         
@@ -2701,7 +2715,7 @@ class GitService(QObject):
                 message = ':'.join(line.split(':')[1:]).strip()
                 stashes.append((stash_id, message))
         
-        return stashes
+        return stashes[:MAX_STASH_RESULTS]
 
     def stash_pop(self, stash_id: str = "stash@{0}") -> tuple[bool, str]:
         """恢复stash并删除"""
@@ -2776,10 +2790,13 @@ class GitService(QObject):
 
     def get_file_history(self, file_path: str, count: int = 50) -> list[CommitInfo]:
         """获取指定文件的提交历史"""
+        safe_count = min(max(0, count), MAX_FILE_HISTORY_RESULTS)
+        if safe_count == 0:
+            return []
         format_str = '%H|%h|%an|%ae|%ad|%s'
         cmd = [
             'log',
-            f'-{count}',
+            f'-{safe_count}',
             f'--format={format_str}',
             '--date=format:%Y-%m-%d %H:%M',
             '--follow',  # 跟踪文件重命名
@@ -2810,21 +2827,31 @@ class GitService(QObject):
                     branch=current_branch
                 ))
         
-        return commits
+        return commits[:MAX_FILE_HISTORY_RESULTS]
 
     def get_file_content_at_commit(self, file_path: str, commit_hash: str) -> str:
         """获取文件在指定提交的内容"""
         if not self._path_in_repo(file_path):
             return ""
         success, stdout, stderr = self._run_git_sync(['show', f'{commit_hash}:{file_path}'])
-        return stdout if success else ""
+        if not success:
+            return ""
+        content, _truncated = self._truncate_display_text(
+            stdout, MAX_FILE_CONTENT_SIZE
+        )
+        return content
 
     def diff_file_between_commits(self, file_path: str, commit1: str, commit2: str) -> str:
         """对比文件在两个提交之间的差异"""
         if not self._path_in_repo(file_path):
             return ""
         success, stdout, _ = self._run_git_sync(['diff', commit1, commit2, '--', file_path])
-        return stdout if success else ""
+        if not success:
+            return ""
+        diff, _truncated = self._truncate_display_text(
+            stdout, MAX_COMMIT_DIFF_SIZE
+        )
+        return diff
 
     # ==================== Tag标签管理 ====================
 
@@ -2855,7 +2882,7 @@ class GitService(QObject):
                 message = parts[2] if len(parts) == 3 else ""
                 tags.append((tag_name, commit_hash, message))
 
-        return tags
+        return tags[:MAX_TAG_RESULTS]
 
     def create_tag(
         self,
@@ -3441,9 +3468,10 @@ class GitService(QObject):
     @staticmethod
     def _parse_commit_file_output(
         stdout: str, limit: int | None = None
-    ) -> tuple[list[FileChange], int]:
+    ) -> tuple[list[FileChange], int, dict[str, int]]:
         files: list[FileChange] = []
         total = 0
+        status_counts: dict[str, int] = {}
         safe_limit = None if limit is None else max(0, limit)
         for line in stdout.strip().split('\n'):
             if not line:
@@ -3452,9 +3480,10 @@ class GitService(QObject):
             if len(parts) != 2:
                 continue
             total += 1
+            status_char = parts[0][0]
+            status_counts[status_char] = status_counts.get(status_char, 0) + 1
             if safe_limit is not None and len(files) >= safe_limit:
                 continue
-            status_char = parts[0][0]
             file_path = parts[1]
             files.append(
                 FileChange(
@@ -3463,7 +3492,7 @@ class GitService(QObject):
                     staged=False,
                 )
             )
-        return files, total
+        return files, total, status_counts
 
     @staticmethod
     def _parse_status_char_static(char: str) -> FileStatus:
@@ -3482,37 +3511,43 @@ class GitService(QObject):
     def get_commit_files(self, commit_hash: str) -> list[FileChange]:
         """获取提交的完整变更文件列表(供非 UI 调用)。"""
         success, stdout, _ = self._run_git_sync([
-            'diff-tree', '--no-commit-id', '--name-status', '-r', commit_hash
+            'diff-tree', '--root', '--no-commit-id', '--name-status', '-r', commit_hash
         ])
         if not success:
             return []
-        files, _total = self._parse_commit_file_output(stdout)
+        files, _total, _status_counts = self._parse_commit_file_output(stdout)
         return files
 
     def get_commit_files_preview(
         self,
         commit_hash: str,
         limit: int = MAX_COMMIT_FILE_PREVIEW,
-    ) -> tuple[list[FileChange], int, bool]:
+    ) -> tuple[list[FileChange], int, bool, dict[str, int]]:
         """获取有界的提交文件预览及总数。"""
         success, stdout, _ = self._run_git_sync([
-            'diff-tree', '--no-commit-id', '--name-status', '-r', commit_hash
+            'diff-tree', '--root', '--no-commit-id', '--name-status', '-r', commit_hash
         ])
         if not success:
-            return [], 0, False
+            return [], 0, False, {}
         safe_limit = min(max(0, limit), MAX_COMMIT_FILE_PREVIEW)
-        files, total = self._parse_commit_file_output(stdout, safe_limit)
-        return files, total, total > len(files)
+        files, total, status_counts = self._parse_commit_file_output(
+            stdout, safe_limit
+        )
+        return files, total, total > len(files), status_counts
 
     @staticmethod
     def _truncate_display_text(
         text: str, limit: int = MAX_COMMIT_DIFF_SIZE
     ) -> tuple[str, bool]:
-        if len(text) <= limit:
+        encoded = text.encode("utf-8")
+        if len(encoded) <= limit:
             return text, False
-        marker = "\n\n[内容过大，已截断；请选择具体文件查看完整范围]"
-        available = max(0, limit - len(marker))
-        return text[:available] + marker, True
+        marker = "\n\n[内容过大，已截断]"
+        marker_size = len(marker.encode("utf-8"))
+        prefix = encoded[:max(0, limit - marker_size)].decode(
+            "utf-8", errors="ignore"
+        )
+        return prefix + marker, True
 
     def get_commit_diff(
         self, commit_hash: str, file_path: str | None = None
@@ -3522,6 +3557,8 @@ class GitService(QObject):
         if file_path:
             if '\t' in file_path:
                 file_path = file_path.rsplit('\t', 1)[-1]
+            if not self._path_in_repo(file_path):
+                return ""
             args.extend(['--', file_path])
         success, stdout, _ = self._run_git_sync(args)
         if not success:
@@ -3549,6 +3586,9 @@ class GitService(QObject):
                 email=parts[3],
                 date=parts[4],
                 message=parts[5] + ('\n' + parts[6] if len(parts) == 7 else '')
+            )
+            commit.message, _truncated = self._truncate_display_text(
+                commit.message, MAX_FILE_CONTENT_SIZE
             )
             return self._mark_reverted_commits_at(self._repo_path or "", [commit])[0]
         return None
@@ -3681,7 +3721,12 @@ class GitService(QObject):
         Returns:
             list of (hash, ref, message)
         """
-        success, stdout, _ = self._run_git_sync(['reflog', f'-{count}', '--format=%H|%gd|%gs'])
+        safe_count = min(max(0, count), MAX_REFLOG_RESULTS)
+        if safe_count == 0:
+            return []
+        success, stdout, _ = self._run_git_sync(
+            ['reflog', f'-{safe_count}', '--format=%H|%gd|%gs']
+        )
         if not success:
             return []
         
@@ -3693,7 +3738,7 @@ class GitService(QObject):
             if len(parts) == 3:
                 logs.append((parts[0], parts[1], parts[2]))
         
-        return logs
+        return logs[:MAX_REFLOG_RESULTS]
 
     # ==================== Blame代码作者 ====================
 

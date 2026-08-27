@@ -36,6 +36,7 @@ Fluent.MessageBox {
             dlg._requestRepoPath = ""
             dlg._requestPath = ""
             dlg.loading = false
+            dlg.truncated = false
             dlg.lineRows = []
         }
         function onConflictFileReady(repoPath, path, lines, isTruncated) {

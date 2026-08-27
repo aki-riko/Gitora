@@ -30,6 +30,8 @@ Fluent.MessageBox {
         function onRepoPathChanged(path) {
             dlg._requestRepoPath = ""
             dlg.previewRows = []
+            dlg.totalCount = 0
+            dlg.truncated = false
         }
         function onCleanPreviewReady(repoPath, files, total, isTruncated) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath) return

@@ -13,6 +13,7 @@ def test_advanced_view_uses_async_rule_file_apis() -> None:
     assert "GitBridge.requestRepoRuleFile(\".gitignore\")" in source
     assert "GitBridge.requestRepoRuleFile(\".gitattributes\")" in source
     assert "GitBridge.saveRepoRuleFileAsync" in source
+    assert "task.failed.connect" in source
     assert "GitBridge.readRepoRuleFile(" not in source
     assert "GitBridge.saveRepoRuleFile(" not in source
 

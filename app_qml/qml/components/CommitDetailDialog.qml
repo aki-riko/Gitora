@@ -68,15 +68,16 @@ Fluent.DialogBoxCore {
         dlg.fileRows = []
         dlg.totalFileCount = 0
         dlg.filesTruncated = false
-        commitDiffViewer.setLoading("选择文件查看差异")
+        commitDiffViewer.setLoading("加载中...")
         GitBridge.requestCommitFiles(hash)
+        GitBridge.requestCommitDiff(hash)
         dlg.open()
     }
 
     Connections {
         target: GitBridge
         function onRepoPathChanged(path) { dlg.clearContent() }
-        function onCommitFilesReady(repoPath, hash, files, total, isTruncated) {
+        function onCommitFilesReady(repoPath, hash, files, total, isTruncated, counts) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
             dlg.fileRows = files || []
             dlg.totalFileCount = total || dlg.fileRows.length

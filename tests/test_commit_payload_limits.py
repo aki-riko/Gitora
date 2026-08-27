@@ -13,7 +13,7 @@ from app.common.git_service import (
     MAX_COMMIT_FILE_PREVIEW,
     GitService,
 )
-from tests.git_test_utils import commit_all, init_repo, write_file
+from tests.git_test_utils import commit_all, init_repo, run_git, write_file
 from app_qml.backend.git_bridge import GitBridge
 
 
@@ -30,13 +30,14 @@ class CommitPayloadLimitsTest(unittest.TestCase):
             service = GitService()
             service.set_repo_path(str(repo), emit_status=False)
 
-            files, reported_total, truncated = service.get_commit_files_preview(
+            files, reported_total, truncated, counts = service.get_commit_files_preview(
                 commit_hash
             )
 
             self.assertEqual(len(files), MAX_COMMIT_FILE_PREVIEW)
             self.assertEqual(reported_total, total)
             self.assertTrue(truncated)
+            self.assertEqual(counts, {"A": total})
 
     def test_commit_diff_is_capped_for_ui_and_supports_single_file_scope(self) -> None:
         with tempfile.TemporaryDirectory(prefix="gitora-commit-diff-") as temp_dir:
@@ -50,11 +51,19 @@ class CommitPayloadLimitsTest(unittest.TestCase):
 
             full_scope_diff = service.get_commit_diff(commit_hash)
             file_scope_diff = service.get_commit_diff(commit_hash, "large.txt")
+            file_content = service.get_file_content_at_commit(
+                "large.txt", commit_hash
+            )
+            between_diff = service.diff_file_between_commits(
+                "large.txt", run_git(repo, "rev-parse", "HEAD~1").stdout.strip(), commit_hash
+            )
 
             self.assertLessEqual(len(full_scope_diff), MAX_COMMIT_DIFF_SIZE)
             self.assertLessEqual(len(file_scope_diff), MAX_COMMIT_DIFF_SIZE)
             self.assertIn("[内容过大，已截断", full_scope_diff)
             self.assertIn("diff --git a/large.txt b/large.txt", file_scope_diff)
+            self.assertLessEqual(len(file_content.encode("utf-8")), MAX_COMMIT_DIFF_SIZE)
+            self.assertLessEqual(len(between_diff.encode("utf-8")), MAX_COMMIT_DIFF_SIZE)
 
     def test_history_query_does_not_fold_deep_skip_back_to_the_limit(self) -> None:
         service = GitService()
@@ -110,6 +119,23 @@ class CommitPayloadLimitsTest(unittest.TestCase):
 
             self.assertEqual(len(content), MAX_CONFLICT_FILE_SIZE)
             self.assertTrue(truncated)
+
+    def test_root_commit_file_preview_includes_added_files(self) -> None:
+        with tempfile.TemporaryDirectory(prefix="gitora-root-commit-") as temp_dir:
+            repo = init_repo(Path(temp_dir) / "repo")
+            write_file(repo, "first.txt", "first\n")
+            commit_hash = commit_all(repo, "root commit")
+            service = GitService()
+            service.set_repo_path(str(repo), emit_status=False)
+
+            files, total, truncated, counts = service.get_commit_files_preview(
+                commit_hash
+            )
+
+            self.assertEqual([item.path for item in files], ["first.txt"])
+            self.assertEqual(total, 1)
+            self.assertFalse(truncated)
+            self.assertEqual(counts, {"A": 1})
 
 
 if __name__ == "__main__":
