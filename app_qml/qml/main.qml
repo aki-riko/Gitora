@@ -101,7 +101,6 @@ QtObject {
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
             lazyLoading: true
-            splashComponent: root.splashComponent
             // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
             micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
             Component.onCompleted: {
@@ -110,16 +109,6 @@ QtObject {
                 Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })
             }
 
-        }
-    }
-
-    // 启动屏幕
-    property Component splashComponent: Component {
-        Fluent.SplashScreen {
-            iconSource: typeof AppLogo !== "undefined" ? AppLogo : ""
-            title: root.windowTitle
-            subtitle: "正在加载..."
-            z: 9999
         }
     }
 

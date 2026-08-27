@@ -188,12 +188,14 @@ raise SystemExit(app.exec())
         self.assertNotIn("Updater.checkForUpdate()", settings_source)
         self.assertNotIn("target: typeof Updater", settings_source)
 
-    def test_qml_uses_the_engine_owned_splash_instance(self) -> None:
+    def test_qml_uses_the_engine_default_splash_instance(self) -> None:
         main_source = (
             ROOT / "app_qml" / "qml" / "main.qml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("splashComponent: root.splashComponent", main_source)
+        self.assertNotIn("splashComponent:", main_source)
+        self.assertNotIn("property Component splashComponent", main_source)
+        self.assertNotIn("Fluent.SplashScreen {", main_source)
         self.assertNotIn("this._splashInstance =", main_source)
         self.assertNotIn("root.splashComponent.createObject", main_source)
 
