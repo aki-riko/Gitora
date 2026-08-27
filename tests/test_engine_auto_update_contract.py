@@ -193,6 +193,7 @@ raise SystemExit(app.exec())
             ROOT / "app_qml" / "qml" / "main.qml"
         ).read_text(encoding="utf-8")
 
+        self.assertIn('splashSubtitle: "正在加载..."', main_source)
         self.assertNotIn("splashComponent:", main_source)
         self.assertNotIn("property Component splashComponent", main_source)
         self.assertNotIn("Fluent.SplashScreen {", main_source)
