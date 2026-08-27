@@ -21,7 +21,7 @@ pip install -r app_qml/requirements.txt
 python app_qml/main_qml.py
 ```
 
-> 开发时若要用本地 PrismQML 源码而非 pip 包,设环境变量 `PRISMQML_ROOT` 指向源码目录(入口会优先 import 已装的 pip 包,本地源码仅作回退)。
+> 开发态默认优先使用同级 `PrismQML` 源码仓库；也可设置环境变量 `PRISMQML_ROOT` 指向其他源码目录。仅在本地源码不可用时回退到 pip 包。
 
 ## 目录结构
 

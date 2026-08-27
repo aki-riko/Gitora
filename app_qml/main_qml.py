@@ -44,28 +44,28 @@ def _resolve_gitess_root() -> str:
 GITESS_ROOT = _resolve_gitess_root()
 sys.path.insert(0, GITESS_ROOT)
 
-# 2) PrismQML 来源:优先用已安装的 pip 包(prismqml,import 名 prismqml);
-#    若未安装,回退到本地源码探测(开发用)。
+# 2) PrismQML 来源:开发态优先使用本地源码,冻结态使用随包内置的 prismqml。
 def _resolve_prismqml_dir():
-    # 优先:已 pip 安装的 prismqml(import prismqml) — 打包态也走这里(已 include 进包)
+    # 开发态:环境变量优先,其次自动探测同级 PrismQML 源码仓库。
+    if not _is_frozen():
+        candidates = []
+        env = os.environ.get("PRISMQML_ROOT")
+        if env:
+            candidates.append(env)
+        parent = os.path.dirname(GITESS_ROOT)
+        candidates.append(os.path.join(parent, "PrismQML"))
+        for c in candidates:
+            if c and os.path.isfile(os.path.join(c, "prismqml", "__init__.py")):
+                sys.path.insert(0, c)
+                import prismqml as _f
+                return os.path.dirname(_f.__file__)
+
+    # 回退:已安装或打包内置的 prismqml(import 名 prismqml)。
     try:
         import prismqml as _f
         return os.path.dirname(_f.__file__)
     except ImportError:
         pass
-    # 回退:本地源码(含 prismqml/__init__.py 的仓库根)
-    candidates = []
-    env = os.environ.get("PRISMQML_ROOT")
-    if env:
-        candidates.append(env)
-    parent = os.path.dirname(GITESS_ROOT)
-    candidates += [os.path.join(parent, "prismqml"), parent,
-                   r"D:/PrismQML/prismqml", r"D:/PrismQML"]
-    for c in candidates:
-        if c and os.path.isfile(os.path.join(c, "prismqml", "__init__.py")):
-            sys.path.insert(0, c)
-            import prismqml as _f
-            return os.path.dirname(_f.__file__)
     return None
 
 

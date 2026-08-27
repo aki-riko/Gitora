@@ -49,6 +49,18 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertNotIn('setContextProperty("Updater"', source)
         self.assertNotIn("app._updater =", source)
 
+    def test_python_entry_prefers_local_engine_source_in_development(self) -> None:
+        source = (ROOT / "app_qml" / "main_qml.py").read_text(encoding="utf-8")
+
+        self.assertIn("if not _is_frozen():", source)
+        self.assertIn('env = os.environ.get("PRISMQML_ROOT")', source)
+        self.assertIn('os.path.join(parent, "PrismQML")', source)
+        self.assertIn("# 回退:已安装或打包内置的 prismqml", source)
+        self.assertLess(
+            source.index('env = os.environ.get("PRISMQML_ROOT")'),
+            source.index("import prismqml as _f"),
+        )
+
     def test_python_entry_uses_gitora_owned_engine_config(self) -> None:
         source = (ROOT / "app_qml" / "main_qml.py").read_text(
             encoding="utf-8"
