@@ -38,6 +38,8 @@ Item {
     property var renderedTimelineItems: []
     property int renderedTimelineCommitCount: 0
     property string renderedTimelineTopHash: ""
+    property var timelineViewport: null
+    readonly property real timelinePrefetchDistance: 600
 
     // ==================== 数据加载 ====================
     function resetAndLoad() {
@@ -52,6 +54,7 @@ Item {
         root.refreshing = false
         root.refreshPending = false
         root.refreshCount = 0
+        root.timelineViewport = null
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
         root.pendingJumpDate = ""
@@ -85,6 +88,39 @@ Item {
             Math.min(root.pageSize, root.maxHistoryCommits - root.loadedCount),
             root.loadedCount, root.includeAllRefs
         )
+    }
+
+    // PrismQML 0.4.0.8 的虚拟 ListView 在回收行后会改变 originY，
+    // 但 SmoothScrollHelper 的滚动上限可能暂时停在旧 contentHeight。
+    // 直接观察视口并补发同一个分页入口，避免只能显示前 300 条。
+    function _probeTimelineEnd() {
+        if (!root.pageActive || root.searchMode || root.loading || !root.hasMore)
+            return
+        if (!root.timelineViewport)
+            root.timelineViewport = root._findTimelineViewportForProbe(historyTimeline)
+        var viewport = root.timelineViewport
+        if (!viewport) return
+        var contentHeight = Number(viewport.contentHeight)
+        var viewportHeight = Number(viewport.height)
+        var contentY = Number(viewport.contentY)
+        var originY = Number(viewport.originY)
+        if (!isFinite(contentHeight) || !isFinite(viewportHeight)
+                || !isFinite(contentY) || !isFinite(originY)
+                || contentHeight <= viewportHeight) return
+        var bottom = originY + contentHeight
+        if (contentY + viewportHeight >= bottom - root.timelinePrefetchDistance)
+            root.loadMore()
+    }
+
+    function _findTimelineViewportForProbe(item) {
+        if (!item) return null
+        if (item.objectName === "timelineVirtualViewport") return item
+        var children = item.children || []
+        for (var index = 0; index < children.length; index++) {
+            var found = root._findTimelineViewportForProbe(children[index])
+            if (found) return found
+        }
+        return null
     }
 
     // 仓库状态变化时保留当前时间线,后台重新拉取已加载范围。
@@ -451,6 +487,14 @@ Item {
         root.resetAndLoad()
     }
 
+    Timer {
+        id: timelineEndProbe
+        interval: 200
+        repeat: true
+        running: root.pageActive && root.initialized
+        onTriggered: root._probeTimelineEnd()
+    }
+
     CommitTimelineModel {
         id: historyTimelineModel
         commits: root.allCommits
@@ -550,6 +594,7 @@ Item {
                     }
 
                     Fluent.Timeline {
+                        id: historyTimeline
                         objectName: "historyTimeline"
                         anchors.fill: parent
                         anchors.margins: Fluent.Enums.spacing.m
