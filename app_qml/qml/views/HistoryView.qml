@@ -10,11 +10,13 @@ Item {
     id: root
 
     readonly property int pageSize: 30
+    readonly property int maxHistoryCommits: 2000
     property int loadedCount: 0
     property bool hasMore: true
     property bool loading: false
     property bool searchDeepening: false
     property bool refreshing: false
+    property bool refreshPending: false
     property int refreshCount: 0
     property bool searchMode: false
     property bool includeAllRefs: false
@@ -47,6 +49,7 @@ Item {
         root.loading = false
         root.searchDeepening = false
         root.refreshing = false
+        root.refreshPending = false
         root.refreshCount = 0
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
@@ -70,10 +73,15 @@ Item {
     function loadMore() {
         if (root.loading || !root.hasMore || root.searchMode) return
         if (!GitBridge || !GitBridge.repoPath) return
+        if (root.loadedCount >= root.maxHistoryCommits) {
+            root.hasMore = false
+            return
+        }
         root.loading = true
         // 后台分页获取,结果经 logReady 回填
         GitBridge.requestLog(
-            root.pageSize, root.loadedCount, root.includeAllRefs
+            Math.min(root.pageSize, root.maxHistoryCommits - root.loadedCount),
+            root.loadedCount, root.includeAllRefs
         )
     }
 
@@ -81,6 +89,10 @@ Item {
     // 只有新数据返回后才替换数组,避免异步请求期间整个页面先变空。
     function refreshIncrementally() {
         if (!GitBridge || !GitBridge.repoPath) return
+        if (root.loading) {
+            root.refreshPending = true
+            return
+        }
         requestCurrentBranch()
         if (root.searchMode) {
             if (searchInput.text === "") { resetAndLoad(); return }
@@ -94,8 +106,18 @@ Item {
         }
         root.refreshing = true
         root.loading = true
-        root.refreshCount = Math.max(root.pageSize, root.loadedCount)
+        root.refreshCount = Math.min(
+            root.maxHistoryCommits,
+            Math.max(root.pageSize, root.loadedCount)
+        )
         GitBridge.requestLog(root.refreshCount, 0, root.includeAllRefs)
+    }
+
+    function finishLoading() {
+        root.loading = false
+        if (!root.refreshPending) return
+        root.refreshPending = false
+        Qt.callLater(function() { root.refreshIncrementally() })
     }
 
     function _restoreSelection(commits) {
@@ -138,6 +160,7 @@ Item {
         root.loading = true
         root.searchDeepening = false
         root.refreshing = false
+        root.refreshPending = false
         root.searchMode = true
         root.selectedCommit = null
         GitBridge.requestSearch(query, "all", root.includeAllRefs)
@@ -199,16 +222,20 @@ Item {
                 root.allCommits = batch
                 root.loadedCount = batch.length
                 root.hasMore = batch.length === root.refreshCount
-                root.loading = false
+                    && root.loadedCount < root.maxHistoryCommits
+                root.finishLoading()
                 root.refreshing = false
                 root._restoreSelection(batch)
                 return
             }
             if (skip !== root.loadedCount) { root.loading = false; return }
-            root.allCommits = root.allCommits.concat(batch)
-            root.loadedCount += batch.length
+            var remaining = root.maxHistoryCommits - root.loadedCount
+            var nextBatch = batch.slice(0, Math.max(0, remaining))
+            root.allCommits = root.allCommits.concat(nextBatch)
+            root.loadedCount += nextBatch.length
             root.hasMore = batch.length === root.pageSize
-            root.loading = false
+                && root.loadedCount < root.maxHistoryCommits
+            root.finishLoading()
         }
         function onSearchReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) {
@@ -219,7 +246,7 @@ Item {
             }
             if (!root.searchMode) return  // 已退出搜索,丢弃过期搜索结果
             root.allCommits = results
-            root.loading = false
+            root.finishLoading()
             root.searchDeepening = false
             root.refreshing = false
             root._restoreSelection(results)
@@ -229,7 +256,7 @@ Item {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
             if (!root.searchMode) return
             root.allCommits = results
-            root.loading = false
+            root.finishLoading()
             root.searchDeepening = true
             root._restoreSelection(results)
         }

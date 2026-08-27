@@ -39,7 +39,11 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertNotIn("root.resetAndLoad()", operation_handler)
 
         self.assertIn("property bool refreshing: false", source)
-        self.assertIn("root.refreshCount = Math.max(root.pageSize, root.loadedCount)", source)
+        self.assertIn("readonly property int maxHistoryCommits: 2000", source)
+        self.assertIn("root.refreshCount = Math.min(", source)
+        self.assertIn("property bool refreshPending: false", source)
+        self.assertIn("function finishLoading()", source)
+        self.assertIn("root.refreshPending = true", source)
         self.assertIn("if (root.refreshing)", source)
         self.assertIn("root.allCommits = batch", source)
         self.assertIn("root._restoreSelection(batch)", source)
@@ -69,7 +73,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("onPageActiveChanged:", source)
         self.assertIn("if (root.pageActive) root.refreshIncrementally()", source)
         self.assertIn(
-            "root.pageSize, root.loadedCount, root.includeAllRefs", source
+            "root.loadedCount, root.includeAllRefs", source
         )
         self.assertIn(
             'searchInput.text, "all", root.includeAllRefs', source

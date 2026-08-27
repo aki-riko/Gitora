@@ -34,6 +34,7 @@ _HISTORY_SEARCH_TIMEOUT_SECONDS = 300
 MAX_HISTORY_RESULTS = 2000
 MAX_COMMIT_FILE_PREVIEW = 500
 MAX_COMMIT_DIFF_SIZE = 100 * 1024
+MAX_BRANCH_RESULTS = 5000
 
 
 class FileStatus(Enum):
@@ -826,7 +827,7 @@ class GitService(QObject):
                     is_remote=True
                 ))
 
-        return branches
+        return branches[:MAX_BRANCH_RESULTS]
 
     _REVERT_TARGET_PATTERN = re.compile(
         r"^This reverts commit ([0-9a-f]{40}|[0-9a-f]{64})\.$",

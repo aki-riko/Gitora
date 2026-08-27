@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from app.common.git_service import (
+    MAX_BRANCH_RESULTS,
     MAX_COMMIT_DIFF_SIZE,
     MAX_COMMIT_FILE_PREVIEW,
     GitService,
@@ -64,6 +65,21 @@ class CommitPayloadLimitsTest(unittest.TestCase):
 
         self.assertEqual(service.get_graph_log_at("repo", 30, 2001), [])
         self.assertEqual(calls, [])
+
+    def test_branch_query_caps_combined_local_and_remote_results(self) -> None:
+        service = GitService()
+        local = "\n".join(
+            f"local-{index} abcdef1" for index in range(MAX_BRANCH_RESULTS + 20)
+        )
+        remote = "origin/remote-0\n"
+        calls = [local, remote]
+
+        def fake_run(*args, **kwargs):
+            return True, calls.pop(0), ""
+
+        service._run_git_sync = fake_run  # type: ignore[method-assign]
+
+        self.assertEqual(len(service.get_branches()), MAX_BRANCH_RESULTS)
 
 
 if __name__ == "__main__":

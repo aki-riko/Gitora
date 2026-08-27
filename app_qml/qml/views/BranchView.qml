@@ -14,6 +14,8 @@ Item {
     property string _remoteCheckoutTarget: ""
     property string _remoteDeleteTarget: ""
     property string _branchesRequestRepoPath: ""
+    property bool _branchesRequesting: false
+    property bool _reloadPending: false
     property var _branchMenuOwner: null
     property bool initialized: false
     readonly property bool pageActive: root.visible
@@ -75,6 +77,8 @@ Item {
         root.currentBranch = ""
         root._remotes = []
         root._branchesRequestRepoPath = ""
+        root._branchesRequesting = false
+        root._reloadPending = false
         root.branchCount = 0
         root.branchRows = []
     }
@@ -84,6 +88,16 @@ Item {
             clearModels()
             return
         }
+        if (!root.pageActive) {
+            root._reloadPending = true
+            return
+        }
+        if (root._branchesRequesting) {
+            root._reloadPending = true
+            return
+        }
+        root._branchesRequesting = true
+        root._reloadPending = false
         root._branchesRequestRepoPath = GitBridge.repoPath
         GitBridge.requestCurrentBranch()
         var remoteTask = GitBridge.getRemoteInfo()
@@ -175,6 +189,9 @@ Item {
         function onBranchesReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== root._branchesRequestRepoPath) return
             root.setBranches(list || [])
+            root._branchesRequesting = false
+            if (root._reloadPending && root.pageActive)
+                Qt.callLater(function() { root.reload() })
         }
     }
     onPageActiveChanged: {

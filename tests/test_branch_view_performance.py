@@ -51,6 +51,19 @@ def test_branch_page_uses_one_virtualized_list_without_nesting() -> None:
     assert 'objectName: "remoteBranchList"' not in source
 
 
+def test_branch_reload_coalesces_status_refreshes() -> None:
+    source = (ROOT / "app_qml" / "qml" / "views" / "BranchView.qml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "property bool _branchesRequesting: false" in source
+    assert "property bool _reloadPending: false" in source
+    assert "if (!root.pageActive)" in source
+    assert "if (root._branchesRequesting)" in source
+    assert "root._reloadPending = true" in source
+    assert "root._branchesRequesting = false" in source
+
+
 def test_branch_rows_lazy_load_lightweight_actions_and_share_one_menu() -> None:
     delegate_source = (
         ROOT / "app_qml" / "qml" / "components" / "BranchRowDelegate.qml"
