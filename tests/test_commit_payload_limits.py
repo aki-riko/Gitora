@@ -23,7 +23,7 @@ class CommitPayloadLimitsTest(unittest.TestCase):
             repo = init_repo(Path(temp_dir) / "repo")
             write_file(repo, "base.txt", "base\n")
             commit_all(repo, "base")
-            total = MAX_COMMIT_FILE_PREVIEW + 37
+            total = 537
             for index in range(total):
                 write_file(repo, f"files/file-{index:04d}.txt", "content\n")
             commit_hash = commit_all(repo, "large file set")
@@ -31,10 +31,10 @@ class CommitPayloadLimitsTest(unittest.TestCase):
             service.set_repo_path(str(repo), emit_status=False)
 
             files, reported_total, truncated, counts = service.get_commit_files_preview(
-                commit_hash
+                commit_hash, 500
             )
 
-            self.assertEqual(len(files), MAX_COMMIT_FILE_PREVIEW)
+            self.assertEqual(len(files), 500)
             self.assertEqual(reported_total, total)
             self.assertTrue(truncated)
             self.assertEqual(counts, {"A": total})

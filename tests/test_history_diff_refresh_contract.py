@@ -131,6 +131,9 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("root.displayPath(modelData.path)", source)
         self.assertIn("property var fileRows: []", source)
         self.assertIn("root.fileRows = files || []", source)
+        self.assertIn("type: Fluent.Enums.scroll.type_list", source)
+        self.assertIn("reuseItems: true", source)
+        self.assertIn("model: root.fileRows", source)
         self.assertIn("function onCommitFilesReady(repoPath, hash, files, total, isTruncated, counts)", source)
         self.assertNotIn("commitFilesModel.append", source)
         self.assertNotIn(

@@ -147,6 +147,7 @@ Rectangle {
             padding: 0
             model: root.fileRows
             delegate: Item {
+                objectName: "historyCommitFileRow"
                 width: ListView.view ? ListView.view.width : 0
                 height: commitFilesList.itemHeight
 
