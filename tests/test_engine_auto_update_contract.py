@@ -49,6 +49,23 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertNotIn('setContextProperty("Updater"', source)
         self.assertNotIn("app._updater =", source)
 
+    def test_python_entry_primes_fast_splash_branding_before_app(self) -> None:
+        source = (ROOT / "app_qml" / "main_qml.py").read_text(encoding="utf-8")
+
+        app_index = source.index("    app = App(")
+        display_name_index = source.index(
+            "    QGuiApplication.setApplicationDisplayName(APP_NAME)"
+        )
+        icon_argument_index = source.index(
+            "        application_icon=APP_LOGO_PATH"
+        )
+
+        self.assertLess(display_name_index, app_index)
+        self.assertLess(icon_argument_index, source.index("        config_path=", app_index))
+        self.assertIn("from PySide6.QtGui import QGuiApplication", source)
+        self.assertIn("APP_NAME,", source)
+        self.assertIn("APP_LOGO_PATH = os.path.join(", source)
+
     def test_python_entry_prefers_local_engine_source_in_development(self) -> None:
         source = (ROOT / "app_qml" / "main_qml.py").read_text(encoding="utf-8")
 

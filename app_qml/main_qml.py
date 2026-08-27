@@ -339,8 +339,13 @@ os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
 os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 
 from PySide6.QtCore import QUrl  # noqa: E402
+from PySide6.QtGui import QGuiApplication  # noqa: E402
 
-from app.common.setting import APP_USER_MODEL_ID, PRISMQML_CONFIG_FILE  # noqa: E402
+from app.common.setting import (  # noqa: E402
+    APP_NAME,
+    APP_USER_MODEL_ID,
+    PRISMQML_CONFIG_FILE,
+)
 
 os.environ.setdefault("PRISMQML_APP_USER_MODEL_ID", APP_USER_MODEL_ID)
 
@@ -355,9 +360,17 @@ from app_qml.backend.qml_render_bridge import QmlRenderBridge  # noqa: E402
 from app_qml.backend.window_icon_bridge import WindowIconBridge  # noqa: E402
 
 
+APP_LOGO_PATH = os.path.join(
+    GITESS_ROOT, "app", "resource", "images", "logo.png"
+)
+
+
 def main() -> int:
+    # FastSplash 在 App 构造期间创建；提前提供应用身份，避免首帧等待 QML 元数据。
+    QGuiApplication.setApplicationDisplayName(APP_NAME)
     app = App(
         sys.argv,
+        application_icon=APP_LOGO_PATH if os.path.isfile(APP_LOGO_PATH) else None,
         config_path=PRISMQML_CONFIG_FILE,
         persist_appearance=True,
     )
@@ -454,7 +467,7 @@ def main() -> int:
     ctx.setContextProperty("FluentIconsDir", QUrl.fromLocalFile(icons_dir + os.sep).toString())
 
     # 应用 logo(窗口/任务栏图标),复用原版 app/resource/images/logo.png
-    logo_path = os.path.join(GITESS_ROOT, "app", "resource", "images", "logo.png")
+    logo_path = APP_LOGO_PATH
     icon_path = os.path.join(GITESS_ROOT, "app", "resource", "images", "logo.ico")
     ctx.setContextProperty("AppLogo", QUrl.fromLocalFile(logo_path).toString() if os.path.isfile(logo_path) else "")
     ctx.setContextProperty("AppIconFile", QUrl.fromLocalFile(icon_path).toString() if os.path.isfile(icon_path) else "")
