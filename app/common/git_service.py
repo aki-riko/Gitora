@@ -31,6 +31,9 @@ from .prism_task import submit_to_pool
 logger = get_logger("GitService")
 
 _HISTORY_SEARCH_TIMEOUT_SECONDS = 300
+MAX_HISTORY_RESULTS = 2000
+MAX_COMMIT_FILE_PREVIEW = 500
+MAX_COMMIT_DIFF_SIZE = 100 * 1024
 
 
 class FileStatus(Enum):
@@ -969,15 +972,18 @@ class GitService(QObject):
         include_all_refs: bool = False,
     ) -> list[CommitInfo]:
         """获取当前 HEAD 或全部引用的提交图分页。"""
-        safe_count = max(0, count)
         safe_skip = max(0, skip)
-        if safe_count == 0:
+        safe_count = min(max(0, count), MAX_HISTORY_RESULTS)
+        if safe_skip >= MAX_HISTORY_RESULTS:
+            return []
+        safe_end = min(safe_skip + safe_count, MAX_HISTORY_RESULTS)
+        if safe_count == 0 or safe_skip >= safe_end:
             return []
         cmd = [
             "log",
             "--topo-order",
             "--decorate=full",
-            f"--max-count={safe_skip + safe_count}",
+            f"--max-count={safe_end}",
             f"--format={self._GRAPH_LOG_FORMAT}",
             "--date=format:%Y-%m-%d %H:%M",
         ]
@@ -994,7 +1000,7 @@ class GitService(QObject):
         for commit, row in zip(commits, rows):
             commit.graph = row
         self._mark_reverted_commits_at(repo_path, commits)
-        return commits[safe_skip:safe_skip + safe_count]
+        return commits[safe_skip:safe_end]
 
     def _parse_commit_log(self, stdout: str, repo_path: str) -> list[CommitInfo]:
         """解析统一的提交日志格式。"""
@@ -3423,33 +3429,96 @@ class GitService(QObject):
 
     # ==================== 提交详情 ====================
 
+    @staticmethod
+    def _parse_commit_file_output(
+        stdout: str, limit: int | None = None
+    ) -> tuple[list[FileChange], int]:
+        files: list[FileChange] = []
+        total = 0
+        safe_limit = None if limit is None else max(0, limit)
+        for line in stdout.strip().split('\n'):
+            if not line:
+                continue
+            parts = line.split('\t', 1)
+            if len(parts) != 2:
+                continue
+            total += 1
+            if safe_limit is not None and len(files) >= safe_limit:
+                continue
+            status_char = parts[0][0]
+            file_path = parts[1]
+            files.append(
+                FileChange(
+                    path=file_path,
+                    status=GitService._parse_status_char_static(status_char),
+                    staged=False,
+                )
+            )
+        return files, total
+
+    @staticmethod
+    def _parse_status_char_static(char: str) -> FileStatus:
+        status_map = {
+            'M': FileStatus.MODIFIED,
+            'A': FileStatus.ADDED,
+            'D': FileStatus.DELETED,
+            'R': FileStatus.RENAMED,
+            'C': FileStatus.COPIED,
+            'U': FileStatus.UNMERGED,
+            '?': FileStatus.UNTRACKED,
+            '!': FileStatus.IGNORED,
+        }
+        return status_map.get(char, FileStatus.MODIFIED)
+
     def get_commit_files(self, commit_hash: str) -> list[FileChange]:
-        """获取提交的变更文件列表"""
+        """获取提交的完整变更文件列表(供非 UI 调用)。"""
         success, stdout, _ = self._run_git_sync([
             'diff-tree', '--no-commit-id', '--name-status', '-r', commit_hash
         ])
         if not success:
             return []
-        
-        files = []
-        for line in stdout.strip().split('\n'):
-            if not line:
-                continue
-            parts = line.split('\t', 1)
-            if len(parts) == 2:
-                status_char = parts[0][0]
-                file_path = parts[1]
-                status = self._parse_status_char(status_char)
-                files.append(FileChange(path=file_path, status=status, staged=False))
-        
+        files, _total = self._parse_commit_file_output(stdout)
         return files
 
-    def get_commit_diff(self, commit_hash: str) -> str:
-        """获取提交的纯 diff(不含 commit header/message,避免与详情面板的消息区重复)"""
-        # --format="" 去掉 commit 头(Author/Date)与提交信息,只保留 diff 正文;
-        # git show 自身能正确处理根提交(无父提交),无需 ^ 语法
-        success, stdout, _ = self._run_git_sync(['show', '--format=', commit_hash])
-        return stdout.lstrip('\n') if success else ""
+    def get_commit_files_preview(
+        self,
+        commit_hash: str,
+        limit: int = MAX_COMMIT_FILE_PREVIEW,
+    ) -> tuple[list[FileChange], int, bool]:
+        """获取有界的提交文件预览及总数。"""
+        success, stdout, _ = self._run_git_sync([
+            'diff-tree', '--no-commit-id', '--name-status', '-r', commit_hash
+        ])
+        if not success:
+            return [], 0, False
+        safe_limit = min(max(0, limit), MAX_COMMIT_FILE_PREVIEW)
+        files, total = self._parse_commit_file_output(stdout, safe_limit)
+        return files, total, total > len(files)
+
+    @staticmethod
+    def _truncate_display_text(
+        text: str, limit: int = MAX_COMMIT_DIFF_SIZE
+    ) -> tuple[str, bool]:
+        if len(text) <= limit:
+            return text, False
+        marker = "\n\n[内容过大，已截断；请选择具体文件查看完整范围]"
+        available = max(0, limit - len(marker))
+        return text[:available] + marker, True
+
+    def get_commit_diff(
+        self, commit_hash: str, file_path: str | None = None
+    ) -> str:
+        """获取有界提交 diff，可选按文件过滤。"""
+        args = ['show', '--format=', commit_hash]
+        if file_path:
+            if '\t' in file_path:
+                file_path = file_path.rsplit('\t', 1)[-1]
+            args.extend(['--', file_path])
+        success, stdout, _ = self._run_git_sync(args)
+        if not success:
+            return ""
+        diff, _truncated = self._truncate_display_text(stdout.lstrip('\n'))
+        return diff
 
     def get_commit_detail(self, commit_hash: str) -> Optional[CommitInfo]:
         """获取提交详细信息"""

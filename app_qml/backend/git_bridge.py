@@ -174,12 +174,13 @@ class GitBridge(QObject):
     # 以下为耗时操作异步化新增信号(均带请求参数供前端校验防过期)
     diffReady = Signal(str, str, bool, str)              # (repoPath, path, staged, diff内容)
     commitDiffReady = Signal(str, str, str)              # (repoPath, hash, diff)
+    commitFileDiffReady = Signal(str, str, str, str)     # (repoPath, hash, path, diff)
     branchesReady = Signal(str, "QVariantList")          # (repoPath, 分支列表)
     tagsReady = Signal(str, "QVariantList")              # (repoPath, 标签列表)
     fileHistoryReady = Signal(str, str, "QVariantList")  # (repoPath, path, 提交列表)
     conflictsReady = Signal(str, "QVariantList")         # (repoPath, 冲突文件列表)
     conflictStateReady = Signal(str, str)                 # (repoPath, 操作类型)
-    commitFilesReady = Signal(str, str, "QVariantList")  # (repoPath, hash, 文件列表)
+    commitFilesReady = Signal(str, str, "QVariantList", int, bool)  # (repoPath, hash, 预览, 总数, 是否截断)
     fileContentReady = Signal(str, str, str, str)        # (repoPath, path, hash, 内容)
     diffBetweenReady = Signal(str, str, str, str, str)   # (repoPath, path, c1, c2, diff)
     stashListReady = Signal(str, "QVariantList")         # (repoPath, stash 列表)
@@ -1422,19 +1423,40 @@ class GitBridge(QObject):
 
     @Slot(str)
     def requestCommitFiles(self, commit_hash: str):
-        """后台获取提交变更文件,完成发 commitFilesReady(repoPath, hash, list)。"""
+        """后台获取有界提交文件预览。"""
         repo = self._svc.repo_path or ""
+
+        def work() -> tuple[list[dict], int, bool]:
+            files, total, truncated = self._svc.get_commit_files_preview(
+                commit_hash
+            )
+            return [
+                _file_change_to_dict(file_change) for file_change in files
+            ], total, truncated
+
         return self._submit_query(
-            lambda: [
-                _file_change_to_dict(fc)
-                for fc in self._svc.get_commit_files(commit_hash)
-            ],
+            work,
             label="获取提交文件",
             on_success=lambda data: self.commitFilesReady.emit(
-                repo, commit_hash, data
+                repo, commit_hash, data[0], data[1], data[2]
             ),
             on_failure=lambda _exc: self.commitFilesReady.emit(
-                repo, commit_hash, []
+                repo, commit_hash, [], 0, False
+            ),
+        )
+
+    @Slot(str, str)
+    def requestCommitFileDiff(self, commit_hash: str, file_path: str):
+        """后台读取单个提交文件的有界 diff。"""
+        repo = self._svc.repo_path or ""
+        return self._submit_query(
+            lambda: self._svc.get_commit_diff(commit_hash, file_path),
+            label="获取提交文件 diff",
+            on_success=lambda data: self.commitFileDiffReady.emit(
+                repo, commit_hash, file_path, str(data)
+            ),
+            on_failure=lambda _exc: self.commitFileDiffReady.emit(
+                repo, commit_hash, file_path, ""
             ),
         )
 

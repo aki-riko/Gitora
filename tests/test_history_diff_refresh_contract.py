@@ -124,7 +124,11 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn('text: "新增 " + root.countStatus("A")', source)
         self.assertIn('text: "修改 " + root.countStatus("M")', source)
         self.assertIn('text: "删除 " + root.countStatus("D")', source)
-        self.assertIn("root.displayPath(model.path)", source)
+        self.assertIn("root.displayPath(modelData.path)", source)
+        self.assertIn("property var fileRows: []", source)
+        self.assertIn("root.fileRows = files || []", source)
+        self.assertIn("function onCommitFilesReady(repoPath, hash, files, total, isTruncated)", source)
+        self.assertNotIn("commitFilesModel.append", source)
         self.assertNotIn(
             "Item { Layout.fillHeight: true }\n\n                    Fluent.Separator",
             history_source,
@@ -234,6 +238,20 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
             "commitDiffViewer.setDiff(dlg._rawDiff, dlg._selectedFilePath)",
             diff_ready,
         )
+
+    def test_commit_detail_loads_diff_only_for_selected_file(self) -> None:
+        source = (QML_ROOT / "components" / "CommitDetailDialog.qml").read_text(
+            encoding="utf-8"
+        )
+        open_for = source.split("function openFor", 1)[1].split(
+            "\n    }", 1
+        )[0]
+
+        self.assertIn("GitBridge.requestCommitFiles(hash)", open_for)
+        self.assertNotIn("GitBridge.requestCommitDiff(hash)", open_for)
+        self.assertIn("GitBridge.requestCommitFileDiff(", source)
+        self.assertIn("function onCommitFileDiffReady", source)
+        self.assertIn("path !== dlg._selectedFilePath", source)
 
 
 if __name__ == "__main__":

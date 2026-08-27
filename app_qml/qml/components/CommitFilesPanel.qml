@@ -14,12 +14,17 @@ Rectangle {
 
     property var commit: null
     property bool loading: false
+    property var fileRows: []
+    property int totalCount: 0
+    property bool truncated: false
     property string requestRepoPath: ""
     property string requestHash: ""
     property bool componentReady: false
 
     function reload() {
-        commitFilesModel.clear()
+        root.fileRows = []
+        root.totalCount = 0
+        root.truncated = false
         root.loading = false
         root.requestRepoPath = ""
         root.requestHash = ""
@@ -35,8 +40,8 @@ Rectangle {
 
     function countStatus(status) {
         var count = 0
-        for (var i = 0; i < commitFilesModel.count; i++) {
-            if (commitFilesModel.get(i).status === status) count++
+        for (var i = 0; i < root.fileRows.length; i++) {
+            if (root.fileRows[i].status === status) count++
         }
         return count
     }
@@ -53,17 +58,16 @@ Rectangle {
 
     Connections {
         target: GitBridge
-        function onCommitFilesReady(repoPath, hash, files) {
+        function onCommitFilesReady(repoPath, hash, files, total, isTruncated) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
             if (repoPath !== root.requestRepoPath || hash !== root.requestHash) return
             if (!root.commit || root.commit.hash !== hash) return
-            commitFilesModel.clear()
-            for (var i = 0; i < files.length; i++) commitFilesModel.append(files[i])
+            root.fileRows = files || []
+            root.totalCount = total || root.fileRows.length
+            root.truncated = !!isTruncated
             root.loading = false
         }
     }
-
-    ListModel { id: commitFilesModel }
 
     ColumnLayout {
         anchors.fill: parent
@@ -83,7 +87,10 @@ Rectangle {
             }
             Item { Layout.fillWidth: true }
             Text {
-                text: root.loading ? "正在读取..." : commitFilesModel.count + " 个文件"
+                text: root.loading ? "正在读取..."
+                    : (root.truncated
+                        ? root.fileRows.length + " / " + root.totalCount + " 个文件"
+                        : root.totalCount + " 个文件")
                 color: Fluent.Enums.textColor.tertiary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
@@ -93,7 +100,7 @@ Rectangle {
         Flow {
             Layout.fillWidth: true
             spacing: Fluent.Enums.spacing.xs
-            visible: !root.loading && commitFilesModel.count > 0
+            visible: !root.loading && root.fileRows.length > 0
 
             Fluent.Tag {
                 visible: root.countStatus("A") > 0
@@ -127,14 +134,14 @@ Rectangle {
             objectName: "historyCommitFilesList"
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: !root.loading && commitFilesModel.count > 0
+            visible: !root.loading && root.fileRows.length > 0
             type: Fluent.Enums.scroll.type_list
             itemHeight: Fluent.Enums.controlSize.buttonHeight
             listSpacing: Fluent.Enums.spacing.none
             reuseItems: true
             bounceEnabled: false
             padding: 0
-            model: commitFilesModel
+            model: root.fileRows
             delegate: Item {
                 width: ListView.view ? ListView.view.width : 0
                 height: commitFilesList.itemHeight
@@ -144,18 +151,18 @@ Rectangle {
                     spacing: Fluent.Enums.spacing.s
 
                     Fluent.Tag {
-                        status: model.status === "A"
+                        status: modelData.status === "A"
                             ? Fluent.Enums.statusLevel.success
-                            : (model.status === "D"
+                            : (modelData.status === "D"
                                 ? Fluent.Enums.statusLevel.error
-                                : (model.status === "R"
+                                : (modelData.status === "R"
                                     ? Fluent.Enums.statusLevel.warning
                                     : Fluent.Enums.statusLevel.info))
-                        text: model.statusText
+                        text: modelData.statusText
                     }
                     Text {
                         Layout.fillWidth: true
-                        text: root.displayPath(model.path)
+                        text: root.displayPath(modelData.path)
                         color: Fluent.Enums.textColor.secondary
                         font.family: "Consolas, monospace"
                         font.pixelSize: Fluent.Enums.typography.caption
@@ -169,7 +176,7 @@ Rectangle {
         Text {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            visible: root.loading || commitFilesModel.count === 0
+            visible: root.loading || root.fileRows.length === 0
             text: root.loading ? "正在读取此提交的文件变更..." : "未检测到文件变更"
             color: Fluent.Enums.textColor.tertiary
             font.family: Fluent.Enums.fontFamily

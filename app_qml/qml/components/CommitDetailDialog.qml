@@ -26,7 +26,9 @@ Fluent.DialogBoxCore {
     property string _date: ""
     property string _rawDiff: ""
     property string _selectedFilePath: ""
-    ListModel { id: filesModel }
+    property var fileRows: []
+    property int totalFileCount: 0
+    property bool filesTruncated: false
 
     function clearContent() {
         dlg.commitHash = ""
@@ -36,8 +38,10 @@ Fluent.DialogBoxCore {
         dlg._date = ""
         dlg._rawDiff = ""
         dlg._selectedFilePath = ""
+        dlg.fileRows = []
+        dlg.totalFileCount = 0
+        dlg.filesTruncated = false
         msgLabel.text = ""
-        filesModel.clear()
         commitDiffViewer.clearDiff()
     }
 
@@ -61,25 +65,33 @@ Fluent.DialogBoxCore {
         })
         dlg._rawDiff = ""
         dlg._selectedFilePath = ""
-        filesModel.clear()
-        commitDiffViewer.setLoading("加载中...")
+        dlg.fileRows = []
+        dlg.totalFileCount = 0
+        dlg.filesTruncated = false
+        commitDiffViewer.setLoading("选择文件查看差异")
         GitBridge.requestCommitFiles(hash)
-        GitBridge.requestCommitDiff(hash)
         dlg.open()
     }
 
     Connections {
         target: GitBridge
         function onRepoPathChanged(path) { dlg.clearContent() }
-        function onCommitFilesReady(repoPath, hash, files) {
+        function onCommitFilesReady(repoPath, hash, files, total, isTruncated) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
-            filesModel.clear()
-            for (var i = 0; i < files.length; i++) filesModel.append(files[i])
+            dlg.fileRows = files || []
+            dlg.totalFileCount = total || dlg.fileRows.length
+            dlg.filesTruncated = !!isTruncated
         }
         function onCommitDiffReady(repoPath, hash, diff) {
             if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath || hash !== dlg.commitHash) return
             dlg._rawDiff = diff || ""
             commitDiffViewer.setDiff(dlg._rawDiff, dlg._selectedFilePath)
+        }
+        function onCommitFileDiffReady(repoPath, hash, path, diff) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath || repoPath !== dlg._requestRepoPath
+                    || hash !== dlg.commitHash || path !== dlg._selectedFilePath) return
+            dlg._rawDiff = diff || ""
+            commitDiffViewer.setDiff(dlg._rawDiff, "")
         }
     }
 
@@ -164,7 +176,11 @@ Fluent.DialogBoxCore {
 
         // ── 变更文件 ──(ScrollArea 自带平滑滚动条;文件数少,默认模式 Repeater 即可)
         Fluent.Label {
-            text: "变更文件 (" + filesModel.count + ")"
+            text: "变更文件 ("
+                + (dlg.filesTruncated
+                    ? dlg.fileRows.length + " / " + dlg.totalFileCount
+                    : dlg.totalFileCount)
+                + ")"
             type: Fluent.Enums.label.type_body_strong
             color: Fluent.Enums.textColor.secondary
         }
@@ -172,54 +188,53 @@ Fluent.DialogBoxCore {
             id: filesScrollArea
             Layout.fillWidth: true
             Layout.fillHeight: false
-            Layout.preferredHeight: Math.min(filesModel.count * 24 + 4, 110)
-            Layout.maximumHeight: Math.min(filesModel.count * 24 + 4, 110)
+            Layout.preferredHeight: Math.min(dlg.fileRows.length * 24 + 4, 110)
+            Layout.maximumHeight: Math.min(dlg.fileRows.length * 24 + 4, 110)
             padding: 0
-            Column {
-                // 绑 ScrollArea 自身宽度而非 parent:content 被塞进内部 Loader,
-                // parent(contentHolder)在 Loader 实例化时序里会短暂为 null,
-                // 读 parent.width 会报 "Cannot read property 'width' of null"。
-                width: filesScrollArea.width
-                Repeater {
-                    model: filesModel
-                    delegate: Rectangle {
-                        width: parent.width
-                        height: 24
-                        radius: Fluent.Enums.radius.micro
-                        readonly property bool isSelected: dlg._selectedFilePath === model.path
-                        color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
+            type: Fluent.Enums.scroll.type_list
+            itemHeight: 24
+            listSpacing: 0
+            reuseItems: true
+            bounceEnabled: false
+            model: dlg.fileRows
+            delegate: Rectangle {
+                width: ListView.view ? ListView.view.width : 0
+                height: 24
+                radius: Fluent.Enums.radius.micro
+                readonly property bool isSelected: dlg._selectedFilePath === modelData.path
+                color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
 
-                        HoverHandler { id: fileHover }
-                        TapHandler {
-                            onTapped: {
-                                dlg._selectedFilePath = model.path
-                                commitDiffViewer.filterPath = model.path
-                            }
-                        }
+                HoverHandler { id: fileHover }
+                TapHandler {
+                    onTapped: {
+                        dlg._selectedFilePath = modelData.path
+                        commitDiffViewer.setLoading("加载中...")
+                        GitBridge.requestCommitFileDiff(
+                            dlg.commitHash, dlg._selectedFilePath)
+                    }
+                }
 
-                        Row {
-                            anchors.fill: parent
-                            spacing: Fluent.Enums.spacing.m
-                            Text {
-                                text: model.statusText
-                                width: 50
-                                color: Fluent.Enums.textColor.tertiary
-                                font.family: Fluent.Enums.fontFamily
-                                font.pixelSize: Fluent.Enums.typography.caption
-                                verticalAlignment: Text.AlignVCenter
-                                height: parent.height
-                            }
-                            Text {
-                                width: parent.width - 50 - Fluent.Enums.spacing.m
-                                text: model.path
-                                color: Fluent.Enums.textColor.primary
-                                font.family: "Consolas, monospace"
-                                font.pixelSize: Fluent.Enums.typography.caption
-                                elide: Text.ElideMiddle
-                                verticalAlignment: Text.AlignVCenter
-                                height: parent.height
-                            }
-                        }
+                Row {
+                    anchors.fill: parent
+                    spacing: Fluent.Enums.spacing.m
+                    Text {
+                        text: modelData.statusText
+                        width: 50
+                        color: Fluent.Enums.textColor.tertiary
+                        font.family: Fluent.Enums.fontFamily
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        verticalAlignment: Text.AlignVCenter
+                        height: parent.height
+                    }
+                    Text {
+                        width: parent.width - 50 - Fluent.Enums.spacing.m
+                        text: modelData.path
+                        color: Fluent.Enums.textColor.primary
+                        font.family: "Consolas, monospace"
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        elide: Text.ElideMiddle
+                        verticalAlignment: Text.AlignVCenter
+                        height: parent.height
                     }
                 }
             }
