@@ -10,8 +10,12 @@ QtObject {
     readonly property var items: result.items
     readonly property int laneCount: result.laneCount
 
+    function _dateKey(dateStr) {
+        return (dateStr || "").substring(0, 10)
+    }
+
     function _dateGroup(dateStr) {
-        var date = (dateStr || "").substring(0, 10)
+        var date = _dateKey(dateStr)
         if (date === "") return "未知日期"
         var today = new Date()
         var pad = function(value) { return value < 10 ? "0" + value : "" + value }
@@ -78,6 +82,7 @@ QtObject {
             if (groupIndex < 0 || groups[groupIndex].title !== label) {
                 groups.push({
                     "title": label,
+                    "dateKey": _dateKey(commit.date),
                     "status": "info",
                     "graph": commit.graphHeader || {},
                     "cards": []

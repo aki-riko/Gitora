@@ -26,6 +26,7 @@ Item {
         && (!root.parent || root.parent.visible)
     property var selectedCommit: null
     property string pendingJumpHash: ""
+    property string pendingJumpDate: ""
     property var cherryPickBranches: []
     property string cherryPickCurrentBranch: ""
     property string cherryPickTargetBranch: ""
@@ -53,6 +54,7 @@ Item {
         root.refreshCount = 0
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
+        root.pendingJumpDate = ""
         loadMore()
     }
 
@@ -186,6 +188,103 @@ Item {
             searchInput.text = targetHash
     }
 
+    function _dateText(year, month, day) {
+        var pad = function(value) { return value < 10 ? "0" + value : "" + value }
+        return year + "-" + pad(month) + "-" + pad(day)
+    }
+
+    function _groupDate(group) {
+        if (group && group.dateKey) return group.dateKey
+        var cards = group && group.cards ? group.cards : []
+        if (cards.length > 0 && cards[0].commit)
+            return (cards[0].commit.date || "").substring(0, 10)
+        return ""
+    }
+
+    function _dateGroupForJump(targetDate) {
+        var groups = root.timelineItems || []
+        var precedingIndex = -1
+        for (var index = 0; index < groups.length; index++) {
+            var date = root._groupDate(groups[index])
+            if (date === targetDate)
+                return { "index": index, "exact": true }
+            if (precedingIndex < 0 && date !== "" && date < targetDate)
+                precedingIndex = index
+        }
+        if (precedingIndex >= 0)
+            return { "index": precedingIndex, "exact": false }
+        if (groups.length === 0) return { "index": -1, "exact": false }
+        var firstDate = root._groupDate(groups[0])
+        return {
+            "index": firstDate !== "" && targetDate > firstDate
+                ? 0 : groups.length - 1,
+            "exact": false
+        }
+    }
+
+    function _groupRowIndex(groupIndex) {
+        var groups = root.timelineItems || []
+        var rowIndex = 0
+        for (var index = 0; index < groupIndex; index++)
+            rowIndex += 1 + ((groups[index].cards || []).length)
+        return rowIndex
+    }
+
+    function _findDateJumpViewport(item) {
+        if (!item) return null
+        if (item.objectName === "timelineVirtualViewport") return item
+        var children = item.children || []
+        for (var index = 0; index < children.length; index++) {
+            var found = root._findDateJumpViewport(children[index])
+            if (found) return found
+        }
+        return null
+    }
+
+    function _schedulePendingDateJump() {
+        if (root.pendingJumpDate === "") return
+        Qt.callLater(function() {
+            if (root.pendingJumpDate !== "") root._attemptDateJump()
+        })
+    }
+
+    function _attemptDateJump() {
+        var targetDate = root.pendingJumpDate
+        if (targetDate === "" || root.loading || root.searchDeepening) return
+
+        var groups = root.timelineItems || []
+        if (groups.length === 0) {
+            if (root.hasMore && !root.searchMode) root.loadMore()
+            return
+        }
+
+        var oldestDate = root._groupDate(groups[groups.length - 1])
+        if (!root.searchMode && root.hasMore && oldestDate !== ""
+                && targetDate < oldestDate) {
+            root.loadMore()
+            return
+        }
+
+        var match = root._dateGroupForJump(targetDate)
+        if (match.index < 0) {
+            root.pendingJumpDate = ""
+            return
+        }
+        var viewport = root._findDateJumpViewport(root)
+        var rowIndex = root._groupRowIndex(match.index)
+        if (!viewport || viewport.count <= rowIndex) {
+            root._schedulePendingDateJump()
+            return
+        }
+        viewport.positionViewAtIndex(rowIndex, ListView.Beginning)
+        root.pendingJumpDate = ""
+    }
+
+    function jumpToDate(year, month, day) {
+        root.pendingJumpDate = root._dateText(year, month, day)
+        root._attemptDateJump()
+    }
+
     function _selectPendingJump(results) {
         if (root.pendingJumpHash === "") return
         var targetHash = root.pendingJumpHash
@@ -226,6 +325,7 @@ Item {
                 root.finishLoading()
                 root.refreshing = false
                 root._restoreSelection(batch)
+                root._schedulePendingDateJump()
                 return
             }
             if (skip !== root.loadedCount) { root.loading = false; return }
@@ -236,6 +336,7 @@ Item {
             root.hasMore = batch.length === root.pageSize
                 && root.loadedCount < root.maxHistoryCommits
             root.finishLoading()
+            root._schedulePendingDateJump()
         }
         function onSearchReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) {
@@ -251,6 +352,7 @@ Item {
             root.refreshing = false
             root._restoreSelection(results)
             root._selectPendingJump(results)
+            root._schedulePendingDateJump()
         }
         function onSearchPreviewReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
@@ -400,6 +502,16 @@ Item {
                         currentIndex: root.includeAllRefs ? 1 : 0
                         onActivated: function(scopeIndex) {
                             root.setHistoryScope(scopeIndex)
+                        }
+                    }
+                    Fluent.CalendarPicker {
+                        id: historyDatePicker
+                        objectName: "historyDatePicker"
+                        width: 148
+                        hasDate: false
+                        placeholderText: "跳转日期"
+                        onDateChanged: function(year, month, day) {
+                            root.jumpToDate(year, month, day)
                         }
                     }
                     Fluent.LineEdit {
