@@ -448,7 +448,8 @@ def main() -> int:
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import (
-        VERSION, AUTHOR, YEAR, HELP_URL, FEEDBACK_URL, APP_USER_MODEL_ID,
+        VERSION, AUTHOR, YEAR, HELP_URL, PRISMQML_URL, FEEDBACK_URL,
+        APP_USER_MODEL_ID,
         UPDATE_REPO, UPDATE_ASSET_KEYWORD, INSTALLER_SILENT_ARGS,
     )
     ctx.setContextProperty("AppInfo", {
@@ -456,6 +457,7 @@ def main() -> int:
         "author": AUTHOR,
         "year": str(YEAR),
         "helpUrl": HELP_URL,
+        "prismQmlUrl": PRISMQML_URL,
         "feedbackUrl": FEEDBACK_URL,
         "appUserModelId": APP_USER_MODEL_ID,
         "windowWidth": APP_WINDOW_WIDTH,

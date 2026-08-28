@@ -257,16 +257,83 @@ Item {
                 title: "关于"
                 width: contentCol.groupWidth
 
-                Fluent.SettingsCard {
+                Item {
+                    id: aboutCardHost
                     width: parent ? parent.width : 0
-                    title: "关于 Gitora"
-                    content: AppInfo ? ("版本 " + AppInfo.version + " · © " + AppInfo.year + " " + AppInfo.author) : ""
-                    icon: Fluent.Enums.icon.info
-                    // 有项目地址才显示超链接,否则用普通按钮卡片(无按钮文字=纯展示)
-                    type: (AppInfo && AppInfo.helpUrl !== "") ? Fluent.Enums.settingCard.type_hyperlink : Fluent.Enums.settingCard.type_push
-                    url: AppInfo ? AppInfo.helpUrl : ""
-                    linkText: "项目主页"
-                    buttonText: ""
+                    implicitHeight: Fluent.Enums.settingCard.height_with_content
+                    height: implicitHeight
+
+                    Fluent.SettingsCardCore {
+                        id: aboutCard
+                        objectName: "aboutSettingsCard"
+                        anchors.fill: parent
+                        // 标题由下方组合内容绘制，避免与 SettingsCardCore 默认标题重叠。
+                        title: ""
+                        icon: Fluent.Enums.icon.info
+                        // 保留标准卡片高度；正文由上层组合以支持行内超链接。
+                        content: " "
+                    }
+
+                    Column {
+                        anchors.left: parent.left
+                        anchors.leftMargin: Fluent.Enums.spacing.xl
+                                            + Fluent.Enums.settingCard.icon_size
+                                            + Fluent.Enums.spacing.xl
+                        anchors.right: projectHomepageButton.left
+                        anchors.rightMargin: Fluent.Enums.spacing.xl
+                        anchors.verticalCenter: parent.verticalCenter
+                        spacing: Fluent.Enums.spacing.none
+                        z: 1
+
+                        Fluent.Label {
+                            objectName: "aboutTitleLabel"
+                            width: parent.width
+                            type: Fluent.Enums.label.type_body_strong
+                            text: "关于 Gitora"
+                            wrapMode: Text.NoWrap
+                            elide: Text.ElideRight
+                        }
+
+                        Row {
+                            spacing: Fluent.Enums.spacing.xxs
+
+                            Fluent.Label {
+                                objectName: "aboutVersionPrefix"
+                                type: Fluent.Enums.label.type_body_small
+                                text: AppInfo ? ("版本 " + AppInfo.version + " · © " + AppInfo.year + " " + AppInfo.author + " · 基于") : ""
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Fluent.Label {
+                                objectName: "prismQmlHomepageLink"
+                                type: Fluent.Enums.label.type_hyperlink
+                                text: "PrismQML"
+                                url: AppInfo ? AppInfo.prismQmlUrl : ""
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Fluent.Label {
+                                objectName: "aboutDescriptionSuffix"
+                                type: Fluent.Enums.label.type_body_small
+                                text: "引擎构建。"
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+
+                    Fluent.Button {
+                        id: projectHomepageButton
+                        objectName: "projectHomepageButton"
+                        property bool hasProjectUrl: AppInfo && AppInfo.helpUrl !== ""
+                        visible: hasProjectUrl
+                        width: visible ? implicitWidth : 0
+                        anchors.right: parent.right
+                        anchors.rightMargin: Fluent.Enums.spacing.xl
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: "项目主页"
+                        style: Fluent.Enums.button.style_hyperlink
+                        enabled: hasProjectUrl
+                        onClicked: Qt.openUrlExternally(AppInfo.helpUrl)
+                        z: 1
+                    }
                 }
 
                 // 检查、下载与安装全部交给 PrismQML AutoUpdater。

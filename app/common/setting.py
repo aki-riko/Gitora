@@ -9,7 +9,7 @@ from pathlib import Path
 DEBUG = "__compiled__" not in globals()
 
 
-YEAR = 2025
+YEAR = 2026
 AUTHOR = "aki-riko"
 VERSION = "v1.6.1"
 APP_NAME = "Gitora"
@@ -19,6 +19,7 @@ APP_WINDOW_HEIGHT = 720
 APP_SPLASH_SUBTITLE = "正在加载..."
 # 项目地址
 HELP_URL = "https://github.com/aki-riko/Gitora"
+PRISMQML_URL = "https://github.com/aki-riko/PrismQML"
 REPO_URL = "https://github.com/aki-riko/Gitora"
 FEEDBACK_URL = "https://github.com/aki-riko/Gitora/issues"
 DOC_URL = "https://github.com/aki-riko/Gitora#readme"
