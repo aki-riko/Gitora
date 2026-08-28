@@ -11,10 +11,13 @@ class HistorySplitPaneLayoutTest(unittest.TestCase):
         source = HISTORY_VIEW.read_text(encoding="utf-8")
 
         self.assertIn("id: historySplitPane", source)
-        self.assertIn("minimumFirstPaneWidth: historyHeader.implicitWidth", source)
+        self.assertIn('objectName: "historySplitPane"', source)
+        self.assertIn("minimumFirstPaneWidth: 520", source)
         self.assertIn("minimumSecondPaneWidth: 360", source)
         self.assertIn("firstMinimumSize: minimumFirstPaneWidth", source)
         self.assertIn("secondMinimumSize: minimumSecondPaneWidth", source)
+        self.assertIn("Flow {", source)
+        self.assertIn('objectName: "historyHeader"', source)
         self.assertNotIn("function clampSplitPosition()", source)
         self.assertNotIn("onSplitPositionChanged: clampSplitPosition()", source)
 

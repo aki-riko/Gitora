@@ -23,8 +23,8 @@ import "views"
 
 Window {
     id: root
-    width: 1400
-    height: 850
+    width: 1100
+    height: 720
     visible: true
     color: Fluent.Enums.backgroundColor
 
@@ -195,6 +195,27 @@ def _render_probe(repo: Path, output: Path) -> int:
         )
 
     combo_index = int(combo.property("currentIndex")) if combo is not None else -1
+    split = root.findChild(QObject, "historySplitPane")
+    first_pane = split.findChild(QObject, "firstPane") if split else None
+    second_pane = split.findChild(QObject, "secondPane") if split else None
+    timeline_surface = root.findChild(QObject, "historyTimelineSurface")
+    if not all((split, first_pane, second_pane, timeline_surface)):
+        raise AssertionError("missing history split pane geometry probes")
+    first_right = float(first_pane.property("x")) + float(
+        first_pane.property("width")
+    )
+    surface_right = float(timeline_surface.property("x")) + float(
+        timeline_surface.property("width")
+    )
+    second_x = float(second_pane.property("x"))
+    if surface_right > first_right + 0.5 or second_x < first_right - 0.5:
+        raise AssertionError(
+            {
+                "first_right": first_right,
+                "surface_right": surface_right,
+                "second_x": second_x,
+            }
+        )
     image = root.grabWindow()
     if combo_index != 1 or image.isNull() or not image.save(str(output), "PNG"):
         raise AssertionError(

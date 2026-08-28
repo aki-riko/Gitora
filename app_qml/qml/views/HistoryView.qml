@@ -503,9 +503,11 @@ Item {
     // ==================== 布局 ====================
     Fluent.SplitPane {
         id: historySplitPane
+        objectName: "historySplitPane"
 
-        readonly property real minimumFirstPaneWidth: historyHeader.implicitWidth
-            + Fluent.Enums.spacing.m
+        // 标题与筛选控件在窄栏内会换行，不能再用整行 implicitWidth
+        // 作为分栏最小值，否则默认窗口会把右侧详情区挤到不可用。
+        readonly property real minimumFirstPaneWidth: 520
         readonly property real minimumSecondPaneWidth: 360
 
         anchors.fill: parent
@@ -523,18 +525,37 @@ Item {
                 anchors.rightMargin: Fluent.Enums.spacing.m
                 spacing: Fluent.Enums.spacing.m
 
-                // 标题 + 搜索
-                PageHeader {
+                // 标题 + 搜索；窄栏时控件自动换行，避免横向内容越过分割线。
+                Flow {
                     id: historyHeader
-                    title: "历史"
-                    subtitle: (root.searchMode
-                        ? root.allCommits.length + " 条搜索结果"
-                        : root.allCommits.length + " 条提交")
-                        + (root.includeAllRefs
-                            ? " · 全部分支"
-                            : " · 当前分支: "
-                                + (root.currentBranch || "正在读取…"))
-                        + (root.searchDeepening ? " · 后台补全中" : "")
+                    objectName: "historyHeader"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: Fluent.Enums.spacing.s
+
+                    ColumnLayout {
+                        spacing: 0
+                        Text {
+                            text: "历史"
+                            font.pixelSize: Fluent.Enums.typography.metric
+                            font.bold: true
+                            color: Fluent.Enums.textColor.primary
+                            font.family: Fluent.Enums.fontFamily
+                        }
+                        Text {
+                            text: (root.searchMode
+                                ? root.allCommits.length + " 条搜索结果"
+                                : root.allCommits.length + " 条提交")
+                                + (root.includeAllRefs
+                                    ? " · 全部分支"
+                                    : " · 当前分支: "
+                                        + (root.currentBranch || "正在读取…"))
+                                + (root.searchDeepening ? " · 后台补全中" : "")
+                            font.pixelSize: Fluent.Enums.typography.caption
+                            color: Fluent.Enums.textColor.tertiary
+                            font.family: Fluent.Enums.fontFamily
+                        }
+                    }
                     Fluent.ComboBox {
                         id: historyScopeCombo
                         objectName: "historyScopeCombo"
