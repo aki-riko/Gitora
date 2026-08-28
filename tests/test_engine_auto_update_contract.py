@@ -64,7 +64,42 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertLess(icon_argument_index, source.index("        config_path=", app_index))
         self.assertIn("from PySide6.QtGui import QGuiApplication", source)
         self.assertIn("APP_NAME,", source)
+        self.assertIn("APP_SPLASH_SUBTITLE,", source)
+        self.assertIn("APP_WINDOW_WIDTH,", source)
+        self.assertIn("APP_WINDOW_HEIGHT,", source)
         self.assertIn("APP_LOGO_PATH = os.path.join(", source)
+        self.assertIn("splash_width=APP_WINDOW_WIDTH", source)
+        self.assertIn("splash_height=APP_WINDOW_HEIGHT", source)
+        self.assertIn("splash_subtitle=APP_SPLASH_SUBTITLE", source)
+
+    def test_window_and_fast_splash_share_configured_dimensions(self) -> None:
+        setting_source = (ROOT / "app" / "common" / "setting.py").read_text(
+            encoding="utf-8"
+        )
+        main_source = (ROOT / "app_qml" / "main_qml.py").read_text(
+            encoding="utf-8"
+        )
+        qml_source = (ROOT / "app_qml" / "qml" / "main.qml").read_text(
+            encoding="utf-8"
+        )
+
+        self.assertIn("APP_WINDOW_WIDTH = 1100", setting_source)
+        self.assertIn("APP_WINDOW_HEIGHT = 720", setting_source)
+        self.assertIn('"windowWidth": APP_WINDOW_WIDTH', main_source)
+        self.assertIn('"windowHeight": APP_WINDOW_HEIGHT', main_source)
+        self.assertIn("AppInfo.windowWidth", qml_source)
+        self.assertIn("AppInfo.windowHeight", qml_source)
+
+    def test_repo_init_guide_window_is_created_lazily(self) -> None:
+        source = (
+            ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn("function _ensureInitGuide()", source)
+        self.assertIn("id: initGuideLoader", source)
+        self.assertIn("active: false", source)
+        self.assertIn("var guide = root._ensureInitGuide()", source)
+        self.assertNotIn("id: initGuide\n", source)
 
     def test_python_entry_prefers_local_engine_source_in_development(self) -> None:
         source = (ROOT / "app_qml" / "main_qml.py").read_text(encoding="utf-8")
@@ -193,7 +228,11 @@ raise SystemExit(app.exec())
             ROOT / "app_qml" / "qml" / "main.qml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn('splashSubtitle: "正在加载..."', main_source)
+        setting_source = (ROOT / "app" / "common" / "setting.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('APP_SPLASH_SUBTITLE = "正在加载..."', setting_source)
+        self.assertNotIn('splashSubtitle: "正在加载..."', main_source)
         self.assertNotIn("splashComponent:", main_source)
         self.assertNotIn("property Component splashComponent", main_source)
         self.assertNotIn("Fluent.SplashScreen {", main_source)

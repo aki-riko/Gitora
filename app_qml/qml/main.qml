@@ -8,8 +8,8 @@ import "components"
 QtObject {
     id: root
 
-    readonly property int windowWidth: 1100
-    readonly property int windowHeight: 720
+    readonly property int windowWidth: AppInfo.windowWidth
+    readonly property int windowHeight: AppInfo.windowHeight
     readonly property string windowTitle: "Gitora"
     readonly property int settingsPageIndex: pagePaths.length - 1
 
@@ -101,7 +101,6 @@ QtObject {
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
             lazyLoading: true
-            splashSubtitle: "正在加载..."
             // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
             micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
             Component.onCompleted: {

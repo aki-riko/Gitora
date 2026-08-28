@@ -343,7 +343,10 @@ from PySide6.QtGui import QGuiApplication  # noqa: E402
 
 from app.common.setting import (  # noqa: E402
     APP_NAME,
+    APP_SPLASH_SUBTITLE,
     APP_USER_MODEL_ID,
+    APP_WINDOW_HEIGHT,
+    APP_WINDOW_WIDTH,
     PRISMQML_CONFIG_FILE,
 )
 
@@ -371,6 +374,9 @@ def main() -> int:
     app = App(
         sys.argv,
         application_icon=APP_LOGO_PATH if os.path.isfile(APP_LOGO_PATH) else None,
+        splash_subtitle=APP_SPLASH_SUBTITLE,
+        splash_width=APP_WINDOW_WIDTH,
+        splash_height=APP_WINDOW_HEIGHT,
         config_path=PRISMQML_CONFIG_FILE,
         persist_appearance=True,
     )
@@ -452,6 +458,8 @@ def main() -> int:
         "helpUrl": HELP_URL,
         "feedbackUrl": FEEDBACK_URL,
         "appUserModelId": APP_USER_MODEL_ID,
+        "windowWidth": APP_WINDOW_WIDTH,
+        "windowHeight": APP_WINDOW_HEIGHT,
         "installerSilentArgs": INSTALLER_SILENT_ARGS,
     })
 

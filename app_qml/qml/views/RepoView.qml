@@ -27,6 +27,11 @@ Item {
     property var _remoteInfo: []
     property string _currentBranch: ""
 
+    function _ensureInitGuide() {
+        if (!initGuideLoader.active) initGuideLoader.active = true
+        return initGuideLoader.item
+    }
+
     FontMetrics {
         id: repoPathFontMetrics
         font.family: Fluent.Enums.fontFamily
@@ -740,17 +745,24 @@ Item {
             task.succeeded.connect(function(result) {
                 if (!result || !result[0]) return
                 GitBridge.openRepoAsync(path)
-                initGuide.repoPath = path
-                initGuide.currentIndex = 0
-                initGuide.show()
+                var guide = root._ensureInitGuide()
+                if (!guide) return
+                guide.repoPath = path
+                guide.currentIndex = 0
+                guide.show()
             })
         }
     }
 
-    // 初始化引导(窗口)
-    InitRepoGuide {
-        id: initGuide
-        onCompleted: function(p) { root.reload() }
+    // 初始化引导窗口只在用户完成目录初始化后创建，避免首屏生成第二个 HWND。
+    Loader {
+        id: initGuideLoader
+        active: false
+        sourceComponent: Component {
+            InitRepoGuide {
+                onCompleted: function(p) { root.reload() }
+            }
+        }
     }
 
     // 文件历史
