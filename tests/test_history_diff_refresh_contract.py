@@ -48,7 +48,8 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("root.allCommits = batch", source)
         self.assertIn("root._restoreSelection(batch)", source)
         self.assertIn("function _syncRenderedTimelineItems()", source)
-        self.assertIn("if (!appendOnly) root.renderedTimelineItems = []", source)
+        self.assertNotIn("root.renderedTimelineItems = []", source)
+        self.assertIn("root.renderedTimelineItems = nextItems", source)
         self.assertIn("items: root.renderedTimelineItems", source)
 
     def test_history_scope_switch_controls_log_search_and_visible_context(self) -> None:

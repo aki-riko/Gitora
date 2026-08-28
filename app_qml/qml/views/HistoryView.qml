@@ -171,17 +171,12 @@ Item {
         root.selectedCommit = null
     }
 
-    // PrismQML 0.3.3.7 的虚拟 Timeline 会把“行数相同且首个日期组相同”
-    // 误判为纯尾部追加，分支切换后 30 条替换成另 30 条时不会更新 ListModel。
-    // 真分页追加保留增量路径；其余替换先发空模型，使 Timeline 确实重建。
+    // Timeline 会按组/卡片签名区分尾部追加与内容替换，直接交给它增量同步。
+    // 不先发空模型，避免异步刷新在滚轮越界期间把视口瞬间夹回起点。
     function _syncRenderedTimelineItems() {
         var nextItems = root.timelineItems || []
         var nextCount = root.allCommits.length
         var nextTopHash = nextCount > 0 ? (root.allCommits[0].hash || "") : ""
-        var appendOnly = root.renderedTimelineCommitCount > 0
-            && nextCount > root.renderedTimelineCommitCount
-            && nextTopHash === root.renderedTimelineTopHash
-        if (!appendOnly) root.renderedTimelineItems = []
         root.renderedTimelineItems = nextItems
         root.renderedTimelineCommitCount = nextCount
         root.renderedTimelineTopHash = nextTopHash
