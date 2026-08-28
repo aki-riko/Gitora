@@ -14,6 +14,12 @@ QtObject {
         return (dateStr || "").substring(0, 10)
     }
 
+    function _timeText(dateStr) {
+        var value = dateStr || ""
+        var match = value.match(/[T ](\d{2}):(\d{2})/)
+        return match ? match[1] + ":" + match[2] : ""
+    }
+
     function _dateGroup(dateStr) {
         var date = _dateKey(dateStr)
         if (date === "") return "未知日期"
@@ -62,6 +68,7 @@ QtObject {
         if (isReverted) relationText += " · 已撤销"
         return {
             "text": commit.message,
+            "time": _timeText(commit.date),
             "description": commit.shortHash + " · " + commit.author + relationText,
             "status": isReverted ? "warning" : "info",
             "strikeOut": isReverted,

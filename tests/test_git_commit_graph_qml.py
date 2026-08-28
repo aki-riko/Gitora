@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -28,6 +29,9 @@ Window {
     readonly property int probeCardCount: _cardCount(graphModel.items)
     readonly property int probeLabelCount: _labelCount(graphModel.items)
     readonly property string probeHashOrder: _hashOrder(graphModel.items)
+    readonly property string probeFirstTime:
+        graphModel.items.length > 0 && graphModel.items[0].cards.length > 0
+        ? graphModel.items[0].cards[0].time : ""
 
     function _cardCount(groups) {
         var total = 0
@@ -218,10 +222,12 @@ def _validate_rendered_scene(root, payload: list[dict], output: Path) -> str:
     card_count = int(root.property("probeCardCount"))
     label_count = int(root.property("probeLabelCount"))
     hash_order = str(root.property("probeHashOrder")).split(",")
+    first_time = str(root.property("probeFirstTime"))
     assert timeline is not None and int(timeline.property("graphLaneCount")) == lane_count
     assert lane_count >= 2 and group_count == 3
     assert card_count == len(payload) and label_count >= 4
     assert hash_order == [commit["hash"] for commit in payload]
+    assert re.fullmatch(r"\d{2}:\d{2}", first_time), first_time
     assert len(layers) >= card_count
     image = root.grabWindow()
     assert not image.isNull() and _sample_color_count(image) >= 4
