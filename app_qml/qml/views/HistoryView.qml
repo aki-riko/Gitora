@@ -63,7 +63,6 @@ Item {
         root.timelineRefreshPending = false
         root.timelinePendingLog = null
         root.refreshCount = 0
-        root.timelineViewport = null
         root.timelineLastContentY = 0
         root.timelineMotionObserved = false
         root.timelineLastMotionAt = 0
@@ -126,6 +125,7 @@ Item {
     }
 
     function _observeTimelineMotion() {
+        root._ensureTimelineViewport()
         var viewport = root.timelineViewport
         if (!viewport) return
         var current = Number(viewport.contentY)
@@ -133,6 +133,7 @@ Item {
         if (!root.timelineMotionObserved) {
             root.timelineLastContentY = current
             root.timelineMotionObserved = true
+            root.timelineLastMotionAt = Date.now()
             return
         }
         var delta = current - root.timelineLastContentY
@@ -156,6 +157,7 @@ Item {
     }
 
     function _observeTimelineWheel() {
+        root._ensureTimelineViewport()
         root.timelineLastWheelAt = Date.now()
         if (root.timelineRefreshPending)
             timelineRefreshAfterMotion.restart()
@@ -164,10 +166,15 @@ Item {
     }
 
     function _requestTimelineMore() {
-        if (!root.timelineViewport)
-            root.timelineViewport = root._findTimelineViewportForProbe(root)
+        root._ensureTimelineViewport()
         if (!root._timelineScrollIdle()) return
         root.loadMore()
+    }
+
+    function _ensureTimelineViewport() {
+        if (!root.timelineViewport)
+            root.timelineViewport = root._findTimelineViewportForProbe(root)
+        return root.timelineViewport
     }
 
     function _applyLogReady(repoPath, skip, batch) {
@@ -213,6 +220,7 @@ Item {
             return
         }
         if (root.searchMode) return
+        root._ensureTimelineViewport()
         if (!root._timelineScrollIdle()) {
             root.timelinePendingLog = {
                 "repoPath": repoPath,
@@ -255,6 +263,7 @@ Item {
     // 只有新数据返回后才替换数组,避免异步请求期间整个页面先变空。
     function refreshIncrementally() {
         if (!GitBridge || !GitBridge.repoPath) return
+        root._ensureTimelineViewport()
         if (!root._timelineScrollIdle()) {
             root.timelineRefreshPending = true
             timelineRefreshAfterMotion.restart()
@@ -582,6 +591,7 @@ Item {
 
     Component.onCompleted: {
         root.initialized = true
+        root.timelineViewport = root._findTimelineViewportForProbe(root)
         root._syncRenderedTimelineItems()
         root.resetAndLoad()
     }
@@ -600,6 +610,10 @@ Item {
         repeat: false
         onTriggered: {
             if (!root.timelineRefreshPending) return
+            if (!root._timelineScrollIdle()) {
+                restart()
+                return
+            }
             root.timelineRefreshPending = false
             root.refreshIncrementally()
         }
@@ -612,6 +626,10 @@ Item {
         onTriggered: {
             var pending = root.timelinePendingLog
             if (pending === null) return
+            if (!root._timelineScrollIdle()) {
+                restart()
+                return
+            }
             root.timelinePendingLog = null
             root._applyLogReady(
                 pending.repoPath, pending.skip, pending.batch

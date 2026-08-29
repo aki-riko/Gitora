@@ -16,6 +16,7 @@ def test_history_pagination_probes_virtual_viewport_origin_and_bottom() -> None:
     assert 'function _findTimelineViewportForProbe(item)' in source
     assert 'function _probeTimelineEnd()' in source
     assert 'function _requestTimelineMore()' in source
+    assert 'function _ensureTimelineViewport()' in source
     assert 'function _handleLogReady(repoPath, skip, batch)' in source
     assert 'property var timelinePendingLog: null' in source
     assert 'property bool timelineRefreshPending: false' in source
@@ -26,6 +27,7 @@ def test_history_pagination_probes_virtual_viewport_origin_and_bottom() -> None:
     assert 'root.timelinePendingLog = {' in source
     assert 'id: timelineLogAfterMotion' in source
     assert 'id: timelineRefreshAfterMotion' in source
+    assert 'root.timelineViewport = null' not in source
     assert 'var bottom = originY + contentHeight' in source
     assert (
         'contentY + viewportHeight >= bottom - root.timelinePrefetchDistance'
