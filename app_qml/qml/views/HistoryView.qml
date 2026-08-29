@@ -178,6 +178,34 @@ Item {
         return root.timelineViewport
     }
 
+    function _sameCommitRefs(left, right) {
+        var first = left || []
+        var second = right || []
+        if (first.length !== second.length) return false
+        for (var index = 0; index < first.length; index++) {
+            if ((first[index].name || "") !== (second[index].name || "")
+                    || (first[index].kind || "") !== (second[index].kind || ""))
+                return false
+        }
+        return true
+    }
+
+    function _sameTimelineCommits(left, right) {
+        var current = left || []
+        var incoming = right || []
+        if (current.length !== incoming.length) return false
+        for (var index = 0; index < current.length; index++) {
+            var first = current[index] || {}
+            var second = incoming[index] || {}
+            if ((first.hash || "") !== (second.hash || "")
+                    || (first.revertedBy || "") !== (second.revertedBy || "")
+                    || (first.reverts || "") !== (second.reverts || "")
+                    || !root._sameCommitRefs(first.refs, second.refs))
+                return false
+        }
+        return true
+    }
+
     function _applyLogReady(repoPath, skip, batch) {
         // 任何过期/不匹配分支都要解锁 loading,否则切仓库后再也无法加载
         if (!GitBridge || repoPath !== GitBridge.repoPath) {
@@ -193,13 +221,16 @@ Item {
                 root.refreshing = false
                 return
             }
-            root.allCommits = batch
+            var historyChanged = !root._sameTimelineCommits(
+                root.allCommits, batch
+            )
+            if (historyChanged) root.allCommits = batch
             root.loadedCount = batch.length
             root.hasMore = batch.length === root.refreshCount
                 && root.loadedCount < root.maxHistoryCommits
             root.finishLoading()
             root.refreshing = false
-            root._restoreSelection(batch)
+            if (historyChanged) root._restoreSelection(batch)
             root._schedulePendingDateJump()
             return
         }

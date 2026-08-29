@@ -29,6 +29,12 @@ Window {
     readonly property int commitCount: history.allCommits.length
     readonly property bool loading: history.loading
     readonly property bool pendingLog: history.timelinePendingLog !== null
+    property int modelRevision: 0
+
+    Connections {
+        target: history
+        function onAllCommitsChanged() { root.modelRevision += 1 }
+    }
 
     Item {
         anchors.fill: parent
@@ -179,6 +185,7 @@ def _run_probe(repo: Path) -> int:
             for commit in bridge._svc.get_graph_log_at(str(repo), 30, 0, False)
         ]
         samples: list[float] = []
+        model_revision = int(root.property("modelRevision"))
         viewport.contentYChanged.connect(
             lambda: samples.append(float(viewport.property("contentY")))
         )
@@ -228,6 +235,14 @@ def _run_probe(repo: Path) -> int:
                     "phase": "refresh_after_wheel",
                     "pending": root.property("pendingLog"),
                     "loading": root.property("loading"),
+                }
+            )
+        if int(root.property("modelRevision")) != model_revision:
+            raise AssertionError(
+                {
+                    "phase": "unchanged_refresh_rebound_model",
+                    "before": model_revision,
+                    "after": root.property("modelRevision"),
                 }
             )
         print(
