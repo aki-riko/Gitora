@@ -17,6 +17,7 @@ def test_history_pagination_probes_virtual_viewport_origin_and_bottom() -> None:
     assert 'function _probeTimelineEnd()' in source
     assert 'function _requestTimelineMore()' in source
     assert 'function _ensureTimelineViewport()' in source
+    assert 'root.timelineViewport = root._findTimelineViewportForProbe(root)' in source
     assert 'function _handleLogReady(repoPath, skip, batch)' in source
     assert 'property var timelinePendingLog: null' in source
     assert 'property bool timelineRefreshPending: false' in source

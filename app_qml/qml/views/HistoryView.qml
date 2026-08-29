@@ -63,6 +63,7 @@ Item {
         root.timelineRefreshPending = false
         root.timelinePendingLog = null
         root.refreshCount = 0
+        // Timeline 实例没有重建，保留视口引用才能捕获刷新后的首个滚动帧。
         root.timelineLastContentY = 0
         root.timelineMotionObserved = false
         root.timelineLastMotionAt = 0
