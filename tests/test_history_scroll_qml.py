@@ -28,9 +28,22 @@ Window {
 
     readonly property int probeCommitCount: historyView.allCommits.length
     readonly property bool probeLoading: historyView.loading
+    readonly property bool probePendingLog: !!historyView.timelinePendingLog
+    readonly property bool probeMotionObserved: historyView.timelineMotionObserved
+    readonly property bool probeViewportReady: !!historyView.timelineViewport
+    readonly property double probeLastMotionAt: historyView.timelineLastMotionAt
+    readonly property double probeLastWheelAt: historyView.timelineLastWheelAt
+    readonly property int probeQuietPeriod: historyView.timelineQuietPeriod
+    property var injectedLogBatch: []
 
     function refreshTimelineData() {
         historyView.refreshIncrementally()
+    }
+
+    function injectNextTimelinePage() {
+        historyView._handleLogReady(
+            GitBridge.repoPath, 30, injectedLogBatch
+        )
     }
 
     Item {
@@ -172,6 +185,16 @@ def _run_probe(repo: Path) -> int:
 
     component, root = _create_scene(engine)
     try:
+        from app_qml.backend.git_bridge import _commit_to_dict
+
+        second_page = [
+            _commit_to_dict(commit)
+            for commit in bridge._svc.get_graph_log_at(str(repo), 30, 30, False)
+        ]
+        if len(second_page) != 30:
+            raise AssertionError({"second_page_count": len(second_page)})
+        if not root.setProperty("injectedLogBatch", second_page):
+            raise AssertionError("cannot inject the real second history page")
         if not _wait_until(
             lambda: not root.property("probeLoading")
             and root.property("probeCommitCount") == 30
@@ -191,6 +214,9 @@ def _run_probe(repo: Path) -> int:
             if "SmoothScrollHelper" in item.metaObject().className()
             and item.parent() is viewport
         )
+        if not _wait_until(lambda: root.property("probeViewportReady"), timeout=2.0):
+            raise AssertionError("history view did not acquire its timeline viewport")
+        history.setProperty("hasMore", False)
         if not _wait_until(
             lambda: float(viewport.property("contentHeight"))
             > float(viewport.property("height"))
@@ -205,6 +231,115 @@ def _run_probe(repo: Path) -> int:
                     "max": helper.property("maxScroll"),
                 }
             )
+        if not QMetaObject.invokeMethod(
+            helper, "scrollToEnd", Qt.ConnectionType.DirectConnection
+        ):
+            raise AssertionError("cannot position timeline at end")
+        if not _wait_until(
+            lambda: abs(
+                float(viewport.property("contentY"))
+                - float(helper.property("maxScroll"))
+            )
+            <= 0.5
+            and not helper.property("isOvershot")
+        ):
+            raise AssertionError("timeline did not settle at end")
+        _pump(300)
+
+        pagination_samples: list[float] = []
+        viewport.contentYChanged.connect(
+            lambda: pagination_samples.append(float(viewport.property("contentY")))
+        )
+        before_motion = float(root.property("probeLastMotionAt"))
+        before_wheel = float(root.property("probeLastWheelAt"))
+        _send_wheel(root, viewport, 120)
+        if not _wait_until(
+            lambda: float(root.property("probeLastMotionAt")) > before_motion
+            and float(root.property("probeLastWheelAt")) > before_wheel
+            and bool(pagination_samples),
+            timeout=1.0,
+        ):
+            raise AssertionError(
+                {
+                    "phase": "first_wheel_frame",
+                    "content_y": viewport.property("contentY"),
+                    "target": helper.property("targetPos"),
+                    "smooth": helper.property("smoothPos"),
+                    "min": helper.property("minScroll"),
+                    "max": helper.property("maxScroll"),
+                    "motion": root.property("probeMotionObserved"),
+                    "samples": pagination_samples,
+                }
+            )
+        if not QMetaObject.invokeMethod(
+            root, "injectNextTimelinePage", Qt.ConnectionType.DirectConnection
+        ):
+            raise AssertionError("cannot apply the real second history page")
+        if not root.property("probePendingLog") or root.property("probeCommitCount") != 30:
+            raise AssertionError(
+                {
+                    "phase": "pagination_not_deferred",
+                    "count": root.property("probeCommitCount"),
+                    "pending": root.property("probePendingLog"),
+                    "last_motion": root.property("probeLastMotionAt"),
+                    "last_wheel": root.property("probeLastWheelAt"),
+                    "quiet": root.property("probeQuietPeriod"),
+                }
+            )
+        for _ in range(7):
+            _pump(40)
+            before_wheel = float(root.property("probeLastWheelAt"))
+            _send_wheel(root, viewport, 120)
+            if not _wait_until(
+                lambda: float(root.property("probeLastWheelAt")) > before_wheel,
+                timeout=0.5,
+            ):
+                raise AssertionError("business wheel observer missed an input event")
+        if not _wait_until(lambda: root.property("probePendingLog"), timeout=2.0):
+            raise AssertionError(
+                {
+                    "phase": "pagination_pending",
+                    "count": root.property("probeCommitCount"),
+                    "loading": root.property("probeLoading"),
+                    "samples": pagination_samples,
+                }
+            )
+        if root.property("probeCommitCount") != 30:
+            raise AssertionError(
+                {
+                    "phase": "pagination_applied_during_motion",
+                    "count": root.property("probeCommitCount"),
+                    "samples": pagination_samples,
+                }
+            )
+        pagination_yanks = [
+            (index, pagination_samples[index - 1], pagination_samples[index])
+            for index in range(1, len(pagination_samples))
+            if pagination_samples[index] > pagination_samples[index - 1] + 20
+        ]
+        if pagination_yanks:
+            raise AssertionError(
+                {
+                    "phase": "pagination_mid_burst_realign",
+                    "yanks": pagination_yanks,
+                }
+            )
+        if not _wait_until(
+            lambda: root.property("probeCommitCount") == 60
+            and not root.property("probeLoading"),
+            timeout=4.0,
+        ):
+            raise AssertionError(
+                {
+                    "phase": "pagination_after_motion",
+                    "count": root.property("probeCommitCount"),
+                    "loading": root.property("probeLoading"),
+                    "pending": root.property("probePendingLog"),
+                    "samples": pagination_samples,
+                }
+            )
+        history.setProperty("hasMore", False)
+
         if not QMetaObject.invokeMethod(
             helper, "scrollToStart", Qt.ConnectionType.DirectConnection
         ):

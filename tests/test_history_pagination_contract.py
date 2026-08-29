@@ -15,6 +15,17 @@ def test_history_pagination_probes_virtual_viewport_origin_and_bottom() -> None:
     assert 'readonly property real timelinePrefetchDistance: 600' in source
     assert 'function _findTimelineViewportForProbe(item)' in source
     assert 'function _probeTimelineEnd()' in source
+    assert 'function _requestTimelineMore()' in source
+    assert 'function _handleLogReady(repoPath, skip, batch)' in source
+    assert 'property var timelinePendingLog: null' in source
+    assert 'property bool timelineRefreshPending: false' in source
+    assert 'readonly property int timelineQuietPeriod:' in source
+    assert 'blocking: false' in source
+    assert 'onWheel: function(event) { root._observeTimelineWheel() }' in source
+    assert 'if (!root._timelineScrollIdle()) return' in source
+    assert 'root.timelinePendingLog = {' in source
+    assert 'id: timelineLogAfterMotion' in source
+    assert 'id: timelineRefreshAfterMotion' in source
     assert 'var bottom = originY + contentHeight' in source
     assert (
         'contentY + viewportHeight >= bottom - root.timelinePrefetchDistance'

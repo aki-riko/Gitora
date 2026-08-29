@@ -17,6 +17,8 @@ Item {
     property bool searchDeepening: false
     property bool refreshing: false
     property bool refreshPending: false
+    property bool timelineRefreshPending: false
+    property var timelinePendingLog: null
     property int refreshCount: 0
     property bool searchMode: false
     property bool includeAllRefs: false
@@ -39,6 +41,11 @@ Item {
     property int renderedTimelineCommitCount: 0
     property string renderedTimelineTopHash: ""
     property var timelineViewport: null
+    property real timelineLastContentY: 0
+    property bool timelineMotionObserved: false
+    property double timelineLastMotionAt: 0
+    property double timelineLastWheelAt: 0
+    readonly property int timelineQuietPeriod: Fluent.Enums.duration.bounce
     readonly property real timelinePrefetchDistance: 600
 
     // ==================== 数据加载 ====================
@@ -53,8 +60,14 @@ Item {
         root.searchDeepening = false
         root.refreshing = false
         root.refreshPending = false
+        root.timelineRefreshPending = false
+        root.timelinePendingLog = null
         root.refreshCount = 0
         root.timelineViewport = null
+        root.timelineLastContentY = 0
+        root.timelineMotionObserved = false
+        root.timelineLastMotionAt = 0
+        root.timelineLastWheelAt = 0
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
         root.pendingJumpDate = ""
@@ -97,7 +110,7 @@ Item {
         if (!root.pageActive || root.searchMode || root.loading || !root.hasMore)
             return
         if (!root.timelineViewport)
-            root.timelineViewport = root._findTimelineViewportForProbe(historyTimeline)
+            root.timelineViewport = root._findTimelineViewportForProbe(root)
         var viewport = root.timelineViewport
         if (!viewport) return
         var contentHeight = Number(viewport.contentHeight)
@@ -109,7 +122,107 @@ Item {
                 || contentHeight <= viewportHeight) return
         var bottom = originY + contentHeight
         if (contentY + viewportHeight >= bottom - root.timelinePrefetchDistance)
-            root.loadMore()
+            root._requestTimelineMore()
+    }
+
+    function _observeTimelineMotion() {
+        var viewport = root.timelineViewport
+        if (!viewport) return
+        var current = Number(viewport.contentY)
+        if (!isFinite(current)) return
+        if (!root.timelineMotionObserved) {
+            root.timelineLastContentY = current
+            root.timelineMotionObserved = true
+            return
+        }
+        var delta = current - root.timelineLastContentY
+        if (Math.abs(delta) > 0.01) {
+            root.timelineLastMotionAt = Date.now()
+            if (root.timelineRefreshPending)
+                timelineRefreshAfterMotion.restart()
+            if (root.timelinePendingLog !== null)
+                timelineLogAfterMotion.restart()
+        }
+        root.timelineLastContentY = current
+    }
+
+    function _timelineScrollIdle() {
+        var lastActivityAt = Math.max(
+            root.timelineLastMotionAt, root.timelineLastWheelAt
+        )
+        if (lastActivityAt <= 0) return true
+        return Date.now() - lastActivityAt
+            >= root.timelineQuietPeriod
+    }
+
+    function _observeTimelineWheel() {
+        root.timelineLastWheelAt = Date.now()
+        if (root.timelineRefreshPending)
+            timelineRefreshAfterMotion.restart()
+        if (root.timelinePendingLog !== null)
+            timelineLogAfterMotion.restart()
+    }
+
+    function _requestTimelineMore() {
+        if (!root.timelineViewport)
+            root.timelineViewport = root._findTimelineViewportForProbe(root)
+        if (!root._timelineScrollIdle()) return
+        root.loadMore()
+    }
+
+    function _applyLogReady(repoPath, skip, batch) {
+        // 任何过期/不匹配分支都要解锁 loading,否则切仓库后再也无法加载
+        if (!GitBridge || repoPath !== GitBridge.repoPath) {
+            root.loading = false
+            root.refreshing = false
+            return
+        }
+        // 搜索请求使用独立的后端序列号,旧的分页响应不能覆盖搜索结果。
+        if (root.searchMode) return
+        if (root.refreshing) {
+            if (skip !== 0) {
+                root.loading = false
+                root.refreshing = false
+                return
+            }
+            root.allCommits = batch
+            root.loadedCount = batch.length
+            root.hasMore = batch.length === root.refreshCount
+                && root.loadedCount < root.maxHistoryCommits
+            root.finishLoading()
+            root.refreshing = false
+            root._restoreSelection(batch)
+            root._schedulePendingDateJump()
+            return
+        }
+        if (skip !== root.loadedCount) { root.loading = false; return }
+        var remaining = root.maxHistoryCommits - root.loadedCount
+        var nextBatch = batch.slice(0, Math.max(0, remaining))
+        root.allCommits = root.allCommits.concat(nextBatch)
+        root.loadedCount += nextBatch.length
+        root.hasMore = batch.length === root.pageSize
+            && root.loadedCount < root.maxHistoryCommits
+        root.finishLoading()
+        root._schedulePendingDateJump()
+    }
+
+    function _handleLogReady(repoPath, skip, batch) {
+        if (!GitBridge || repoPath !== GitBridge.repoPath) {
+            root.loading = false
+            root.refreshing = false
+            return
+        }
+        if (root.searchMode) return
+        if (!root._timelineScrollIdle()) {
+            root.timelinePendingLog = {
+                "repoPath": repoPath,
+                "skip": skip,
+                "batch": batch
+            }
+            timelineLogAfterMotion.restart()
+            return
+        }
+        root._applyLogReady(repoPath, skip, batch)
     }
 
     function _findTimelineViewportForProbe(item) {
@@ -123,10 +236,31 @@ Item {
         return null
     }
 
+    Connections {
+        target: root.timelineViewport
+        ignoreUnknownSignals: true
+        function onContentYChanged() { root._observeTimelineMotion() }
+    }
+
+    WheelHandler {
+        parent: root.timelineViewport || root
+        enabled: root.timelineViewport !== null
+        target: null
+        blocking: false
+        activeTimeout: root.timelineQuietPeriod / 1000
+        onWheel: function(event) { root._observeTimelineWheel() }
+    }
+
     // 仓库状态变化时保留当前时间线,后台重新拉取已加载范围。
     // 只有新数据返回后才替换数组,避免异步请求期间整个页面先变空。
     function refreshIncrementally() {
         if (!GitBridge || !GitBridge.repoPath) return
+        if (!root._timelineScrollIdle()) {
+            root.timelineRefreshPending = true
+            timelineRefreshAfterMotion.restart()
+            return
+        }
+        root.timelineRefreshPending = false
         if (root.loading) {
             root.refreshPending = true
             return
@@ -194,6 +328,8 @@ Item {
         root.searchDeepening = false
         root.refreshing = false
         root.refreshPending = false
+        root.timelineRefreshPending = false
+        root.timelinePendingLog = null
         root.searchMode = true
         root.selectedCommit = null
         GitBridge.requestSearch(query, "all", root.includeAllRefs)
@@ -335,39 +471,7 @@ Item {
     Connections {
         target: GitBridge
         function onLogReady(repoPath, skip, batch) {
-            // 任何过期/不匹配分支都要解锁 loading,否则切仓库后再也无法加载
-            if (!GitBridge || repoPath !== GitBridge.repoPath) {
-                root.loading = false
-                root.refreshing = false
-                return
-            }
-            // 搜索请求使用独立的后端序列号,旧的分页响应不能覆盖搜索结果。
-            if (root.searchMode) return
-            if (root.refreshing) {
-                if (skip !== 0) {
-                    root.loading = false
-                    root.refreshing = false
-                    return
-                }
-                root.allCommits = batch
-                root.loadedCount = batch.length
-                root.hasMore = batch.length === root.refreshCount
-                    && root.loadedCount < root.maxHistoryCommits
-                root.finishLoading()
-                root.refreshing = false
-                root._restoreSelection(batch)
-                root._schedulePendingDateJump()
-                return
-            }
-            if (skip !== root.loadedCount) { root.loading = false; return }
-            var remaining = root.maxHistoryCommits - root.loadedCount
-            var nextBatch = batch.slice(0, Math.max(0, remaining))
-            root.allCommits = root.allCommits.concat(nextBatch)
-            root.loadedCount += nextBatch.length
-            root.hasMore = batch.length === root.pageSize
-                && root.loadedCount < root.maxHistoryCommits
-            root.finishLoading()
-            root._schedulePendingDateJump()
+            root._handleLogReady(repoPath, skip, batch)
         }
         function onSearchReady(repoPath, results) {
             if (!GitBridge || repoPath !== GitBridge.repoPath) {
@@ -488,6 +592,31 @@ Item {
         repeat: true
         running: root.pageActive && root.initialized
         onTriggered: root._probeTimelineEnd()
+    }
+
+    Timer {
+        id: timelineRefreshAfterMotion
+        interval: root.timelineQuietPeriod
+        repeat: false
+        onTriggered: {
+            if (!root.timelineRefreshPending) return
+            root.timelineRefreshPending = false
+            root.refreshIncrementally()
+        }
+    }
+
+    Timer {
+        id: timelineLogAfterMotion
+        interval: root.timelineQuietPeriod
+        repeat: false
+        onTriggered: {
+            var pending = root.timelinePendingLog
+            if (pending === null) return
+            root.timelinePendingLog = null
+            root._applyLogReady(
+                pending.repoPath, pending.skip, pending.batch
+            )
+        }
     }
 
     CommitTimelineModel {
@@ -626,7 +755,7 @@ Item {
                         }
                         onReachedEnd: {
                             if (!root.loading && root.hasMore && !root.searchMode)
-                                root.loadMore()
+                                root._requestTimelineMore()
                         }
                     }
 
