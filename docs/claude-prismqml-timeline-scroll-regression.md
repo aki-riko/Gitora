@@ -373,3 +373,79 @@ D:\PrismQML\PrismQML\prismqml\__init__.py
 - 动态虚拟行回收期间没有旧边界/新边界互相拉扯；
 
 才能说这个问题修好了。仅源码看起来合理、仅普通 ScrollBar 测试通过、或仅日志警告消失，都不够。
+
+---
+
+## 11. 本轮（2026-08-28）执行结果
+
+提交：PrismQML `b0374a93f` "fix: 滚轮撞边界期间的重复回弹与滚动抖动判据"。
+
+### 11.1 已修复并验证
+
+新增 `_internal/SmoothScrollOvershootGuard.qml` 承担超出仲裁，`_internal/SmoothScrollBoundsReconciler.qml`
+接管边界重对齐（后者是为让 helper 保持在 500 行门禁内）。行为契约：
+
+- 视图把超出夹回界内 ⇒ 撤销该边界在**本输入串**内的外移；后续同向 tick 只把目标钉在边界，不再开外移腿。
+- 空闲 ≥ `Enums.scroll.input_burst_gap`（120ms）⇒ 重新武装，反向输入与新一串滚轮的回弹不受影响。
+- 整段外移窗口无帧后的补算峰值同样由门闸弃帧（原先是 helper 内联的 `_discardStaleOutwardFrame*`）。
+
+验收对应第 10 节：首次 overshoot 保留、反向输入可重新回弹、虚拟行回收期间不再有两条校正路径互拉，
+均由 `tests/qml/test_timeline_conventions.py` 与 `test_scroll_bar_conventions.py` 覆盖并通过。
+
+### 11.2 判据修正（重要，避免下轮重蹈）
+
+原回归判据用**越界距离** `minimum - contentY` 判单调，这把边界移动引入了度量：delegate 重新测量
+让 `minScroll` 内移几像素，该距离就下降并击穿容差，而 `contentY` 从未被拉回 —— 纯假阳。
+现改为在**原始 `contentY`** 上检测外移期间的反向跨越（"拽回"），对边界移动免疫。
+
+三种度量在同一场景下的实测（修复前代码）：
+
+| 度量 | 修复前 | 能否判别 |
+|---|---|---|
+| 边界穿越次数 | 3（= 修复后的 3） | 否 |
+| 越界期间方向反转数 | **0** | 否 |
+| 原始 contentY 拽回 | 3 处 | **是** |
+
+反转数抓不到的原因：缺陷形态是"夹回边界 → 继续外移"，夹紧帧恰好落在 `contentY == minScroll`，
+任何"仅统计越界样本"的过滤器都会跳过它。修复前的失败数据：
+`yanks=[(6,-14.0,0.0), (14,-17.0,-0.0), (39,-70.0,-0.0)]`，`minScroll` 全程 `0.0`。
+该判据在修复前代码上 3/3 失败，可作可信门禁。
+
+### 11.3 未修复的残留（下一轮的起点）
+
+`test_timeline_virtual_continuous_same_direction_wheel_keeps_one_bounce` 仍有约 **1/20** 概率失败，
+已按用户决定标 `xfail(strict=False)`，缺陷保持可见但套件确定。三次实测：3/60、2/60、4/60
+（分别对应修复后、加返回腿钩子后、重建后），n=60 下互为噪声。
+
+形态高度一致，真实样本存于 PrismQML `.artifacts/scroll-diag/residual*/`：
+
+| 样本 | 拽回 1 | 拽回 2 |
+|---|---|---|
+| fail_23 | 下标 16，-35.0 → -0.0 | 下标 33，-70.0 → -0.0 |
+| fail_39 | 下标 15，-34.0 → -0.0 | 下标 33，-71.0 → -0.0 |
+| fail_50 | 下标 14，-33.0 → -0.0 | 下标 31，-69.0 → -0.0 |
+
+`minScroll` 全程静止在 `0.0`，落点恰是边界，随后继续外移到约 -70。
+
+已排除/已知：
+
+- **不是**判据假阳。新判据对边界移动免疫，且边界在该场景确实没动。
+- **不是**视图夹紧。`isRevoked(-0.0, -34.0, …)` 会返回真，若是夹紧则下一帧就被截断。
+- **不是**返回腿走完后重开外移腿。我曾据此加 `noteReturnSettled()`（在 `_onFrameDriverSettled`
+  的返回腿到达分支武装撤销），失败率 3/60 → 2/60 无实质变化，且无法观测到它触发，已按纪律回退，
+  未进入提交。该假设仍未被证伪，只是缺证据。
+- **-36 → -0.0 是单帧跳变**，前后无中间样本。返回腿是 250ms 动画、采样 pump 40ms，本应有中间值；
+  没有 ⇒ 这个 `0` 是被**直接写入**的，不是动画走到的。下一轮应从"谁直接写了 contentY/`_smoothY`"入手，
+  候选：`_syncing` 期间的 `moveTo`、`setImmediate`、`boundsReconciler.reconcile` 的空闲轴接管分支。
+
+### 11.4 观测方法上的坑
+
+加探针会让它不复现：在 `contentYChanged` 回调里多读三个属性即从 30 次 0 命中（基线约 1.5 次）。
+下一轮若要观测，**不要**在采样回调里读属性，改为门闸内部累加计数器、测试结束后一次性读取；
+或直接在 QML 侧记录写入者标记，避免任何跨语言属性读取进入热路径。
+
+### 11.5 复现命令
+
+```bash
+for i in $(seq 1 60); do ./.venv/Scripts/python.exe scripts/test_process.py --qt-platform offscreen --timeout 300 -- ./.venv/Scripts/python.exe -m pytest -q -rx tests/qml/test_timeline_conventions.py -k continuous_same_direction -p no:cacheprovider 2>&1 | grep -oE "[0-9]+ (passed|failed|xfailed|xpassed)" | tr '\n' ' '; echo " <- run $i"; done
+```
