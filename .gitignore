@@ -43,6 +43,9 @@ release_artifacts/
 # 日志文件
 *.log
 
+# 本地诊断与视觉验收产物
+.artifacts/
+
 # 环境变量
 .env
 .env.local
