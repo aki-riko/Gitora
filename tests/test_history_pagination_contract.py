@@ -24,7 +24,8 @@ def test_history_pagination_probes_virtual_viewport_origin_and_bottom() -> None:
     assert 'readonly property int timelineQuietPeriod:' in source
     assert 'blocking: false' in source
     assert 'onWheel: function(event) { root._observeTimelineWheel() }' in source
-    assert 'if (!root._timelineScrollIdle()) return' in source
+    assert 'var idle = root._timelineScrollIdle()' in source
+    assert 'if (!idle) return' in source
     assert 'root.timelinePendingLog = {' in source
     assert 'id: timelineLogAfterMotion' in source
     assert 'id: timelineRefreshAfterMotion' in source
