@@ -9,6 +9,7 @@ GitBridge - GitService 的 QML 对接壳
 """
 import os
 import tempfile
+import time
 from pathlib import Path
 from collections.abc import Callable
 from typing import Any, Optional
@@ -26,6 +27,13 @@ from app.common.prism_task import submit_to_pool
 from app_qml.backend.file_change_model import FileChangeListModel
 
 logger = get_logger("GitBridge")
+
+
+def _timeline_trace_enabled() -> bool:
+    """Return whether the opt-in timeline trace is enabled."""
+    return os.environ.get("GITORA_TIMELINE_TRACE", "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
 
 
 def _file_change_to_dict(fc: FileChange) -> dict:
@@ -219,6 +227,7 @@ class GitBridge(QObject):
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
         self._open_request_serial = 0
+        self._timeline_trace_sequence = 0
 
         # 指纹计算放后台线程(跑 git 命令,不能阻塞主线程);
         # 用 _poll_busy 防重入,避免上一轮未完又起一轮。
@@ -228,6 +237,22 @@ class GitBridge(QObject):
         self._poll_timer.setInterval(self._POLL_INTERVAL_MS)
         self._poll_timer.timeout.connect(self._poll_tick)
         self._poll_timer.start()
+
+    def _timeline_trace(self, event: str, **fields: object) -> None:
+        """Write one opt-in backend event with a process-local sequence."""
+        if not _timeline_trace_enabled():
+            return
+        self._timeline_trace_sequence += 1
+        suffix = " ".join(
+            f"{key}={value!r}" for key, value in fields.items()
+        )
+        logger.debug(
+            "[TIMELINE_TRACE] side=python seq=%d t=%d %s%s",
+            self._timeline_trace_sequence,
+            time.time_ns() // 1_000_000,
+            event,
+            f" {suffix}" if suffix else "",
+        )
 
     def _submit_query(
         self,
@@ -293,16 +318,27 @@ class GitBridge(QObject):
             on_failure=failed,
         )
 
-    def _reset_poll_baseline(self):
+    def _reset_poll_baseline(self, reason: str = "unspecified"):
         """使当前基线失效；下一轮只建新基线，不重复发刷新。"""
         self._poll_generation += 1
         self._poll_fingerprint = ""
         self._poll_repo = self._svc.repo_path or ""
+        self._timeline_trace(
+            "poll.baseline_reset",
+            reason=reason,
+            generation=self._poll_generation,
+            repo=self._poll_repo,
+        )
 
     @Slot()
     def _forward_service_status_changed(self):
         """转发内部变更一次，并阻止轮询把同一变化再转发一次。"""
-        self._reset_poll_baseline()
+        self._timeline_trace(
+            "statusChanged.emit",
+            source="GitService.statusChanged",
+            repo=self._svc.repo_path or "",
+        )
+        self._reset_poll_baseline("service_status_changed")
         self.statusChanged.emit()
 
     def _poll_tick(self):
@@ -313,6 +349,11 @@ class GitBridge(QObject):
         self._poll_busy = True
         self._poll_repo = repo
         generation = self._poll_generation
+        self._timeline_trace(
+            "poll.fingerprint_request",
+            repo=repo,
+            generation=generation,
+        )
         self._submit_query(
             lambda: self._svc.compute_state_fingerprint(repo),
             label="计算状态指纹",
@@ -326,23 +367,52 @@ class GitBridge(QObject):
 
     def _on_fingerprint_ready(self, repo: str, fp: str, generation: int):
         """指纹算完（主线程回调）：与基线比较并刷新。"""
+        self._timeline_trace(
+            "poll.fingerprint_ready",
+            repo=repo,
+            generation=generation,
+            current_generation=self._poll_generation,
+            fingerprint=fp[:12] if fp else "",
+        )
         # 仓库已切走或内部操作已使基线换代 → 丢弃过期结果。
         if (
             generation != self._poll_generation
             or repo != (self._svc.repo_path or "")
         ):
+            self._timeline_trace(
+                "poll.fingerprint_drop",
+                reason="stale_generation_or_repo",
+            )
             self._poll_busy = False
             return
         if fp == "":
             # 读取失败/仓库无效:不更新基线也不触发,等下一轮
+            self._timeline_trace("poll.fingerprint_drop", reason="empty")
             self._poll_busy = False
             return
         if self._poll_fingerprint == "":
             # 首次:仅建立基线,不触发(打开仓库已各视图各自 reload 过)
             self._poll_fingerprint = fp
+            self._timeline_trace(
+                "poll.baseline_established",
+                fingerprint=fp[:12],
+            )
         elif fp != self._poll_fingerprint:
+            previous = self._poll_fingerprint
             self._poll_fingerprint = fp
+            self._timeline_trace(
+                "statusChanged.emit",
+                source="fingerprint_changed",
+                previous_fingerprint=previous[:12],
+                fingerprint=fp[:12],
+                repo=repo,
+            )
             self.statusChanged.emit()
+        else:
+            self._timeline_trace(
+                "poll.fingerprint_unchanged",
+                fingerprint=fp[:12],
+            )
         self._poll_busy = False
 
     # ==================== 属性 ====================
@@ -371,7 +441,7 @@ class GitBridge(QObject):
         if ok:
             from app.common.recent_repos import recentReposManager
             recentReposManager.add(self._svc.repo_path or path)
-            self._reset_poll_baseline()
+            self._reset_poll_baseline("set_repo_path")
             self.repoPathChanged.emit(self._svc.repo_path or "")
         return ok
 
@@ -388,7 +458,7 @@ class GitBridge(QObject):
                 self._svc.activate_repo_path(path, emit_status=False)
                 from app.common.recent_repos import recentReposManager
                 recentReposManager.add(self._svc.repo_path or path)
-                self._reset_poll_baseline()
+                self._reset_poll_baseline("open_repo")
                 self.repoPathChanged.emit(self._svc.repo_path or "")
                 self.repoOpened.emit(True, self._svc.repo_path or path)
             else:
@@ -835,6 +905,14 @@ class GitBridge(QObject):
         repo = self._svc.repo_path or ""
         self._log_request_serial += 1
         request_serial = self._log_request_serial
+        self._timeline_trace(
+            "log.request",
+            serial=request_serial,
+            count=count,
+            skip=skip,
+            include_all_refs=include_all_refs,
+            repo=repo,
+        )
 
         def work():
             return [
@@ -846,16 +924,49 @@ class GitBridge(QObject):
 
         def completed(batch: list) -> None:
             if request_serial != self._log_request_serial:
+                self._timeline_trace(
+                    "log.result_drop",
+                    serial=request_serial,
+                    reason="stale_serial",
+                    current_serial=self._log_request_serial,
+                    skip=skip,
+                    batch_length=len(batch),
+                )
                 return
             if repo != (self._svc.repo_path or ""):
+                self._timeline_trace(
+                    "log.result_drop",
+                    serial=request_serial,
+                    reason="repo_changed",
+                    skip=skip,
+                    batch_length=len(batch),
+                    repo=repo,
+                    current_repo=self._svc.repo_path or "",
+                )
                 return
+            self._timeline_trace(
+                "log.result_emit",
+                serial=request_serial,
+                skip=skip,
+                batch_length=len(batch),
+                repo=repo,
+            )
             self.logReady.emit(repo, skip, batch)
+
+        def failed(_exc: BaseException) -> None:
+            self._timeline_trace(
+                "log.failed",
+                serial=request_serial,
+                skip=skip,
+                repo=repo,
+            )
+            completed([])
 
         return self._submit_query(
             work,
             label="获取提交历史",
             on_success=completed,
-            on_failure=lambda _exc: completed([]),
+            on_failure=failed,
         )
 
     @Slot(str, str, bool)
@@ -1614,7 +1725,12 @@ class GitBridge(QObject):
             self._svc.repo_path or "", name, content
         )
         if result[0]:
-            self._reset_poll_baseline()
+            self._reset_poll_baseline("save_repo_rule_file")
+            self._timeline_trace(
+                "statusChanged.emit",
+                source="saveRepoRuleFile",
+                repo=self._svc.repo_path or "",
+            )
             self.statusChanged.emit()
         return result
 
@@ -1656,7 +1772,12 @@ class GitBridge(QObject):
 
         def completed(result: list) -> None:
             if result and result[0] and repo == (self._svc.repo_path or ""):
-                self._reset_poll_baseline()
+                self._reset_poll_baseline("save_repo_rule_file_async")
+                self._timeline_trace(
+                    "statusChanged.emit",
+                    source="saveRepoRuleFileAsync",
+                    repo=repo,
+                )
                 self.statusChanged.emit()
 
         return self._submit_query(

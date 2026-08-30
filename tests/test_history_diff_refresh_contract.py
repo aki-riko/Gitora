@@ -4,6 +4,7 @@ from pathlib import Path
 
 
 QML_ROOT = Path(__file__).resolve().parents[1] / "app_qml" / "qml"
+PROJECT_ROOT = QML_ROOT.parents[1]
 
 
 class HistoryDiffRefreshContractTest(unittest.TestCase):
@@ -263,6 +264,29 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("GitBridge.requestCommitFileDiff(", source)
         self.assertIn("function onCommitFileDiffReady", source)
         self.assertIn("path !== dlg._selectedFilePath", source)
+
+    def test_timeline_trace_is_opt_in_and_covers_refresh_and_scroll_edges(self) -> None:
+        history_source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
+            encoding="utf-8"
+        )
+        main_source = (PROJECT_ROOT / "app_qml" / "main_qml.py").read_text(
+            encoding="utf-8"
+        )
+        bridge_source = (
+            PROJECT_ROOT / "app_qml" / "backend" / "git_bridge.py"
+        ).read_text(encoding="utf-8")
+
+        self.assertIn('"GITORA_TIMELINE_TRACE"', main_source)
+        self.assertIn('"GitoraTimelineTraceEnabled"', main_source)
+        self.assertIn("readonly property bool timelineTraceEnabled", history_source)
+        self.assertIn('"[TIMELINE_TRACE]', history_source)
+        self.assertIn('"viewport.contentY"', history_source)
+        self.assertIn('"helper.smoothPos"', history_source)
+        self.assertIn('"refresh.request_log"', history_source)
+        self.assertIn('"log.apply.refresh_decision"', history_source)
+        self.assertIn('"statusChanged.emit"', bridge_source)
+        self.assertIn('"log.request"', bridge_source)
+        self.assertIn('"log.result_emit"', bridge_source)
 
 
 if __name__ == "__main__":

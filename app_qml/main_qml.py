@@ -16,6 +16,13 @@ SETTINGS_NAV_TIMEOUT_MS = 5000
 SPLASH_POLL_MS = 50
 SPLASH_TIMEOUT_MS = 7000
 
+
+def _env_flag(name: str) -> bool:
+    """Parse an opt-in boolean environment flag."""
+    return os.environ.get(name, "").strip().lower() in {
+        "1", "true", "yes", "on"
+    }
+
 # ---- 是否为 Nuitka 打包态 ----
 def _is_frozen() -> bool:
     return "__compiled__" in globals() or getattr(sys, "frozen", False)
@@ -431,6 +438,16 @@ def main() -> int:
     ctx.setContextProperty(
         "GitoraSelftestMode", bool(os.environ.get("GITESS_QML_SELFTEST"))
     )
+    timeline_trace_enabled = _env_flag("GITORA_TIMELINE_TRACE")
+    ctx.setContextProperty(
+        "GitoraTimelineTraceEnabled", timeline_trace_enabled
+    )
+    if timeline_trace_enabled:
+        from app.common.logger import get_logger
+
+        get_logger("Gitora").info(
+            "[TIMELINE_TRACE] enabled env=GITORA_TIMELINE_TRACE"
+        )
     app._qml_render_bridge = qml_render_bridge
     app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive
     app._ai_commit_bridge = ai_commit_bridge

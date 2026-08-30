@@ -47,6 +47,52 @@ Item {
     property double timelineLastWheelAt: 0
     readonly property int timelineQuietPeriod: Fluent.Enums.duration.bounce
     readonly property real timelinePrefetchDistance: 600
+    readonly property bool timelineTraceEnabled:
+        typeof GitoraTimelineTraceEnabled !== "undefined"
+            && GitoraTimelineTraceEnabled === true
+    property int timelineTraceSequence: 0
+    property double timelineTraceLastContentLogAt: 0
+    property real timelineTraceLastLoggedContentY: 0
+    property real timelineTraceLastDelta: 0
+    property bool timelineTraceHasContentSample: false
+    property double timelineTraceLastSmoothLogAt: 0
+    property real timelineTraceLastLoggedSmoothPos: 0
+    property real timelineTraceLastSmoothDelta: 0
+    property bool timelineTraceHasSmoothSample: false
+    property var timelineScrollHelper: null
+
+    // Opt-in trace helper. It does no work while the flag is off.
+    function _timelineTrace(eventName, details) {
+        if (!root.timelineTraceEnabled) return
+        root.timelineTraceSequence += 1
+        var suffix = details ? " " + details : ""
+        console.debug(
+            "[TIMELINE_TRACE] side=qml #" + root.timelineTraceSequence
+                + " t=" + Date.now() + " " + eventName + suffix
+        )
+    }
+
+    function _findTimelineScrollHelper(item) {
+        if (!item) return null
+        var children = item.children || []
+        for (var index = 0; index < children.length; index++) {
+            var child = children[index]
+            if (child && child.target === root.timelineViewport
+                    && typeof child.scrollBy === "function")
+                return child
+            var found = root._findTimelineScrollHelper(child)
+            if (found) return found
+        }
+        return null
+    }
+
+    function _ensureTimelineTraceObjects() {
+        if (!root.timelineTraceEnabled || !root.timelineViewport) return
+        if (!root.timelineScrollHelper)
+            root.timelineScrollHelper = root._findTimelineScrollHelper(
+                root.timelineViewport
+            )
+    }
 
     // ==================== 数据加载 ====================
     function resetAndLoad() {
@@ -68,6 +114,10 @@ Item {
         root.timelineMotionObserved = false
         root.timelineLastMotionAt = 0
         root.timelineLastWheelAt = 0
+        root.timelineTraceHasContentSample = false
+        root.timelineTraceHasSmoothSample = false
+        root.timelineTraceLastContentLogAt = 0
+        root.timelineTraceLastSmoothLogAt = 0
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
         root.pendingJumpDate = ""
@@ -131,6 +181,29 @@ Item {
         if (!viewport) return
         var current = Number(viewport.contentY)
         if (!isFinite(current)) return
+        if (root.timelineTraceEnabled) {
+            var traceNow = Date.now()
+            var traceDelta = root.timelineTraceHasContentSample
+                ? current - root.timelineTraceLastLoggedContentY : 0
+            var directionFlip = root.timelineTraceHasContentSample
+                && Math.abs(traceDelta) > 0.01
+                && Math.abs(root.timelineTraceLastDelta) > 0.01
+                && traceDelta * root.timelineTraceLastDelta < 0
+            if (!root.timelineTraceHasContentSample || directionFlip
+                    || Math.abs(traceDelta) >= 4
+                    || traceNow - root.timelineTraceLastContentLogAt >= 100) {
+                root._timelineTrace(
+                    "viewport.contentY",
+                    "y=" + current.toFixed(2)
+                        + " delta=" + traceDelta.toFixed(2)
+                        + " directionFlip=" + directionFlip
+                )
+                root.timelineTraceLastContentLogAt = traceNow
+            }
+            root.timelineTraceLastLoggedContentY = current
+            root.timelineTraceLastDelta = traceDelta
+            root.timelineTraceHasContentSample = true
+        }
         if (!root.timelineMotionObserved) {
             root.timelineLastContentY = current
             root.timelineMotionObserved = true
@@ -160,15 +233,49 @@ Item {
     function _observeTimelineWheel() {
         root._ensureTimelineViewport()
         root.timelineLastWheelAt = Date.now()
+        if (root.timelineTraceEnabled) {
+            root._timelineTrace(
+                "wheel",
+                "lastWheelAt=" + root.timelineLastWheelAt
+            )
+        }
         if (root.timelineRefreshPending)
             timelineRefreshAfterMotion.restart()
         if (root.timelinePendingLog !== null)
             timelineLogAfterMotion.restart()
     }
 
+    function _observeTimelineSmoothPos(value) {
+        if (!root.timelineTraceEnabled) return
+        var current = Number(value)
+        if (!isFinite(current)) return
+        var now = Date.now()
+        var delta = root.timelineTraceHasSmoothSample
+            ? current - root.timelineTraceLastLoggedSmoothPos : 0
+        var directionFlip = root.timelineTraceHasSmoothSample
+            && Math.abs(delta) > 0.01
+            && Math.abs(root.timelineTraceLastSmoothDelta) > 0.01
+            && delta * root.timelineTraceLastSmoothDelta < 0
+        if (!root.timelineTraceHasSmoothSample || directionFlip
+                || Math.abs(delta) >= 8
+                || now - root.timelineTraceLastSmoothLogAt >= 120) {
+            root._timelineTrace(
+                "helper.smoothPos",
+                "value=" + current.toFixed(2)
+                    + " delta=" + delta.toFixed(2)
+                    + " directionFlip=" + directionFlip
+            )
+            root.timelineTraceLastSmoothLogAt = now
+        }
+        root.timelineTraceLastLoggedSmoothPos = current
+        root.timelineTraceLastSmoothDelta = delta
+        root.timelineTraceHasSmoothSample = true
+    }
+
     function _requestTimelineMore() {
         root._ensureTimelineViewport()
-        if (!root._timelineScrollIdle()) return
+        var idle = root._timelineScrollIdle()
+        if (!idle) return
         root.loadMore()
     }
 
@@ -207,16 +314,39 @@ Item {
     }
 
     function _applyLogReady(repoPath, skip, batch) {
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "log.apply.enter",
+                "skip=" + skip + " batch=" + (batch || []).length
+                    + " commits=" + root.allCommits.length
+                    + " loading=" + root.loading
+                    + " refreshing=" + root.refreshing
+            )
         // 任何过期/不匹配分支都要解锁 loading,否则切仓库后再也无法加载
         if (!GitBridge || repoPath !== GitBridge.repoPath) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "log.apply.drop", "reason=repo_mismatch skip=" + skip
+                )
             root.loading = false
             root.refreshing = false
             return
         }
         // 搜索请求使用独立的后端序列号,旧的分页响应不能覆盖搜索结果。
-        if (root.searchMode) return
+        if (root.searchMode) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "log.apply.drop", "reason=search_mode skip=" + skip
+                )
+            return
+        }
         if (root.refreshing) {
             if (skip !== 0) {
+                if (root.timelineTraceEnabled)
+                    root._timelineTrace(
+                        "log.apply.drop",
+                        "reason=refresh_nonzero_skip skip=" + skip
+                    )
                 root.loading = false
                 root.refreshing = false
                 return
@@ -224,6 +354,13 @@ Item {
             var historyChanged = !root._sameTimelineCommits(
                 root.allCommits, batch
             )
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "log.apply.refresh_decision",
+                    "historyChanged=" + historyChanged
+                        + " before=" + root.allCommits.length
+                        + " incoming=" + batch.length
+                )
             if (historyChanged) root.allCommits = batch
             root.loadedCount = batch.length
             root.hasMore = batch.length === root.refreshCount
@@ -232,9 +369,25 @@ Item {
             root.refreshing = false
             if (historyChanged) root._restoreSelection(batch)
             root._schedulePendingDateJump()
+            if (root.timelineTraceEnabled) {
+                root._timelineTrace(
+                    "log.apply.refresh_done",
+                    "historyChanged=" + historyChanged
+                        + " commits=" + root.allCommits.length
+                )
+            }
             return
         }
-        if (skip !== root.loadedCount) { root.loading = false; return }
+        if (skip !== root.loadedCount) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "log.apply.drop",
+                    "reason=skip_mismatch skip=" + skip
+                        + " loaded=" + root.loadedCount
+                )
+            root.loading = false
+            return
+        }
         var remaining = root.maxHistoryCommits - root.loadedCount
         var nextBatch = batch.slice(0, Math.max(0, remaining))
         root.allCommits = root.allCommits.concat(nextBatch)
@@ -243,15 +396,35 @@ Item {
             && root.loadedCount < root.maxHistoryCommits
         root.finishLoading()
         root._schedulePendingDateJump()
+        if (root.timelineTraceEnabled) {
+            root._timelineTrace(
+                "log.apply.append_done",
+                "skip=" + skip + " appended=" + nextBatch.length
+                    + " commits=" + root.allCommits.length
+            )
+        }
     }
 
     function _handleLogReady(repoPath, skip, batch) {
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "log.ready",
+                "skip=" + skip + " batch=" + (batch || []).length
+                    + " idle=" + root._timelineScrollIdle()
+                    + " refreshing=" + root.refreshing
+            )
         if (!GitBridge || repoPath !== GitBridge.repoPath) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace("log.ready.drop", "reason=repo_mismatch")
             root.loading = false
             root.refreshing = false
             return
         }
-        if (root.searchMode) return
+        if (root.searchMode) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace("log.ready.drop", "reason=search_mode")
+            return
+        }
         root._ensureTimelineViewport()
         if (!root._timelineScrollIdle()) {
             root.timelinePendingLog = {
@@ -260,8 +433,17 @@ Item {
                 "batch": batch
             }
             timelineLogAfterMotion.restart()
+            if (root.timelineTraceEnabled) {
+                root._timelineTrace(
+                    "log.ready.defer",
+                    "skip=" + skip + " batch=" + batch.length
+                        + " quietPeriod=" + root.timelineQuietPeriod
+                )
+            }
             return
         }
+        if (root.timelineTraceEnabled)
+            root._timelineTrace("log.ready.apply_now", "skip=" + skip)
         root._applyLogReady(repoPath, skip, batch)
     }
 
@@ -280,6 +462,74 @@ Item {
         target: root.timelineViewport
         ignoreUnknownSignals: true
         function onContentYChanged() { root._observeTimelineMotion() }
+        function onContentHeightChanged() {
+            if (!root.timelineTraceEnabled) return
+            var viewport = root.timelineViewport
+            if (viewport)
+                root._timelineTrace(
+                    "viewport.contentHeightChanged",
+                    "value=" + Number(viewport.contentHeight).toFixed(2)
+                )
+        }
+        function onOriginYChanged() {
+            if (!root.timelineTraceEnabled) return
+            var viewport = root.timelineViewport
+            if (viewport)
+                root._timelineTrace(
+                    "viewport.originYChanged",
+                    "value=" + Number(viewport.originY).toFixed(2)
+                )
+        }
+        function onHeightChanged() {
+            if (!root.timelineTraceEnabled) return
+            var viewport = root.timelineViewport
+            if (viewport)
+                root._timelineTrace(
+                    "viewport.heightChanged",
+                    "value=" + Number(viewport.height).toFixed(2)
+                )
+        }
+    }
+
+    Connections {
+        target: root.timelineScrollHelper
+        enabled: root.timelineTraceEnabled
+        ignoreUnknownSignals: true
+        function onTargetPosChanged() {
+            var helper = root.timelineScrollHelper
+            if (helper)
+                root._timelineTrace(
+                    "helper.targetPos",
+                    "value=" + Number(helper.targetPos).toFixed(2)
+                )
+        }
+        function onSmoothPosChanged() {
+            var helper = root.timelineScrollHelper
+            if (helper) root._observeTimelineSmoothPos(helper.smoothPos)
+        }
+        function onIsOvershotChanged() {
+            var helper = root.timelineScrollHelper
+            if (helper)
+                root._timelineTrace(
+                    "helper.isOvershot", "value=" + helper.isOvershot
+                )
+        }
+        function onMinScrollChanged() {
+            var helper = root.timelineScrollHelper
+            if (helper)
+                root._timelineTrace(
+                    "helper.minScroll",
+                    "value=" + Number(helper.minScroll).toFixed(2)
+                )
+        }
+        function onMaxScrollChanged() {
+            var helper = root.timelineScrollHelper
+            if (helper)
+                root._timelineTrace(
+                    "helper.maxScroll",
+                    "value=" + Number(helper.maxScroll).toFixed(2)
+                )
+        }
     }
 
     WheelHandler {
@@ -294,24 +544,55 @@ Item {
     // 仓库状态变化时保留当前时间线,后台重新拉取已加载范围。
     // 只有新数据返回后才替换数组,避免异步请求期间整个页面先变空。
     function refreshIncrementally() {
-        if (!GitBridge || !GitBridge.repoPath) return
+        if (!GitBridge || !GitBridge.repoPath) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace("refresh.enter", "ignored=no_repo")
+            return
+        }
         root._ensureTimelineViewport()
-        if (!root._timelineScrollIdle()) {
+        var idle = root._timelineScrollIdle()
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "refresh.enter",
+                "idle=" + idle + " loading=" + root.loading
+                    + " refreshing=" + root.refreshing
+                    + " commits=" + root.allCommits.length
+                    + " pending=" + root.timelineRefreshPending
+            )
+        if (!idle) {
             root.timelineRefreshPending = true
             timelineRefreshAfterMotion.restart()
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "refresh.defer", "reason=scroll_active quietPeriod="
+                        + root.timelineQuietPeriod
+                )
             return
         }
         root.timelineRefreshPending = false
         if (root.loading) {
             root.refreshPending = true
+            if (root.timelineTraceEnabled)
+                root._timelineTrace("refresh.defer", "reason=loading")
             return
         }
         requestCurrentBranch()
         if (root.searchMode) {
-            if (searchInput.text === "") { resetAndLoad(); return }
+            if (searchInput.text === "") {
+                if (root.timelineTraceEnabled)
+                    root._timelineTrace("refresh.route", "mode=reset")
+                resetAndLoad()
+                return
+            }
             root.refreshing = true
             root.loading = true
             root.searchDeepening = false
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "refresh.request_search",
+                    "query=" + searchInput.text
+                        + " includeAllRefs=" + root.includeAllRefs
+                )
             GitBridge.requestSearch(
                 searchInput.text, "all", root.includeAllRefs
             )
@@ -323,13 +604,27 @@ Item {
             root.maxHistoryCommits,
             Math.max(root.pageSize, root.loadedCount)
         )
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "refresh.request_log",
+                "count=" + root.refreshCount + " skip=0"
+                    + " includeAllRefs=" + root.includeAllRefs
+            )
         GitBridge.requestLog(root.refreshCount, 0, root.includeAllRefs)
     }
 
     function finishLoading() {
         root.loading = false
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "loading.finished",
+                "refreshPending=" + root.refreshPending
+                    + " commits=" + root.allCommits.length
+            )
         if (!root.refreshPending) return
         root.refreshPending = false
+        if (root.timelineTraceEnabled)
+            root._timelineTrace("refresh.pending_replay")
         Qt.callLater(function() { root.refreshIncrementally() })
     }
 
@@ -352,12 +647,38 @@ Item {
         var nextItems = root.timelineItems || []
         var nextCount = root.allCommits.length
         var nextTopHash = nextCount > 0 ? (root.allCommits[0].hash || "") : ""
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "timeline.sync.enter",
+                "items=" + nextItems.length + " commits=" + nextCount
+                    + " previousRendered=" + root.renderedTimelineCommitCount
+            )
         root.renderedTimelineItems = nextItems
         root.renderedTimelineCommitCount = nextCount
         root.renderedTimelineTopHash = nextTopHash
+        if (root.timelineTraceEnabled) {
+            root._timelineTrace(
+                "timeline.sync.assigned",
+                "items=" + nextItems.length + " commits=" + nextCount
+            )
+        }
     }
 
-    onTimelineItemsChanged: root._syncRenderedTimelineItems()
+    onTimelineItemsChanged: {
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "timelineItems.changed",
+                "items=" + (root.timelineItems || []).length
+            )
+        root._syncRenderedTimelineItems()
+    }
+
+    onAllCommitsChanged: {
+        if (!root.timelineTraceEnabled) return
+        root._timelineTrace(
+            "allCommits.changed", "length=" + root.allCommits.length
+        )
+    }
 
     function doSearch(query) {
         if (query === "") { resetAndLoad(); return }
@@ -512,6 +833,11 @@ Item {
     Connections {
         target: GitBridge
         function onLogReady(repoPath, skip, batch) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "signal.logReady",
+                    "skip=" + skip + " batch=" + (batch || []).length
+                )
             root._handleLogReady(repoPath, skip, batch)
         }
         function onSearchReady(repoPath, results) {
@@ -542,8 +868,21 @@ Item {
 
     Connections {
         target: GitBridge
-        function onStatusChanged() { root.refreshIncrementally() }
+        function onStatusChanged() {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "signal.statusChanged",
+                    "commits=" + root.allCommits.length
+                        + " loading=" + root.loading
+                        + " refreshing=" + root.refreshing
+                )
+            root.refreshIncrementally()
+        }
         function onRepoPathChanged(path) {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "signal.repoPathChanged", "path=" + path
+                )
             cherryPickDialog.close()
             root._clearCherryPickDialogState()
             root.resetForRepoChange()
@@ -615,6 +954,10 @@ Item {
     }
 
     onPageActiveChanged: {
+        if (root.timelineTraceEnabled)
+            root._timelineTrace(
+                "pageActive.changed", "active=" + root.pageActive
+            )
         if (!root.pageActive || !root.initialized) return
         Qt.callLater(function() {
             if (root.pageActive) root.refreshIncrementally()
@@ -624,6 +967,18 @@ Item {
     Component.onCompleted: {
         root.initialized = true
         root.timelineViewport = root._findTimelineViewportForProbe(root)
+        if (root.timelineTraceEnabled) {
+            root._timelineTrace(
+                "view.completed",
+                "viewport=" + (root.timelineViewport !== null)
+                    + " commits=" + root.allCommits.length
+            )
+            root._ensureTimelineTraceObjects()
+            root._timelineTrace(
+                "helper.bound",
+                "available=" + (root.timelineScrollHelper !== null)
+            )
+        }
         root._syncRenderedTimelineItems()
         root.resetAndLoad()
     }
@@ -641,12 +996,22 @@ Item {
         interval: root.timelineQuietPeriod
         repeat: false
         onTriggered: {
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "refresh.timer", "pending=" + root.timelineRefreshPending
+                )
             if (!root.timelineRefreshPending) return
             if (!root._timelineScrollIdle()) {
+                if (root.timelineTraceEnabled)
+                    root._timelineTrace(
+                        "refresh.timer.defer", "reason=still_active"
+                    )
                 restart()
                 return
             }
             root.timelineRefreshPending = false
+            if (root.timelineTraceEnabled)
+                root._timelineTrace("refresh.timer.apply")
             root.refreshIncrementally()
         }
     }
@@ -657,12 +1022,23 @@ Item {
         repeat: false
         onTriggered: {
             var pending = root.timelinePendingLog
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "log.timer",
+                    "hasPending=" + (pending !== null)
+                )
             if (pending === null) return
             if (!root._timelineScrollIdle()) {
+                if (root.timelineTraceEnabled)
+                    root._timelineTrace("log.timer.defer", "reason=still_active")
                 restart()
                 return
             }
             root.timelinePendingLog = null
+            if (root.timelineTraceEnabled)
+                root._timelineTrace(
+                    "log.timer.apply", "skip=" + pending.skip
+                )
             root._applyLogReady(
                 pending.repoPath, pending.skip, pending.batch
             )
@@ -804,6 +1180,12 @@ Item {
                                 root.selectedCommit = cardData.commit
                         }
                         onReachedEnd: {
+                            if (root.timelineTraceEnabled)
+                                root._timelineTrace(
+                                    "timeline.reachedEnd",
+                                    "loading=" + root.loading
+                                        + " hasMore=" + root.hasMore
+                                )
                             if (!root.loading && root.hasMore && !root.searchMode)
                                 root._requestTimelineMore()
                         }
