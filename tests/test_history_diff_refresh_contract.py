@@ -63,6 +63,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
 
         self.assertIn("property bool includeAllRefs: false", source)
         self.assertIn('property string currentBranch: ""', source)
+        self.assertIn("property int totalCommitCount: -1", source)
         self.assertIn('objectName: "historyScopeCombo"', source)
         self.assertIn(
             '"当前分支",\n                            "全部分支"', source
@@ -73,6 +74,11 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("function setHistoryScope(scopeIndex)", source)
         self.assertIn("function requestCurrentBranch()", source)
         self.assertIn("GitBridge.requestCurrentBranch()", source)
+        self.assertIn("GitBridge.requestHistoryCount(root.includeAllRefs)", source)
+        self.assertIn(
+            "function onHistoryCountReady(repoPath, count, includeAllRefs)",
+            source,
+        )
         self.assertIn("readonly property bool pageActive:", source)
         self.assertIn("!root.parent || root.parent.visible", source)
         self.assertIn("onPageActiveChanged:", source)
@@ -91,6 +97,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         )
         self.assertIn('? " · 全部分支"', source)
         self.assertIn('root.currentBranch || "正在读取…"', source)
+        self.assertIn('root.totalCommitCount + " 条提交"', source)
         self.assertIn("onOperationSucceeded: root.refreshIncrementally()", source)
 
     def test_history_search_uses_progressive_results_and_cancellation(self) -> None:

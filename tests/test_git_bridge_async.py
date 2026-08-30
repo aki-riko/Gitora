@@ -207,6 +207,41 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_history_count_query_emits_scope_aware_signal(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        calls: list[tuple[str, bool]] = []
+        emitted: list[tuple[str, int, bool]] = []
+
+        def fake_commit_count(repo: str, include_all_refs: bool) -> int:
+            calls.append((repo, include_all_refs))
+            return 17 if include_all_refs else 11
+
+        bridge._svc.get_commit_count_at = fake_commit_count  # type: ignore[method-assign]
+        bridge.historyCountReady.connect(
+            lambda repo, count, all_refs: emitted.append(
+                (repo, count, all_refs)
+            )
+        )
+
+        try:
+            bridge.requestHistoryCount(False)
+            self.assertTrue(
+                self._wait_until(app, lambda: emitted == [("repo", 11, False)])
+            )
+            bridge.requestHistoryCount(True)
+            self.assertTrue(
+                self._wait_until(app, lambda: emitted == [
+                    ("repo", 11, False), ("repo", 17, True)
+                ])
+            )
+            self.assertEqual(calls, [("repo", False), ("repo", True)])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_current_branch_query_drops_older_result(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()
@@ -372,6 +407,7 @@ class GitBridgeAsyncTest(unittest.TestCase):
         try:
             self.assertIn("requestLog(int,int,bool)", signatures)
             self.assertIn("requestSearch(QString,QString,bool)", signatures)
+            self.assertIn("requestHistoryCount(bool)", signatures)
             self.assertIn("cancelSearch()", signatures)
         finally:
             bridge.deleteLater()

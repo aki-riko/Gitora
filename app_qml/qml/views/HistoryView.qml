@@ -12,6 +12,7 @@ Item {
     readonly property int pageSize: 30
     readonly property int maxHistoryCommits: 2000
     property int loadedCount: 0
+    property int totalCommitCount: -1
     property bool hasMore: true
     property bool loading: false
     property bool searchDeepening: false
@@ -95,11 +96,20 @@ Item {
     }
 
     // ==================== 数据加载 ====================
+    function _requestHistoryCount() {
+        if (!GitBridge || !GitBridge.repoPath) {
+            root.totalCommitCount = -1
+            return
+        }
+        GitBridge.requestHistoryCount(root.includeAllRefs)
+    }
+
     function resetAndLoad() {
         if (GitBridge) GitBridge.cancelSearch()
         requestCurrentBranch()
         root.allCommits = []
         root.loadedCount = 0
+        root.totalCommitCount = -1
         root.hasMore = true
         root.searchMode = false
         root.loading = false
@@ -121,6 +131,7 @@ Item {
         root.selectedCommit = null   // 清空选中,避免详情面板显示过期提交
         root.pendingJumpHash = ""
         root.pendingJumpDate = ""
+        root._requestHistoryCount()
         loadMore()
     }
 
@@ -604,6 +615,7 @@ Item {
             )
             return
         }
+        root._requestHistoryCount()
         root.refreshing = true
         root.loading = true
         root.refreshCount = Math.min(
@@ -902,6 +914,12 @@ Item {
             if (targetIndex >= 0)
                 root.cherryPickTargetBranch = root.cherryPickBranches[targetIndex]
         }
+        function onHistoryCountReady(repoPath, count, includeAllRefs) {
+            if (!GitBridge || repoPath !== GitBridge.repoPath
+                    || includeAllRefs !== root.includeAllRefs || count < 0)
+                return
+            root.totalCommitCount = count
+        }
         function onBranchesReady(repoPath, list) {
             if (!GitBridge || repoPath !== GitBridge.repoPath
                     || repoPath !== root.cherryPickRequestRepoPath) return
@@ -1107,7 +1125,9 @@ Item {
                             Layout.fillWidth: true
                             text: (root.searchMode
                                 ? root.allCommits.length + " 条搜索结果"
-                                : root.allCommits.length + " 条提交")
+                                : (root.totalCommitCount >= 0
+                                    ? root.totalCommitCount + " 条提交"
+                                    : root.allCommits.length + " 条提交"))
                                 + (root.includeAllRefs
                                     ? " · 全部分支"
                                     : " · 当前分支: "

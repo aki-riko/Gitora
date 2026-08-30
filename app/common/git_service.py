@@ -733,6 +733,25 @@ class GitService(QObject):
         success, stdout, _ = self._run_git_sync_at(repo_path, ['rev-parse', '--abbrev-ref', 'HEAD'])
         return stdout.strip() if success else ""
 
+    def get_commit_count(self, include_all_refs: bool = False) -> int:
+        """获取当前历史范围内的完整提交数量。"""
+        return self.get_commit_count_at(self._repo_path or "", include_all_refs)
+
+    def get_commit_count_at(
+        self, repo_path: str, include_all_refs: bool = False
+    ) -> int:
+        """统计指定仓库历史范围的提交数量,不读取当前 self._repo_path。"""
+        target = "--all" if include_all_refs else "HEAD"
+        success, stdout, _ = self._run_git_sync_at(
+            repo_path, ["rev-list", "--count", target]
+        )
+        if not success:
+            return -1
+        try:
+            return max(0, int(stdout.strip()))
+        except ValueError:
+            return -1
+
     def get_head_at(self, repo_path: str) -> str:
         """读取指定仓库的 HEAD；空仓库或无效仓库返回空串。"""
         success, stdout, _ = self._run_git_sync_at(

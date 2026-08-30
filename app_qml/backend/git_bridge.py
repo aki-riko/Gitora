@@ -177,6 +177,7 @@ class GitBridge(QObject):
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
     statusReady = Signal(str, int)              # 后台状态就绪(repoPath, 变更数量)
     branchReady = Signal(str, str)             # 后台当前分支就绪(repoPath, 分支)
+    historyCountReady = Signal(str, int, bool)  # (repoPath, 总提交数, 是否全部引用)
     logReady = Signal(str, int, "QVariantList")    # 后台提交分页就绪(repoPath, skip, 批次)
     searchPreviewReady = Signal(str, "QVariantList")  # 搜索阶段结果(repoPath, 结果)
     searchReady = Signal(str, "QVariantList")       # 后台搜索结果就绪(repoPath, 结果)
@@ -223,6 +224,7 @@ class GitBridge(QObject):
         self._search_request_serial = 0
         self._search_task = None
         self._current_branch_request_serial = 0
+        self._history_count_request_serial = 0
         self._branches_request_serial = 0
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
@@ -895,6 +897,28 @@ class GitBridge(QObject):
         )
 
     # ==================== 提交历史 ====================
+    @Slot(bool, result=QObject)
+    def requestHistoryCount(self, include_all_refs: bool = False):
+        """后台统计当前历史范围的完整提交数,经强类型信号回传。"""
+        repo = self._svc.repo_path or ""
+        self._history_count_request_serial += 1
+        request_serial = self._history_count_request_serial
+        scope = bool(include_all_refs)
+
+        def completed(count: int) -> None:
+            if request_serial != self._history_count_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
+            self.historyCountReady.emit(repo, int(count), scope)
+
+        return self._submit_query(
+            lambda: self._svc.get_commit_count_at(repo, scope),
+            label="获取提交总数",
+            on_success=completed,
+            on_failure=lambda _exc: completed(-1),
+        )
+
     def getLog(self, count: int, skip: int, fast_mode: bool) -> list:
         """提交历史(分页) -> [{hash, shortHash, author, ...}, ...]"""
         return [_commit_to_dict(c) for c in self._svc.get_log(count, skip, fast_mode)]

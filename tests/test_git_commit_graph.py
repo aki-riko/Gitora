@@ -81,3 +81,12 @@ def test_graph_log_supports_current_head_and_all_refs_with_stable_pages() -> Non
             ("side", "branch")
         }
         _assert_stable_pages(service, repo, all_refs, include_all_refs=True)
+
+
+def test_commit_count_matches_current_head_and_all_refs() -> None:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        repo, _hashes = build_branched_repo(Path(temp_dir))
+        service = GitService()
+
+        assert service.get_commit_count_at(str(repo)) == 4
+        assert service.get_commit_count_at(str(repo), include_all_refs=True) == 5

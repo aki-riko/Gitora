@@ -32,6 +32,7 @@ Window {
     readonly property bool probeLoading: historyView.loading
     readonly property bool probeIncludeAllRefs: historyView.includeAllRefs
     readonly property string probeCurrentBranch: historyView.currentBranch
+    readonly property int probeHistoryCommitCount: historyView.totalCommitCount
 
     function showAllRefs() {
         historyView.setHistoryScope(1)
@@ -159,6 +160,7 @@ def _render_probe(repo: Path, output: Path) -> int:
     if not _wait_until(
         lambda: not root.property("probeLoading")
         and root.property("probeCommitCount") == 4
+        and root.property("probeHistoryCommitCount") == 4
     ):
         raise AssertionError(
             {
@@ -184,6 +186,7 @@ def _render_probe(repo: Path, output: Path) -> int:
         lambda: not root.property("probeLoading")
         and root.property("probeIncludeAllRefs")
         and root.property("probeCommitCount") == 5
+        and root.property("probeHistoryCommitCount") == 5
     ):
         raise AssertionError(
             {
