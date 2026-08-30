@@ -101,6 +101,10 @@ def test_commit_file_panel_virtualizes_all_returned_rows() -> None:
         list_view = root.findChild(QObject, "historyCommitFilesList")
         if list_view is None:
             raise AssertionError("missing commit files list")
+        assert list_view.property("selectable") is False
+        internal_list = list_view.property("flickableItem")
+        assert internal_list is not None
+        assert internal_list.property("highlight") is None
         delegate_count = sum(
             1
             for item in _visual_items(root)

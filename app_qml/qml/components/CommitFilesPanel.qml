@@ -146,6 +146,8 @@ Rectangle {
             bounceEnabled: false
             padding: 0
             model: root.fileRows
+            // 此处仅作只读概览，关闭 ScrollArea 默认当前项高亮，避免误认为已选中文件。
+            selectable: false
             delegate: Item {
                 objectName: "historyCommitFileRow"
                 width: ListView.view ? ListView.view.width : 0
