@@ -16,8 +16,14 @@ class HistorySplitPaneLayoutTest(unittest.TestCase):
         self.assertIn("minimumSecondPaneWidth: 360", source)
         self.assertIn("firstMinimumSize: minimumFirstPaneWidth", source)
         self.assertIn("secondMinimumSize: minimumSecondPaneWidth", source)
-        self.assertIn("Flow {", source)
         self.assertIn('objectName: "historyHeader"', source)
+        self.assertIn('objectName: "historyHeaderInfo"', source)
+        self.assertIn('objectName: "historySearchRow"', source)
+        self.assertIn('objectName: "historyReflogButton"', source)
+        header = source.split('objectName: "historyHeader"', 1)[1].split(
+            'id: searchDebounce', 1
+        )[0]
+        self.assertNotIn("Flow {", header)
         self.assertNotIn("function clampSplitPosition()", source)
         self.assertNotIn("onSplitPositionChanged: clampSplitPosition()", source)
 

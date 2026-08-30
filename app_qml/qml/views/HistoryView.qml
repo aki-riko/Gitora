@@ -1061,7 +1061,7 @@ Item {
         id: historySplitPane
         objectName: "historySplitPane"
 
-        // 标题与筛选控件在窄栏内会换行，不能再用整行 implicitWidth
+        // 首栏使用稳定的两行布局，不能再用整行 implicitWidth
         // 作为分栏最小值，否则默认窗口会把右侧详情区挤到不可用。
         readonly property real minimumFirstPaneWidth: 520
         readonly property real minimumSecondPaneWidth: 360
