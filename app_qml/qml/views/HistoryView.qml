@@ -274,8 +274,9 @@ Item {
 
     function _requestTimelineMore() {
         root._ensureTimelineViewport()
-        var idle = root._timelineScrollIdle()
-        if (!idle) return
+        // Request at the prefetch edge. Pagination responses append immediately;
+        // refresh replacements are the only results deferred by _handleLogReady.
+        // 到达预取线立即请求;分页结果直接追加,只有刷新替换会由 _handleLogReady 延后。
         root.loadMore()
     }
 
@@ -426,7 +427,12 @@ Item {
             return
         }
         root._ensureTimelineViewport()
-        if (!root._timelineScrollIdle()) {
+        // Pagination appends rows and is safe while the engine keeps the logical
+        // viewport in bounds. Only a refresh replacement must wait for quiescence.
+        // 分页只是追加行,引擎已保证逻辑视口合法,滚动中可直接应用；只有刷新替换需等静默。
+        var deferUntilIdle = !root._timelineScrollIdle()
+            && (root.refreshing || skip === 0)
+        if (deferUntilIdle) {
             root.timelinePendingLog = {
                 "repoPath": repoPath,
                 "skip": skip,
@@ -1075,24 +1081,30 @@ Item {
                 anchors.rightMargin: Fluent.Enums.spacing.m
                 spacing: Fluent.Enums.spacing.m
 
-                // 标题 + 搜索；窄栏时控件自动换行，避免横向内容越过分割线。
-                Flow {
+                // 标题信息与筛选控件固定分组，避免 Flow 按 implicitWidth 漂移换行。
+                RowLayout {
                     id: historyHeader
                     objectName: "historyHeader"
                     Layout.fillWidth: true
                     Layout.minimumWidth: 0
-                    spacing: Fluent.Enums.spacing.s
+                    spacing: Fluent.Enums.spacing.m
 
                     ColumnLayout {
+                        objectName: "historyHeaderInfo"
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
                         spacing: 0
                         Text {
+                            Layout.fillWidth: true
                             text: "历史"
                             font.pixelSize: Fluent.Enums.typography.metric
                             font.bold: true
                             color: Fluent.Enums.textColor.primary
                             font.family: Fluent.Enums.fontFamily
+                            elide: Text.ElideRight
                         }
                         Text {
+                            Layout.fillWidth: true
                             text: (root.searchMode
                                 ? root.allCommits.length + " 条搜索结果"
                                 : root.allCommits.length + " 条提交")
@@ -1104,12 +1116,15 @@ Item {
                             font.pixelSize: Fluent.Enums.typography.caption
                             color: Fluent.Enums.textColor.tertiary
                             font.family: Fluent.Enums.fontFamily
+                            elide: Text.ElideRight
                         }
                     }
                     Fluent.ComboBox {
                         id: historyScopeCombo
                         objectName: "historyScopeCombo"
-                        width: 176
+                        Layout.preferredWidth: 176
+                        Layout.minimumWidth: 136
+                        Layout.maximumWidth: 176
                         model: [
                             "当前分支",
                             "全部分支"
@@ -1122,20 +1137,34 @@ Item {
                     Fluent.CalendarPicker {
                         id: historyDatePicker
                         objectName: "historyDatePicker"
-                        width: 148
+                        Layout.preferredWidth: 148
+                        Layout.minimumWidth: 132
+                        Layout.maximumWidth: 148
                         hasDate: false
                         placeholderText: "跳转日期"
                         onDateChanged: function(year, month, day) {
                             root.jumpToDate(year, month, day)
                         }
                     }
+                }
+
+                RowLayout {
+                    id: historySearchRow
+                    objectName: "historySearchRow"
+                    Layout.fillWidth: true
+                    Layout.minimumWidth: 0
+                    spacing: Fluent.Enums.spacing.s
+
                     Fluent.LineEdit {
                         id: searchInput
-                        width: root.width < 1200 ? 160 : 240
+                        Layout.fillWidth: true
+                        Layout.minimumWidth: 0
+                        Layout.preferredWidth: root.width < 1200 ? 160 : 240
                         placeholderText: "搜索提交(消息/作者/哈希/文件/增删内容)"
                         onTextChanged: searchDebounce.restart()
                     }
                     Fluent.Button {
+                        objectName: "historyReflogButton"
                         text: "Reflog"
                         icon: Fluent.Enums.icon.history
                         onClicked: reflogDialog.openReflog()

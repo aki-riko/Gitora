@@ -24,8 +24,17 @@ def test_history_pagination_probes_virtual_viewport_origin_and_bottom() -> None:
     assert 'readonly property int timelineQuietPeriod:' in source
     assert 'blocking: false' in source
     assert 'onWheel: function(event) { root._observeTimelineWheel() }' in source
-    assert 'var idle = root._timelineScrollIdle()' in source
-    assert 'if (!idle) return' in source
+    log_ready = source.split(
+        'function _handleLogReady(repoPath, skip, batch)', 1
+    )[1].split('function _findTimelineViewportForProbe', 1)[0]
+    assert 'var deferUntilIdle = !root._timelineScrollIdle()' in log_ready
+    assert 'root.refreshing || skip === 0' in log_ready
+    assert 'root.timelinePendingLog = {' in log_ready
+    request_more = source.split('function _requestTimelineMore()', 1)[1].split(
+        'function _ensureTimelineViewport()', 1
+    )[0]
+    assert 'root.loadMore()' in request_more
+    assert 'if (!root._timelineScrollIdle()) return' not in request_more
     assert 'root.timelinePendingLog = {' in source
     assert 'id: timelineLogAfterMotion' in source
     assert 'id: timelineRefreshAfterMotion' in source
