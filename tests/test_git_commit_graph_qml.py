@@ -32,6 +32,8 @@ Window {
     readonly property string probeFirstTime:
         graphModel.items.length > 0 && graphModel.items[0].cards.length > 0
         ? graphModel.items[0].cards[0].time : ""
+    readonly property string probeTimePeriods:
+        _timePeriods(graphModel.items)
 
     function _cardCount(groups) {
         var total = 0
@@ -58,6 +60,16 @@ Window {
                 hashes.push(cards[cardIndex].hash)
         }
         return hashes.join(",")
+    }
+
+    function _timePeriods(groups) {
+        var periods = []
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            var cards = groups[groupIndex].cards
+            for (var cardIndex = 0; cardIndex < cards.length; cardIndex++)
+                periods.push(cards[cardIndex].timePeriod || "")
+        }
+        return periods.join(",")
     }
 
     width: 1000
@@ -223,11 +235,13 @@ def _validate_rendered_scene(root, payload: list[dict], output: Path) -> str:
     label_count = int(root.property("probeLabelCount"))
     hash_order = str(root.property("probeHashOrder")).split(",")
     first_time = str(root.property("probeFirstTime"))
+    time_periods = str(root.property("probeTimePeriods")).split(",")
     assert timeline is not None and int(timeline.property("graphLaneCount")) == lane_count
     assert lane_count >= 2 and group_count == 3
     assert card_count == len(payload) and label_count >= 4
     assert hash_order == [commit["hash"] for commit in payload]
     assert re.fullmatch(r"\d{2}:\d{2}", first_time), first_time
+    assert time_periods == ["AM", "AM", "PM", "AM", "AM"]
     assert len(layers) >= card_count
     image = root.grabWindow()
     assert not image.isNull() and _sample_color_count(image) >= 4

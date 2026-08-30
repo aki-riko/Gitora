@@ -20,6 +20,15 @@ QtObject {
         return match ? match[1] + ":" + match[2] : ""
     }
 
+    function _timePeriod(dateStr) {
+        var value = dateStr || ""
+        var match = value.match(/[T ](\d{2}):\d{2}/)
+        if (!match) return ""
+        var hour = Number(match[1])
+        if (!isFinite(hour) || hour < 0 || hour > 23) return ""
+        return hour < 12 ? "AM" : "PM"
+    }
+
     function _dateGroup(dateStr) {
         var date = _dateKey(dateStr)
         if (date === "") return "未知日期"
@@ -69,6 +78,7 @@ QtObject {
         return {
             "text": commit.message,
             "time": _timeText(commit.date),
+            "timePeriod": _timePeriod(commit.date),
             "description": commit.shortHash + " · " + commit.author + relationText,
             "status": isReverted ? "warning" : "info",
             "strikeOut": isReverted,

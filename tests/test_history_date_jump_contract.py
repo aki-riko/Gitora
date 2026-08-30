@@ -32,7 +32,9 @@ class HistoryDateJumpContractTest(unittest.TestCase):
         self.assertIn("root._schedulePendingDateJump()", history_source)
         self.assertIn('"dateKey": _dateKey(commit.date)', model_source)
         self.assertIn("function _timeText(dateStr)", model_source)
+        self.assertIn("function _timePeriod(dateStr)", model_source)
         self.assertIn('"time": _timeText(commit.date)', model_source)
+        self.assertIn('"timePeriod": _timePeriod(commit.date)', model_source)
 
 if __name__ == "__main__":
     unittest.main()
