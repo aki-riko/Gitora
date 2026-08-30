@@ -103,6 +103,7 @@ mac CI 与 Windows 打包互不依赖,可并行:先 `gh workflow run build-macos
 - 虚拟 `ListView`/`Flickable` 会在边界处夹紧 `contentY`,而 `SmoothScrollHelper` 同时可能写入越界位置执行回弹;两条路径竞争时会出现 `contentY -> originY(通常为 0) -> 再次越界` 的单帧跳变,表现为闪回或上下抖动。
 - 虚拟委托回收和重建会动态改变 `originY`、`contentHeight`、`maxScroll`;旧的 `contentY`、动画目标和新边界短暂不一致,会放大上述竞争。持续同方向 wheel 还可能重复启动同一边界的外移/回弹。
 - 业务层刷新不是默认解释。只有同时看到 `historyChanged`、`log.request`/`logReady`、`allCommits.changed` 或 `timelineItems.changed` 等刷新链路事件,才能把某次跳变归因于刷新;这些事件缺失而只有 `contentY`/边界/滚动助手状态变化时,应按滚动仲裁问题处理。
+- 分页追加与刷新替换不能共用同一个滚动静默门槛:接近预取线时应立即发下一页请求,`logReady` 返回的 `skip > 0` 页面直接追加;只有会替换首段数据的 `skip = 0` 刷新结果才等待滚动静默后应用。否则会把防止刷新闪回的等待错误地施加到分页,造成每页额外等待约 750ms,看起来像动态加载失效。
 - 禁止在业务层 `contentYChanged` 或滚轮回调中反复强写 `contentY`“纠正”位置;`ListView` 会再次夹紧,容易形成递归抖动。也不要仅为消除抖动而永久关闭 Timeline 的 overshoot/bounce,除非需求明确允许改变原有交互。
 - 观测使用环境变量 `GITORA_TIMELINE_TRACE=1`,日志写入 `%LOCALAPPDATA%\\Gitora\\logs\\`;观测代码默认关闭。排查结束后执行 `Remove-Item Env:GITORA_TIMELINE_TRACE -ErrorAction SilentlyContinue` (或设为 `0`),完全退出并重启应用,避免把 DEBUG 观测状态当成修复条件。
 
