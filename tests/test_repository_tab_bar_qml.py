@@ -79,7 +79,7 @@ import \"{component_url}\"
 
 Window {{
     width: 900
-    height: 120
+    height: 140
     visible: false
 
     RepositoryTabBar {{
@@ -88,7 +88,8 @@ Window {{
         x: 0
         y: 0
         width: 900
-        height: 44
+        height: 60
+        tabHeight: Fluent.Enums.controlSize.tableHeaderHeight + Fluent.Enums.spacing.xl
         gitBridge: bridge
         repoScanner: scanner
     }}
@@ -134,6 +135,8 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     assert bar is not None
     assert fluent_bar is not None
     assert bar.property("tabCount") == 1
+    assert fluent_bar.property("_tabBarHeight") == 60
+    assert fluent_bar.property("_tabHeight") == 44
 
     bar.setOpenedPaths(
         [

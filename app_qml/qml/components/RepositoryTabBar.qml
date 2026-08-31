@@ -220,6 +220,8 @@ Item {
         anchors.fill: parent
         tabs: root._tabs
         detailsEnabled: true
+        tabBarHeight: root.tabHeight
+        tabContentVerticalPadding: Fluent.Enums.spacing.m
         tabWidth: Fluent.Enums.controlSize.cardWidth / 2
         minimumTabWidth: Fluent.Enums.controlSize.segmentedMinWidth
         maximumTabWidth: Fluent.Enums.controlSize.cardWidth / 2
