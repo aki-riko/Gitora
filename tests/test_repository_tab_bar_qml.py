@@ -6,6 +6,8 @@ import os
 import time
 from pathlib import Path
 
+import pytest
+
 ROOT = Path(__file__).resolve().parents[1]
 COMPONENT_DIR = ROOT / "app_qml" / "qml" / "components"
 
@@ -192,6 +194,7 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
 
 def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     from PySide6.QtCore import QObject, QPointF
+    from PySide6.QtGui import QGuiApplication
 
     app, engine, component, window, bridge = _create_repository_scene()
     bar = window.findChild(QObject, "repositoryTabBar")
@@ -210,7 +213,6 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     )
 
     window.show()
-    context_menu.setProperty("useInWindowPopup", True)
     bar.setOpenedPaths(
         ["D:/Repos/PrismQML", "D:/Repos/Kaleidos", "D:/Repos/Mojin"]
     )
@@ -219,10 +221,28 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     bar.repositorySelected.connect(selected.append)
     bar.repositoryClosed.connect(closed.append)
 
-    fluent_bar.tabContextMenuRequested.emit(1, QPointF(40, 20))
+    popup_windows_before = tuple(QGuiApplication.topLevelWindows())
+    pointer_position = QPointF(40, 20)
+    global_pointer_position = fluent_bar.mapToGlobal(
+        pointer_position.x(), pointer_position.y()
+    )
+    fluent_bar.tabContextMenuRequested.emit(1, pointer_position)
     _pump(30)
     assert context_menu.property("isOpen")
     assert bar.property("_contextMenuPath") == "D:/Repos/PrismQML"
+    popup_windows = [
+        item for item in QGuiApplication.topLevelWindows()
+        if item not in popup_windows_before and item.isVisible()
+    ]
+    assert len(popup_windows) == 1
+    panel_offset = context_menu.property("_panelOffset")
+    pointer_gap = context_menu.property("pointerGap")
+    assert popup_windows[0].x() + panel_offset == pytest.approx(
+        global_pointer_position.x() + pointer_gap
+    )
+    assert popup_windows[0].y() + panel_offset == pytest.approx(
+        global_pointer_position.y() + pointer_gap
+    )
     assert close_action.property("text") == "关闭"
     assert close_others_action.property("text") == "关闭其他标签页"
     assert close_right_action.property("text") == "关闭右侧标签页"

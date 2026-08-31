@@ -231,7 +231,7 @@ Item {
         if (index < 0 || index >= _tabs.length) return
         _contextMenuPath = String(_tabs[index].path || "")
         var popupPosition = position || Qt.point(0, 0)
-        repositoryTabContextMenu.popup(
+        repositoryTabContextMenu.exec(
             popupPosition.x, popupPosition.y, tabBar)
     }
 
@@ -303,7 +303,6 @@ Item {
         id: repositoryTabContextMenu
         objectName: "repositoryTabContextMenu"
         autoBindRightClick: false
-        targetControl: tabBar
 
         Fluent.Action {
             objectName: "repositoryTabCloseAction"
