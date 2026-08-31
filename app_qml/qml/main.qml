@@ -13,7 +13,7 @@ QtObject {
     readonly property string windowTitle: "Gitora"
     readonly property int settingsPageIndex: pagePaths.length - 1
     readonly property int repositoryTabBarHeight:
-        Fluent.Enums.controlSize.tableHeaderHeight + Fluent.Enums.spacing.xl
+        Fluent.Enums.controlSize.tableHeaderHeight + Fluent.Enums.spacing.xxxl
 
     function iconPath(name) {
         return (typeof FluentIconsDir !== "undefined" ? FluentIconsDir : "") + name + ".svg"
