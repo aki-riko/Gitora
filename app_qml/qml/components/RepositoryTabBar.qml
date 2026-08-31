@@ -23,6 +23,7 @@ Item {
     property var _tabs: []
     property var _pickerPaths: []
     property string _closingActivePath: ""
+    property string _contextMenuPath: ""
 
     // ==================== Signals 信号 ====================
     signal repositorySelected(string path)
@@ -168,22 +169,70 @@ Item {
         repositorySelected(value)
     }
 
-    function _closePath(path) {
-        if (!switchingEnabled || _tabs.length <= 1) return
-        var index = _indexForPath(path)
-        if (index < 0) return
-        var wasActive = _pathKey(path) === activePathKey
-        var next = _tabs.slice()
-        next.splice(index, 1)
-        _tabs = next
-        repositoryClosed(String(path))
-
-        if (wasActive && _tabs.length > 0) {
-            var nextIndex = Math.min(index, _tabs.length - 1)
-            var nextPath = String(_tabs[nextIndex].path || "")
-            _closingActivePath = String(path)
-            _selectPath(nextPath)
+    function _closeTabsMatching(predicate, fallbackPath) {
+        if (!switchingEnabled || _tabs.length <= 1) return false
+        var kept = []
+        var removed = []
+        var activeWillClose = false
+        for (var i = 0; i < _tabs.length; i++) {
+            var tab = _tabs[i]
+            if (predicate(i, tab)) removed.push(tab)
+            else kept.push(tab)
         }
+        if (removed.length === 0 || kept.length === 0) return false
+        for (var j = 0; j < removed.length; j++) {
+            if (_pathKey(removed[j].path) === activePathKey) activeWillClose = true
+        }
+        _tabs = kept
+        for (var k = 0; k < removed.length; k++)
+            repositoryClosed(String(removed[k].path || ""))
+        if (activeWillClose) {
+            _closingActivePath = activePath
+            _selectPath(fallbackPath)
+        } else {
+            _syncCurrentIndex()
+        }
+        return true
+    }
+
+    function _closePath(path) {
+        if (!switchingEnabled || _tabs.length <= 1) return false
+        var index = _indexForPath(path)
+        if (index < 0) return false
+        var fallbackIndex = index < _tabs.length - 1 ? index + 1 : index - 1
+        var fallbackPath = String(_tabs[fallbackIndex].path || "")
+        var pathKey = _pathKey(path)
+        return _closeTabsMatching(function(itemIndex, tab) {
+            return root._pathKey(tab.path) === pathKey
+        }, fallbackPath)
+    }
+
+    function _closeOtherTabs(index) {
+        if (index < 0 || index >= _tabs.length) return false
+        var fallbackPath = String(_tabs[index].path || "")
+        return _closeTabsMatching(function(itemIndex, tab) {
+            return itemIndex !== index
+        }, fallbackPath)
+    }
+
+    function _closeTabsToRight(index) {
+        if (index < 0 || index >= _tabs.length - 1) return false
+        var fallbackPath = String(_tabs[index].path || "")
+        return _closeTabsMatching(function(itemIndex, tab) {
+            return itemIndex > index
+        }, fallbackPath)
+    }
+
+    function _contextMenuIndex() {
+        return _indexForPath(_contextMenuPath)
+    }
+
+    function _openTabContextMenu(index, position) {
+        if (index < 0 || index >= _tabs.length) return
+        _contextMenuPath = String(_tabs[index].path || "")
+        var popupPosition = position || Qt.point(0, 0)
+        repositoryTabContextMenu.popup(
+            popupPosition.x, popupPosition.y, tabBar)
     }
 
     function _reorderTabs(from, to) {
@@ -230,6 +279,7 @@ Item {
         movable: true
         scrollable: true
         showAddButton: true
+        contextMenuEnabled: true
         interactionEnabled: root.switchingEnabled
 
         onTabClicked: function(index) {
@@ -243,7 +293,44 @@ Item {
         }
 
         onTabAddClicked: root._openRepositoryPicker()
+        onTabContextMenuRequested: function(index, position) {
+            root._openTabContextMenu(index, position)
+        }
         onTabsReordered: function(from, to) { root._reorderTabs(from, to) }
+    }
+
+    Fluent.ContextMenu {
+        id: repositoryTabContextMenu
+        objectName: "repositoryTabContextMenu"
+        autoBindRightClick: false
+        targetControl: tabBar
+
+        Fluent.Action {
+            objectName: "repositoryTabCloseAction"
+            actionId: "close"
+            text: "关闭"
+            enabled: root.switchingEnabled && root._tabs.length > 1
+                && root._contextMenuIndex() >= 0
+            onTriggered: root._closePath(root._contextMenuPath)
+        }
+
+        Fluent.Action {
+            objectName: "repositoryTabCloseOthersAction"
+            actionId: "close_others"
+            text: "关闭其他标签页"
+            enabled: root.switchingEnabled && root._tabs.length > 1
+                && root._contextMenuIndex() >= 0
+            onTriggered: root._closeOtherTabs(root._contextMenuIndex())
+        }
+
+        Fluent.Action {
+            objectName: "repositoryTabCloseRightAction"
+            actionId: "close_right"
+            text: "关闭右侧标签页"
+            enabled: root.switchingEnabled && root._contextMenuIndex() >= 0
+                && root._contextMenuIndex() < root._tabs.length - 1
+            onTriggered: root._closeTabsToRight(root._contextMenuIndex())
+        }
     }
 
     RepositorySearchMenu {

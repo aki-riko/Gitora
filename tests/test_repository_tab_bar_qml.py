@@ -97,7 +97,7 @@ Window {{
 """.encode("utf-8")
 
 
-def test_repository_tab_bar_loads_and_deduplicates() -> None:
+def _create_repository_scene():
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
@@ -127,6 +127,19 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     assert component.status() == QQmlComponent.Status.Ready, component.errors()
     window = component.create()
     assert window is not None, component.errors()
+    _pump(20)
+    return app, engine, component, window, bridge
+
+
+def _destroy_repository_scene(app, engine, component, window) -> None:
+    window.destroy()
+    component.deleteLater()
+    engine.deleteLater()
+    app.processEvents()
+
+
+def test_repository_tab_bar_loads_and_deduplicates() -> None:
+    app, engine, component, window, bridge = _create_repository_scene()
 
     from PySide6.QtCore import QObject
 
@@ -174,9 +187,93 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     app.processEvents()
     assert bar.property("tabCount") == expected_count
 
-    window.destroy()
-    engine.deleteLater()
+    _destroy_repository_scene(app, engine, component, window)
+
+
+def test_repository_tab_context_menu_closes_requested_ranges() -> None:
+    from PySide6.QtCore import QObject, QPointF
+
+    app, engine, component, window, bridge = _create_repository_scene()
+    bar = window.findChild(QObject, "repositoryTabBar")
+    fluent_bar = window.findChild(QObject, "repositoryFluentTabBar")
+    context_menu = window.findChild(QObject, "repositoryTabContextMenu")
+    close_action = window.findChild(QObject, "repositoryTabCloseAction")
+    close_others_action = window.findChild(
+        QObject, "repositoryTabCloseOthersAction"
+    )
+    close_right_action = window.findChild(
+        QObject, "repositoryTabCloseRightAction"
+    )
+    assert all(
+        (bar, fluent_bar, context_menu, close_action,
+         close_others_action, close_right_action)
+    )
+
+    window.show()
+    context_menu.setProperty("useInWindowPopup", True)
+    bar.setOpenedPaths(
+        ["D:/Repos/PrismQML", "D:/Repos/Kaleidos", "D:/Repos/Mojin"]
+    )
+    selected: list[str] = []
+    closed: list[str] = []
+    bar.repositorySelected.connect(selected.append)
+    bar.repositoryClosed.connect(closed.append)
+
+    fluent_bar.tabContextMenuRequested.emit(1, QPointF(40, 20))
+    _pump(30)
+    assert context_menu.property("isOpen")
+    assert bar.property("_contextMenuPath") == "D:/Repos/PrismQML"
+    assert close_action.property("text") == "关闭"
+    assert close_others_action.property("text") == "关闭其他标签页"
+    assert close_right_action.property("text") == "关闭右侧标签页"
+    assert all(
+        action.property("enabled")
+        for action in (close_action, close_others_action, close_right_action)
+    )
+
+    close_right_action.triggered.emit()
+    _pump(30)
+    assert bar.property("tabCount") == 2
+    assert bar._indexForPath("D:/Repos/Gitora") == 0
+    assert bar._indexForPath("D:/Repos/PrismQML") == 1
+    assert bar._indexForPath("D:/Repos/Kaleidos") == -1
+    assert bar._indexForPath("D:/Repos/Mojin") == -1
+    assert closed == ["D:/Repos/Kaleidos", "D:/Repos/Mojin"]
+    assert selected == []
+
+    context_menu.forceReset()
+    closed.clear()
+    bar.setOpenedPaths(
+        ["D:/Repos/PrismQML", "D:/Repos/Kaleidos", "D:/Repos/Mojin"]
+    )
+    fluent_bar.tabContextMenuRequested.emit(1, QPointF(40, 20))
+    _pump(30)
+    close_others_action.triggered.emit()
+    _pump(30)
+    assert bar.property("tabCount") == 1
+    assert bar._indexForPath("D:/Repos/PrismQML") == 0
+    assert closed == [
+        "D:/Repos/Gitora", "D:/Repos/Kaleidos", "D:/Repos/Mojin"
+    ]
+    assert selected == ["D:/Repos/PrismQML"]
+    assert not close_action.property("enabled")
+    assert not close_others_action.property("enabled")
+    assert not close_right_action.property("enabled")
+
+    bridge.object._repo_path = "D:/Repos/PrismQML"
+    bridge.object.repoPathChanged.emit("D:/Repos/PrismQML")
     app.processEvents()
+    context_menu.forceReset()
+    bar.setOpenedPaths(["D:/Repos/Gitora", "D:/Repos/Kaleidos"])
+    fluent_bar.tabContextMenuRequested.emit(1, QPointF(40, 20))
+    _pump(30)
+    close_action.triggered.emit()
+    _pump(30)
+    assert bar._indexForPath("D:/Repos/Gitora") == -1
+    assert bar.property("tabCount") == 2
+
+    context_menu.forceReset()
+    _destroy_repository_scene(app, engine, component, window)
 
 
 def test_repository_tab_bar_keeps_prismqml_navigation_shell() -> None:
@@ -196,4 +293,9 @@ def test_repository_tab_bar_keeps_prismqml_navigation_shell() -> None:
     assert "signal repositorySelected(string path)" in tab_source
     assert "Fluent.TabBar" in tab_source
     assert "detailsEnabled: true" in tab_source
+    assert "contextMenuEnabled: true" in tab_source
+    assert "onTabContextMenuRequested" in tab_source
+    assert "Fluent.ContextMenu" in tab_source
+    assert 'text: "关闭其他标签页"' in tab_source
+    assert 'text: "关闭右侧标签页"' in tab_source
     assert "tabBar.addButtonItem" in tab_source
