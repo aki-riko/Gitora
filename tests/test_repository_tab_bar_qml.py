@@ -130,7 +130,9 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     from PySide6.QtCore import QObject
 
     bar = window.findChild(QObject, "repositoryTabBar")
+    fluent_bar = window.findChild(QObject, "repositoryFluentTabBar")
     assert bar is not None
+    assert fluent_bar is not None
     assert bar.property("tabCount") == 1
 
     bar.setOpenedPaths(
@@ -149,6 +151,10 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     assert selected == []
     bar._selectPath("D:/Repos/Kaleidos")
     assert selected == ["D:/Repos/Kaleidos"]
+    fluent_bar.setProperty("currentIndex", expected_count - 1)
+    bridge.object.repoOpened.emit(False, "D:/Repos/Kaleidos")
+    app.processEvents()
+    assert fluent_bar.property("currentIndex") == 0
 
     bar.setProperty("switchingEnabled", False)
     bar._closePath("D:/Repos/Gitora")
@@ -185,4 +191,6 @@ def test_repository_tab_bar_keeps_prismqml_navigation_shell() -> None:
     assert "RepositoryTabBar" in main_source
     assert "RepositorySearchMenu" in tab_source
     assert "signal repositorySelected(string path)" in tab_source
-    assert "Fluent.CloseButton" in tab_source
+    assert "Fluent.TabBar" in tab_source
+    assert "detailsEnabled: true" in tab_source
+    assert "tabBar.addButtonItem" in tab_source

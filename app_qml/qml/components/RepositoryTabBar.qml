@@ -1,5 +1,6 @@
-// 已打开仓库的全局标签栏。
-// 标签栏位于 PrismQML 导航窗口的内容层上方，不替换左侧封装导航。
+// RepositoryTabBar - Gitora repository session adapter Gitora 仓库会话适配层
+// The visual tab bar is provided by PrismQML; this component owns repository data only.
+// 标签视觉由 PrismQML 提供，本组件只负责仓库数据和切换请求。
 pragma ComponentBehavior: Bound
 import QtQuick
 import PrismQML as Fluent
@@ -7,23 +8,27 @@ import PrismQML as Fluent
 Item {
     id: root
 
+    // ==================== Public Props 公开属性 ====================
     property var gitBridge: null
     property var repoScanner: null
     property bool switchingEnabled: true
     property int tabHeight: Fluent.Enums.controlSize.tableHeaderHeight
+
+    // ==================== Readonly State 只读状态 ====================
+    readonly property string activePath: gitBridge ? (gitBridge.repoPath || "") : ""
+    readonly property string activePathKey: _pathKey(activePath)
+    readonly property int tabCount: _tabs.length
+
+    // ==================== Internal Props 内部属性 ====================
+    property var _tabs: []
     property var _pickerPaths: []
     property string _closingActivePath: ""
 
-    readonly property string activePath: gitBridge ? (gitBridge.repoPath || "") : ""
-    readonly property string activePathKey: _pathKey(activePath)
-    readonly property int tabCount: tabModel.count
-
+    // ==================== Signals 信号 ====================
     signal repositorySelected(string path)
     signal repositoryClosed(string path)
 
-    implicitHeight: tabHeight
-    height: tabHeight
-
+    // ==================== Public Methods 公开方法 ====================
     function _pathKey(path) {
         var normalized = String(path || "").replace(/\\/g, "/").replace(/\/+$/, "")
         return Qt.platform.os === "windows" ? normalized.toLowerCase() : normalized
@@ -38,30 +43,41 @@ Item {
 
     function _indexForPath(path) {
         var key = _pathKey(path)
-        for (var i = 0; i < tabModel.count; i++) {
-            if (_pathKey(tabModel.get(i).path) === key) return i
+        for (var i = 0; i < _tabs.length; i++) {
+            if (_pathKey(_tabs[i].path) === key) return i
         }
         return -1
+    }
+
+    function _newTab(path) {
+        var value = String(path || "")
+        return {
+            title: _repoName(value),
+            icon: Fluent.Enums.icon.folder,
+            subtitle: "未读取分支",
+            branch: "",
+            badgeText: "",
+            badgeLevel: Fluent.Enums.statusLevel.info,
+            path: value,
+            pending: false,
+            changeCount: -1,
+            repoState: "unknown",
+            enabled: true,
+            closeEnabled: true
+        }
     }
 
     function _appendPath(path) {
         var value = String(path || "")
         if (value === "" || _indexForPath(value) >= 0)
             return false
-        tabModel.append({
-            path: value,
-            name: _repoName(value),
-            branch: "",
-            changeCount: -1,
-            repoState: "unknown",
-            pending: false
-        })
+        var next = _tabs.slice()
+        next.push(_newTab(value))
+        _tabs = next
         return true
     }
 
-    function ensurePath(path) {
-        _appendPath(path)
-    }
+    function ensurePath(path) { return _appendPath(path) }
 
     function setOpenedPaths(paths) {
         var values = []
@@ -79,18 +95,71 @@ Item {
             }
         }
 
-        tabModel.clear()
-        for (var k = 0; k < values.length; k++) _appendPath(values[k])
+        var next = []
+        for (var k = 0; k < values.length; k++) next.push(_newTab(values[k]))
+        _tabs = next
+        _syncCurrentIndex()
+    }
+
+    function _updateTab(path, changes) {
+        var index = _indexForPath(path)
+        if (index < 0) {
+            ensurePath(path)
+            index = _indexForPath(path)
+        }
+        if (index < 0) return
+        var next = _tabs.slice()
+        next[index] = Object.assign({}, next[index], changes || {})
+        _tabs = next
+    }
+
+    function _syncCurrentIndex() {
+        var index = _indexForPath(activePath)
+        if (index >= 0 && tabBar.currentIndex !== index) tabBar.currentIndex = index
     }
 
     function _setPending(path, pending) {
         var index = _indexForPath(path)
-        if (index >= 0) tabModel.setProperty(index, "pending", pending)
+        var branch = index >= 0 ? String(_tabs[index].branch || "") : ""
+        _updateTab(path, {
+            pending: !!pending,
+            subtitle: pending ? "打开中…" : (branch || "未读取分支")
+        })
+    }
+
+    function _updateStatus(path, count) {
+        var normalizedCount = Math.max(0, Number(count) || 0)
+        _updateTab(path, {
+            changeCount: normalizedCount,
+            repoState: normalizedCount > 0 ? "dirty" : "clean",
+            badgeText: normalizedCount > 0 ? String(normalizedCount) : "干净",
+            badgeLevel: normalizedCount > 0
+                ? Fluent.Enums.statusLevel.warning : Fluent.Enums.statusLevel.success
+        })
+    }
+
+    function _updateBranch(path, branch) {
+        var value = String(branch || "")
+        _updateTab(path, {
+            branch: value,
+            subtitle: value || "未读取分支"
+        })
+    }
+
+    function _markOpenFailed(path) {
+        _updateTab(path, {
+            pending: false,
+            repoState: "error",
+            subtitle: "无法打开",
+            badgeText: "!",
+            badgeLevel: Fluent.Enums.statusLevel.error
+        })
     }
 
     function _selectPath(path) {
         var value = String(path || "")
-        if (!switchingEnabled || value === "" || _pathKey(value) === activePathKey) {
+        if (!switchingEnabled || value === "") return
+        if (_pathKey(value) === activePathKey) {
             _setPending(value, false)
             return
         }
@@ -99,33 +168,31 @@ Item {
         repositorySelected(value)
     }
 
-    function _updateStatus(path, count) {
-        var index = _indexForPath(path)
-        if (index < 0) {
-            ensurePath(path)
-            index = _indexForPath(path)
-        }
-        if (index < 0) return
-        var normalizedCount = Math.max(0, Number(count) || 0)
-        tabModel.setProperty(index, "changeCount", normalizedCount)
-        tabModel.setProperty(index, "repoState", normalizedCount > 0 ? "dirty" : "clean")
-    }
-
-    function _updateBranch(path, branch) {
-        var index = _indexForPath(path)
-        if (index < 0) {
-            ensurePath(path)
-            index = _indexForPath(path)
-        }
-        if (index >= 0) tabModel.setProperty(index, "branch", String(branch || ""))
-    }
-
-    function _markOpenFailed(path) {
+    function _closePath(path) {
+        if (!switchingEnabled || _tabs.length <= 1) return
         var index = _indexForPath(path)
         if (index < 0) return
-        tabModel.setProperty(index, "pending", false)
-        tabModel.setProperty(index, "repoState", "error")
-        tabModel.setProperty(index, "branch", "无法打开")
+        var wasActive = _pathKey(path) === activePathKey
+        var next = _tabs.slice()
+        next.splice(index, 1)
+        _tabs = next
+        repositoryClosed(String(path))
+
+        if (wasActive && _tabs.length > 0) {
+            var nextIndex = Math.min(index, _tabs.length - 1)
+            var nextPath = String(_tabs[nextIndex].path || "")
+            _closingActivePath = String(path)
+            _selectPath(nextPath)
+        }
+    }
+
+    function _reorderTabs(from, to) {
+        if (from < 0 || to < 0 || from >= _tabs.length || to >= _tabs.length || from === to)
+            return
+        var next = _tabs.slice()
+        var moved = next.splice(from, 1)[0]
+        next.splice(to, 0, moved)
+        _tabs = next
     }
 
     function _refreshPickerPaths() {
@@ -139,220 +206,48 @@ Item {
         _refreshPickerPaths()
         repositorySearchMenu.loading = !!(repoScanner && repoScanner.scanning)
         repositorySearchMenu.prepareForOpen(_pickerPaths)
-        repositorySearchMenu.openAtControl(addButton)
+        repositorySearchMenu.openAtControl(tabBar.addButtonItem)
     }
 
-    function _closePath(path) {
-        if (!switchingEnabled || tabModel.count <= 1) return
-        var index = _indexForPath(path)
-        if (index < 0) return
-        var wasActive = _pathKey(path) === activePathKey
-        tabModel.remove(index)
-        repositoryClosed(String(path))
+    // ==================== Size 尺寸 ====================
+    implicitHeight: tabHeight
+    height: tabHeight
 
-        if (wasActive && tabModel.count > 0) {
-            var nextIndex = Math.min(index, tabModel.count - 1)
-            var nextPath = String(tabModel.get(nextIndex).path || "")
-            _closingActivePath = String(path)
-            _selectPath(nextPath)
-        }
-    }
-
-    function _selectNextTab(direction) {
-        if (!switchingEnabled || tabModel.count < 2) return
-        var currentIndex = _indexForPath(activePath)
-        if (currentIndex < 0) currentIndex = 0
-        var nextIndex = (currentIndex + direction + tabModel.count) % tabModel.count
-        var nextPath = String(tabModel.get(nextIndex).path || "")
-        _selectPath(nextPath)
-    }
-
-    ListModel {
-        id: tabModel
-    }
-
-    Rectangle {
+    // ==================== Content 内容 ====================
+    Fluent.TabBar {
+        id: tabBar
+        objectName: "repositoryFluentTabBar"
         anchors.fill: parent
-        color: Fluent.Enums.stateColor.cardDefaultBg
-        border.width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
-        border.color: Fluent.Enums.stateColor.navDivider
-    }
+        tabs: root._tabs
+        detailsEnabled: true
+        tabWidth: Fluent.Enums.controlSize.cardWidth / 2
+        minimumTabWidth: Fluent.Enums.controlSize.segmentedMinWidth
+        maximumTabWidth: Fluent.Enums.controlSize.cardWidth / 2
+        closable: true
+        canCloseTab: function(index, tab) { return root._tabs.length > 1 }
+        movable: true
+        scrollable: true
+        showAddButton: true
+        interactionEnabled: root.switchingEnabled
 
-    ListView {
-        id: tabList
-        anchors.left: parent.left
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        anchors.right: addButton.left
-        anchors.rightMargin: Fluent.Enums.spacing.xs
-        orientation: ListView.Horizontal
-        model: tabModel
-        clip: true
-        boundsBehavior: Flickable.StopAtBounds
-        interactive: contentWidth > width
-        spacing: 0
-
-        delegate: Item {
-            id: tabDelegate
-            required property string path
-            required property string name
-            required property string branch
-            required property int changeCount
-            required property string repoState
-            required property bool pending
-            readonly property bool isActive: root._pathKey(tabDelegate.path) === root.activePathKey
-            readonly property bool isPending: tabDelegate.pending
-            width: Math.max(
-                Fluent.Enums.controlSize.cardWidth / 2,
-                Math.min(
-                    Fluent.Enums.controlSize.cardWidth,
-                    Math.floor(root.width / Math.max(1, Math.min(tabModel.count, 4)))
-                )
-            )
-            height: root.height
-
-            Rectangle {
-                anchors.fill: parent
-                color: tabDelegate.isActive
-                    ? Fluent.Enums.cardColor
-                    : (tabHover.containsMouse ? Fluent.Enums.stateColor.hover : Fluent.Enums.transparent)
-            }
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                height: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.normal)
-                color: Fluent.Enums.accentColor
-                visible: tabDelegate.isActive
-            }
-
-            Rectangle {
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.bottom: parent.bottom
-                width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
-                color: Fluent.Enums.stateColor.navDivider
-            }
-
-            Fluent.Icon {
-                id: tabIcon
-                anchors.left: parent.left
-                anchors.leftMargin: Fluent.Enums.spacing.m
-                anchors.verticalCenter: parent.verticalCenter
-                icon: Fluent.Enums.icon.folder
-                iconSize: Fluent.Enums.iconSize.s
-                color: tabDelegate.isActive
-                    ? Fluent.Enums.accentColor : Fluent.Enums.textColor.secondary
-            }
-
-            Column {
-                anchors.left: tabIcon.right
-                anchors.leftMargin: Fluent.Enums.spacing.s
-                anchors.right: closeButton.left
-                anchors.rightMargin: Fluent.Enums.spacing.xs
-                anchors.verticalCenter: parent.verticalCenter
-                spacing: 1
-
-                Text {
-                    width: parent.width
-                    text: tabDelegate.name || root._repoName(tabDelegate.path)
-                    color: Fluent.Enums.textColor.primary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    font.bold: tabDelegate.isActive
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
-                }
-
-                Row {
-                    width: parent.width
-                    spacing: Fluent.Enums.spacing.xs
-
-                    Text {
-                        width: Math.max(0, parent.width - statusLabel.width - Fluent.Enums.spacing.xs)
-                        text: tabDelegate.isPending
-                            ? "打开中…"
-                            : (tabDelegate.branch || "未读取分支")
-                        color: Fluent.Enums.textColor.tertiary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        elide: Text.ElideRight
-                        maximumLineCount: 1
-                    }
-
-                    Text {
-                        id: statusLabel
-                        text: tabDelegate.isPending || tabDelegate.changeCount < 0
-                            ? (tabDelegate.repoState === "error" ? "!" : "")
-                            : (tabDelegate.repoState === "clean"
-                                ? "干净" : String(tabDelegate.changeCount))
-                        color: tabDelegate.repoState === "error"
-                            ? Fluent.Enums.statusLevel.errorColor
-                            : (tabDelegate.repoState === "dirty"
-                                ? Fluent.Enums.statusLevel.warningColor
-                                : Fluent.Enums.textColor.tertiary)
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        visible: text !== ""
-                    }
-                }
-            }
-
-            Fluent.CloseButton {
-                id: closeButton
-                anchors.right: parent.right
-                anchors.rightMargin: Fluent.Enums.spacing.xs
-                anchors.verticalCenter: parent.verticalCenter
-                size: Fluent.Enums.controlSize.closeButtonSize
-                iconSizeValue: Fluent.Enums.iconSize.xs
-                enabled: root.switchingEnabled && tabModel.count > 1
-                opacity: enabled
-                    ? Fluent.Enums.opacityLevel.visible : Fluent.Enums.opacityLevel.disabled
-                Accessible.name: "关闭 " + (tabDelegate.name
-                    || root._repoName(tabDelegate.path))
-                onClicked: root._closePath(tabDelegate.path)
-            }
-
-            MouseArea {
-                id: tabHover
-                anchors.fill: parent
-                anchors.rightMargin: closeButton.width + Fluent.Enums.spacing.xs
-                hoverEnabled: true
-                enabled: root.switchingEnabled
-                cursorShape: Qt.PointingHandCursor
-                onClicked: root._selectPath(tabDelegate.path)
-            }
+        onTabClicked: function(index) {
+            if (index < 0 || index >= root._tabs.length) return
+            root._selectPath(root._tabs[index].path)
         }
-    }
 
-    Fluent.Button {
-        id: addButton
-        anchors.right: parent.right
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        width: root.height
-        icon: Fluent.Enums.icon.add
-        style: Fluent.Enums.button.style_transparent
-        enabled: root.switchingEnabled
-        toolTipText: "打开仓库"
-        onClicked: root._openRepositoryPicker()
-    }
+        onTabClosed: function(index) {
+            if (index < 0 || index >= root._tabs.length) return
+            root._closePath(root._tabs[index].path)
+        }
 
-    Rectangle {
-        anchors.right: addButton.left
-        anchors.top: parent.top
-        anchors.bottom: parent.bottom
-        width: Fluent.Enums.surfaceBorderWidth(Fluent.Enums.border.thin)
-        color: Fluent.Enums.stateColor.navDivider
+        onTabAddClicked: root._openRepositoryPicker()
+        onTabsReordered: function(from, to) { root._reorderTabs(from, to) }
     }
 
     RepositorySearchMenu {
         id: repositorySearchMenu
-        targetControl: addButton
-        onPathSelected: function(path) {
-            root._selectPath(path)
-        }
+        targetControl: tabBar.addButtonItem
+        onPathSelected: function(path) { root._selectPath(path) }
     }
 
     Connections {
@@ -363,37 +258,44 @@ Item {
             root.ensurePath(path)
             root._setPending(path, false)
             root._closingActivePath = ""
-            root.gitBridge.requestStatus()
+            root._syncCurrentIndex()
+            if (root.gitBridge.requestStatus) root.gitBridge.requestStatus()
         }
 
         function onRepoOpened(ok, value) {
             if (ok) {
                 root.ensurePath(value)
                 root._setPending(value, false)
+                root._syncCurrentIndex()
             } else {
                 root._markOpenFailed(value)
+                root._syncCurrentIndex()
                 if (root._closingActivePath !== "") {
                     root.ensurePath(root._closingActivePath)
                     root._setPending(root._closingActivePath, false)
                     root._closingActivePath = ""
+                    root._syncCurrentIndex()
                 }
             }
         }
 
         function onRepoOpenRejected(path, message) {
             root._markOpenFailed(path)
+            root._syncCurrentIndex()
+            if (root._closingActivePath !== "") {
+                root.ensurePath(root._closingActivePath)
+                root._setPending(root._closingActivePath, false)
+                root._closingActivePath = ""
+                root._syncCurrentIndex()
+            }
         }
 
-        function onStatusReady(repoPath, count) {
-            root._updateStatus(repoPath, count)
-        }
-
-        function onBranchReady(repoPath, branch) {
-            root._updateBranch(repoPath, branch)
-        }
+        function onStatusReady(repoPath, count) { root._updateStatus(repoPath, count) }
+        function onBranchReady(repoPath, branch) { root._updateBranch(repoPath, branch) }
 
         function onStatusChanged() {
-            if (root.activePath !== "") root.gitBridge.requestStatus()
+            if (root.activePath !== "" && root.gitBridge.requestStatus)
+                root.gitBridge.requestStatus()
         }
     }
 
@@ -411,23 +313,36 @@ Item {
 
     Shortcut {
         sequence: "Ctrl+Tab"
-        onActivated: root._selectNextTab(1)
+        enabled: root.switchingEnabled
+        onActivated: {
+            if (root._tabs.length < 2) return
+            var index = root._indexForPath(root.activePath)
+            var nextIndex = (index + 1 + root._tabs.length) % root._tabs.length
+            root._selectPath(root._tabs[nextIndex].path)
+        }
     }
 
     Shortcut {
         sequence: "Ctrl+Shift+Tab"
-        onActivated: root._selectNextTab(-1)
+        enabled: root.switchingEnabled
+        onActivated: {
+            if (root._tabs.length < 2) return
+            var index = root._indexForPath(root.activePath)
+            var nextIndex = (index - 1 + root._tabs.length) % root._tabs.length
+            root._selectPath(root._tabs[nextIndex].path)
+        }
     }
 
     Shortcut {
         sequence: "Ctrl+W"
-        onActivated: {
-            if (root.switchingEnabled && root.activePath !== "")
-                root._closePath(root.activePath)
-        }
+        enabled: root.switchingEnabled
+        onActivated: root._closePath(root.activePath)
     }
 
     Component.onCompleted: {
-        if (activePath !== "") ensurePath(activePath)
+        if (activePath !== "") {
+            ensurePath(activePath)
+            _syncCurrentIndex()
+        }
     }
 }
