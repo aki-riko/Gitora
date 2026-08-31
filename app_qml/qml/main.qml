@@ -12,6 +12,7 @@ QtObject {
     readonly property int windowHeight: AppInfo.windowHeight
     readonly property string windowTitle: "Gitora"
     readonly property int settingsPageIndex: pagePaths.length - 1
+    readonly property int repositoryTabBarHeight: Fluent.Enums.controlSize.tableHeaderHeight
 
     function iconPath(name) {
         return (typeof FluentIconsDir !== "undefined" ? FluentIconsDir : "") + name + ".svg"
@@ -97,12 +98,40 @@ QtObject {
             windowTitle: root.windowTitle
             windowIcon: typeof AppLogo !== "undefined" ? AppLogo : ""
             windowIconColored: true   // logo.png 是彩色图,跳过单色染色
+            // 给全局仓库标签栏预留窗口内容顶部空间；左侧封装导航仍由 PrismQML 管理。
+            contentTopMargin: root.repositoryTabBarHeight
             navigationItems: root.navItems
             bottomNavigationItems: root.bottomNavItems
             pageSources: root.pagePaths
             lazyLoading: true
             // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
             micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
+            property Item repositoryTabBarHost: Item {
+                parent: appWindow.contentItem
+                anchors.fill: parent
+                z: Fluent.Enums.zIndex.controlsAbove
+
+                RepositoryTabBar {
+                    anchors.left: parent.left
+                    anchors.leftMargin: appWindow.margin
+                    anchors.right: parent.right
+                    anchors.rightMargin: appWindow.margin
+                    anchors.top: parent.top
+                    anchors.topMargin: appWindow.margin + appWindow.titleBarHeight
+                    height: root.repositoryTabBarHeight
+                    gitBridge: typeof GitBridge !== "undefined" ? GitBridge : null
+                    repoScanner: typeof RepoScanner !== "undefined" ? RepoScanner : null
+                    tabHeight: root.repositoryTabBarHeight
+                    switchingEnabled: !!GitBridge && !GitBridge.operationBusy
+                        && !!AiCommitBridge && !AiCommitBridge.busy
+                        && !!AiCommitPlanBridge && !AiCommitPlanBridge.busy
+
+                    onRepositorySelected: function(path) {
+                        if (GitBridge && path !== GitBridge.repoPath)
+                            GitBridge.openRepoAsync(path)
+                    }
+                }
+            }
             Component.onCompleted: {
                 root.toastProgressHostInstance = root.toastProgressHostComponent.createObject(this.contentItem)
                 let currentWindow = this

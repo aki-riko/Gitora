@@ -33,6 +33,82 @@ def _sample_graph_commit() -> CommitInfo:
 
 
 class GitBridgeAsyncTest(unittest.TestCase):
+    def test_operation_busy_tracks_bridge_task_lifecycle(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        release = threading.Event()
+        busy_states: list[bool] = []
+        results: list[tuple[bool, str]] = []
+        bridge.operationBusyChanged.connect(
+            lambda: busy_states.append(bridge.operationBusy)
+        )
+        bridge.operationFinished.connect(
+            lambda ok, message: results.append((ok, message))
+        )
+
+        def work() -> tuple[bool, str]:
+            release.wait(timeout=2)
+            return True, "完成"
+
+        try:
+            bridge._submit_operation("正在测试...", work)
+            self.assertTrue(bridge.operationBusy)
+            release.set()
+            self.assertTrue(self._wait_until(app, lambda: bool(results)))
+            self.assertFalse(bridge.operationBusy)
+            self.assertEqual(busy_states, [True, False])
+            self.assertEqual(results, [(True, "完成")])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_operation_busy_tracks_service_async_signals(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        forwarded: list[tuple[bool, str]] = []
+        bridge.operationFinished.connect(
+            lambda ok, message: forwarded.append((ok, message))
+        )
+
+        try:
+            bridge._svc.operationStarted.emit("正在测试...")
+            self.assertTrue(bridge.operationBusy)
+            bridge._svc.operationFinished.emit(True, "完成")
+            self.assertFalse(bridge.operationBusy)
+            self.assertEqual(forwarded, [(True, "完成")])
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_open_repo_is_rejected_while_git_operation_is_busy(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "D:/Repos/Current"
+        opened: list[tuple[bool, str]] = []
+        rejected: list[tuple[str, str]] = []
+        bridge.repoOpened.connect(
+            lambda ok, value: opened.append((ok, value))
+        )
+        bridge.repoOpenRejected.connect(
+            lambda path, message: rejected.append((path, message))
+        )
+
+        try:
+            bridge._svc.operationStarted.emit("正在测试...")
+            handle = bridge.openRepoAsync("D:/Repos/Other")
+            self.assertIsNone(handle)
+            self.assertEqual(bridge.repoPath, "D:/Repos/Current")
+            self.assertEqual(opened, [(False, "D:/Repos/Other")])
+            self.assertEqual(rejected[0][0], "D:/Repos/Other")
+            self.assertIn("等待完成", rejected[0][1])
+        finally:
+            bridge._svc.operationFinished.emit(True, "完成")
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_operation_exception_hides_technical_details_from_user(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

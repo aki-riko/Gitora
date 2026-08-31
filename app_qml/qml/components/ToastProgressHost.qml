@@ -130,6 +130,10 @@ Item {
     Connections {
         target: GitBridge
 
+        function onRepoOpenRejected(path, message) {
+            Fluent.NotificationManager.desktop.warning("暂时无法切换仓库", message)
+        }
+
         function onOperationStarted(message) {
             var title = root._normalizeTitle(message, "正在执行 Git 操作")
             var toast = root._ensureGitToast(false, title, "请稍候")

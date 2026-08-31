@@ -173,8 +173,10 @@ class GitBridge(QObject):
     operationFinished = Signal(bool, str)
     quickCommitPushFinished = Signal(bool, str)
     progressUpdated = Signal(int, str)
+    operationBusyChanged = Signal()
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
+    repoOpenRejected = Signal(str, str)  # (请求路径, 拒绝原因)
     statusReady = Signal(str, int)              # 后台状态就绪(repoPath, 变更数量)
     branchReady = Signal(str, str)             # 后台当前分支就绪(repoPath, 分支)
     historyCountReady = Signal(str, int, bool)  # (repoPath, 总提交数, 是否全部引用)
@@ -206,6 +208,7 @@ class GitBridge(QObject):
         super().__init__(parent)
         self._svc = GitService(self)
         self._file_change_model = FileChangeListModel(self)
+        self._active_operation_count = 0
         # ---- 外部变化轮询 ----
         # 定期计算仓库状态指纹,变了就 emit statusChanged,让所有视图统一刷新。
         # 内部 Git 操作本身也会发 statusChanged；每次内部信号都让旧基线失效，
@@ -217,8 +220,8 @@ class GitBridge(QObject):
         self._poll_generation = 0       # 基线代际(内部变更/切仓库时递增)
         # 转发底层信号
         self._svc.statusChanged.connect(self._forward_service_status_changed)
-        self._svc.operationStarted.connect(self.operationStarted)
-        self._svc.operationFinished.connect(self.operationFinished)
+        self._svc.operationStarted.connect(self._forward_service_operation_started)
+        self._svc.operationFinished.connect(self._forward_service_operation_finished)
         self._svc.progressUpdated.connect(self.progressUpdated)
         self._log_request_serial = 0
         self._search_request_serial = 0
@@ -290,6 +293,7 @@ class GitBridge(QObject):
         publish: bool = True,
     ):
         """提交一个返回 ``(成功, 消息)`` 的 Git 操作。"""
+        self._begin_operation()
         if publish:
             self.operationStarted.emit(description)
 
@@ -298,9 +302,11 @@ class GitBridge(QObject):
                 ok, message = result
             except (TypeError, ValueError):
                 logger.error(f"Git 后台操作返回值无效: {result!r}")
+                self._finish_operation()
                 if publish:
                     self.operationFinished.emit(False, "Git 操作返回值无效")
                 return
+            self._finish_operation()
             if publish:
                 self.operationFinished.emit(bool(ok), str(message))
 
@@ -308,17 +314,46 @@ class GitBridge(QObject):
             logger.warning(
                 f"Git 后台操作异常: {type(exc).__name__}: {exc}"
             )
+            self._finish_operation()
             if publish:
                 self.operationFinished.emit(
                     False,
                     "Git 操作发生异常，请重试；技术详情已记录到日志。",
                 )
 
+        def cancelled() -> None:
+            self._finish_operation()
+            if publish:
+                self.operationFinished.emit(False, "Git 操作已取消")
+
         return submit_to_pool(
             function,
             on_success=succeeded,
             on_failure=failed,
+            on_cancelled=cancelled,
         )
+
+    def _begin_operation(self) -> None:
+        was_busy = self._active_operation_count > 0
+        self._active_operation_count += 1
+        if not was_busy:
+            self.operationBusyChanged.emit()
+
+    def _finish_operation(self) -> None:
+        was_busy = self._active_operation_count > 0
+        self._active_operation_count = max(0, self._active_operation_count - 1)
+        if was_busy and self._active_operation_count == 0:
+            self.operationBusyChanged.emit()
+
+    @Slot(str)
+    def _forward_service_operation_started(self, message: str) -> None:
+        self._begin_operation()
+        self.operationStarted.emit(message)
+
+    @Slot(bool, str)
+    def _forward_service_operation_finished(self, ok: bool, message: str) -> None:
+        self._finish_operation()
+        self.operationFinished.emit(ok, message)
 
     def _reset_poll_baseline(self, reason: str = "unspecified"):
         """使当前基线失效；下一轮只建新基线，不重复发刷新。"""
@@ -422,6 +457,10 @@ class GitBridge(QObject):
     def repoPath(self) -> str:
         return self._svc.repo_path or ""
 
+    @Property(bool, notify=operationBusyChanged)
+    def operationBusy(self) -> bool:
+        return self._active_operation_count > 0
+
     @property
     def service(self) -> GitService:
         """供同进程后端组件复用同一个仓库会话，不暴露给 QML。"""
@@ -450,6 +489,16 @@ class GitBridge(QObject):
     @Slot(str)
     def openRepoAsync(self, path: str):
         """后台打开仓库,不阻塞主线程;成功时由 repoPathChanged 驱动各视图刷新。"""
+        current_path = self._svc.repo_path or ""
+        same_repo = os.path.normcase(os.path.normpath(path)) == os.path.normcase(
+            os.path.normpath(current_path)
+        )
+        if self.operationBusy and not same_repo:
+            message = "Git 操作正在进行，请等待完成后再切换仓库"
+            self.repoOpened.emit(False, path)
+            self.repoOpenRejected.emit(path, message)
+            return None
+
         self._open_request_serial += 1
         request_serial = self._open_request_serial
 
