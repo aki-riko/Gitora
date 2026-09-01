@@ -9,6 +9,8 @@
 """
 import json
 import os
+import tempfile
+import threading
 from pathlib import Path
 
 from .logger import get_logger
@@ -18,12 +20,20 @@ logger = get_logger("OpenedRepos")
 
 
 class OpenedReposManager:
-    """已打开仓库标签页会话管理器"""
+    """已打开仓库标签页会话管理器
+
+    线程安全：写盘由后台线程池发起，可能有多次快照并发到达，因此所有读写都
+    在同一把锁内完成。并发之外还要防乱序——线程池不保证完成顺序，旧快照后
+    到会覆盖新快照，所以 ``replace`` 接受调用方在主线程分配的单调 ``sequence``，
+    迟到的旧快照直接丢弃。
+    """
 
     MAX_OPENED = 32  # 上限，防止异常写入把配置撑爆
 
     def __init__(self, file_path: Path | None = None):
         self.file_path = file_path or CONFIG_FOLDER / "opened_repos.json"
+        self._lock = threading.RLock()
+        self._applied_sequence = -1
         loaded_repos, loaded_active = self._load()
         self._repos = self._normalize_repos(loaded_repos)
         self._active = self._resolve_active(loaded_active)
@@ -57,13 +67,18 @@ class OpenedReposManager:
         return normalized_repos[: cls.MAX_OPENED]
 
     def _resolve_active(self, active: str) -> str:
-        """活动仓库必须是列表成员，否则回退到第一项。"""
+        """活动仓库必须是当前列表成员，否则回退到第一项。"""
+        return self._resolve_active_in(self._repos, active)
+
+    @classmethod
+    def _resolve_active_in(cls, repos: list[str], active: str) -> str:
+        """在给定列表里解析活动仓库，避免依赖尚未提交的实例状态。"""
         if isinstance(active, str) and active:
-            active_key = self._path_key(active)
-            for repo_path in self._repos:
-                if self._path_key(repo_path) == active_key:
+            active_key = cls._path_key(active)
+            for repo_path in repos:
+                if cls._path_key(repo_path) == active_key:
                     return repo_path
-        return self._repos[0] if self._repos else ""
+        return repos[0] if repos else ""
 
     def _load(self) -> tuple[list[str], str]:
         """加载会话快照 -> (仓库列表, 活动仓库)"""
@@ -92,59 +107,109 @@ class OpenedReposManager:
         return repos, active
 
     def _save(self):
-        """保存会话快照"""
+        """原子保存会话快照。
+
+        直接以 ``w`` 打开会先截断再写：写一半崩溃就留下坏 JSON，下次启动读成
+        空快照，等于把所有标签页丢干净——正是本功能要防的事故。所以先写同目录
+        临时文件再 ``os.replace`` 原子替换。
+        """
+        payload = json.dumps(
+            {"repos": self._repos, "active": self._active},
+            ensure_ascii=False,
+            indent=2,
+        )
+        temp_path = None
         try:
-            with open(self.file_path, "w", encoding="utf-8") as f:
-                json.dump(
-                    {"repos": self._repos, "active": self._active},
-                    f,
-                    ensure_ascii=False,
-                    indent=2,
-                )
+            self.file_path.parent.mkdir(parents=True, exist_ok=True)
+            fd, temp_name = tempfile.mkstemp(
+                dir=str(self.file_path.parent),
+                prefix=f".{self.file_path.name}.",
+                suffix=".tmp",
+            )
+            temp_path = Path(temp_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(payload)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(temp_name, self.file_path)
+            temp_path = None
         except Exception as e:
             logger.error(f"保存已打开仓库失败: {e}")
+        finally:
+            if temp_path is not None:
+                try:
+                    temp_path.unlink()
+                except OSError as e:
+                    logger.warning(f"清理已打开仓库临时文件失败: {e}")
 
-    def replace(self, repos: list[str], active: str = ""):
-        """整体替换会话快照（标签页新增/关闭/排序/切换后调用）。"""
-        normalized_repos = self._normalize_repos(list(repos or []))
-        if normalized_repos == self._repos:
-            normalized_active = self._resolve_active(active)
-            if normalized_active == self._active:
+    def replace(self, repos: list[str], active: str = "", sequence: int | None = None):
+        """整体替换会话快照（标签页新增/关闭/排序/切换后调用）。
+
+        ``sequence`` 由调用方在主线程单调分配；小于已应用值的快照视为线程池
+        乱序导致的迟到结果，直接丢弃，避免旧状态覆盖新状态。
+        """
+        with self._lock:
+            if sequence is not None:
+                if sequence <= self._applied_sequence:
+                    logger.debug(
+                        f"丢弃迟到的已打开仓库快照: seq={sequence} "
+                        f"已应用={self._applied_sequence}"
+                    )
+                    return
+                self._applied_sequence = sequence
+
+            normalized_repos = self._normalize_repos(list(repos or []))
+            normalized_active = self._resolve_active_in(normalized_repos, active)
+            if (normalized_repos == self._repos
+                    and normalized_active == self._active):
                 return
+
+            self._repos = normalized_repos
             self._active = normalized_active
             self._save()
-            return
-
-        self._repos = normalized_repos
-        self._active = self._resolve_active(active)
-        self._save()
 
     def get_all(self) -> list[str]:
-        """获取仍然存在于磁盘上的已打开仓库；顺带清理失效项。"""
-        valid_repos = [
-            repo_path for repo_path in self._normalize_repos(self._repos)
-            if Path(repo_path).exists()
-        ]
+        """获取仍然存在于磁盘上的已打开仓库；顺带清理失效项。
 
-        if valid_repos != self._repos:
-            self._repos = valid_repos
-            self._active = self._resolve_active(self._active)
-            self._save()
+        会对每个路径做一次 ``exists()``；调用方必须放后台线程。
+        """
+        with self._lock:
+            valid_repos = [
+                repo_path for repo_path in self._normalize_repos(self._repos)
+                if Path(repo_path).exists()
+            ]
 
-        return list(self._repos)
+            if valid_repos != self._repos:
+                self._repos = valid_repos
+                self._active = self._resolve_active(self._active)
+                self._save()
+
+            return list(self._repos)
 
     def get_active(self) -> str:
         """获取活动仓库；先经过存在性清理，保证返回值可直接打开。"""
-        self.get_all()
-        return self._active
+        with self._lock:
+            self.get_all()
+            return self._active
+
+    def get_snapshot(self) -> tuple[list[str], str]:
+        """一次拿到 (仓库列表, 活动仓库)，只做一轮存在性检查。
+
+        分别调 ``get_all`` + ``get_active`` 会把 ``exists()`` 跑两遍；启动路径
+        上这是白花的磁盘时间。
+        """
+        with self._lock:
+            repos = self.get_all()
+            return repos, self._active
 
     def clear(self):
         """清空会话快照"""
-        if not self._repos and not self._active:
-            return
-        self._repos = []
-        self._active = ""
-        self._save()
+        with self._lock:
+            if not self._repos and not self._active:
+                return
+            self._repos = []
+            self._active = ""
+            self._save()
 
 
 # 全局实例

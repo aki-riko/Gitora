@@ -108,6 +108,108 @@ class OpenedReposManagerTest(unittest.TestCase):
         # 重启后读回的仍是拖动后的顺序。
         self.assertEqual(OpenedReposManager(config_path).get_all(), expected)
 
+    def test_stale_sequence_is_discarded(self) -> None:
+        """线程池不保证完成顺序：迟到的旧快照不能覆盖新快照。"""
+        config_path = self.root / "sequence.json"
+        manager = OpenedReposManager(config_path)
+        repo_a = self.root / "repo-a"
+        repo_b = self.root / "repo-b"
+        repo_a.mkdir()
+        repo_b.mkdir()
+
+        # seq=2 先落地（较新的快照：只剩 repo-b）
+        manager.replace([str(repo_b)], str(repo_b), sequence=2)
+        self.assertEqual(manager.get_all(), [os.path.normpath(str(repo_b))])
+
+        # seq=1 迟到（较旧的快照：两个标签都在）——必须被丢弃
+        manager.replace([str(repo_a), str(repo_b)], str(repo_a), sequence=1)
+        self.assertEqual(manager.get_all(), [os.path.normpath(str(repo_b))])
+        saved = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["repos"], [os.path.normpath(str(repo_b))])
+
+        # 相同序号同样丢弃；更大的序号才生效
+        manager.replace([str(repo_a)], str(repo_a), sequence=2)
+        self.assertEqual(manager.get_all(), [os.path.normpath(str(repo_b))])
+        manager.replace([str(repo_a)], str(repo_a), sequence=3)
+        self.assertEqual(manager.get_all(), [os.path.normpath(str(repo_a))])
+
+    def test_concurrent_replace_keeps_file_parseable(self) -> None:
+        """多线程并发写盘不能产生坏 JSON 或半截文件。"""
+        import threading
+
+        config_path = self.root / "concurrent.json"
+        manager = OpenedReposManager(config_path)
+        repos = []
+        for index in range(8):
+            repo = self.root / f"repo-{index}"
+            repo.mkdir()
+            repos.append(str(repo))
+
+        errors: list[BaseException] = []
+        start = threading.Event()
+
+        def writer(sequence: int) -> None:
+            try:
+                start.wait(5)
+                subset = repos[: (sequence % len(repos)) + 1]
+                for _ in range(20):
+                    manager.replace(subset, subset[0], sequence=sequence)
+                    # 并发读，确保读路径也不会看到半截状态
+                    manager.get_snapshot()
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [
+            threading.Thread(target=writer, args=(seq,)) for seq in range(1, 13)
+        ]
+        for thread in threads:
+            thread.start()
+        start.set()
+        for thread in threads:
+            thread.join(30)
+
+        self.assertEqual(errors, [])
+        # 文件必须始终是可解析的完整 JSON
+        saved = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertIsInstance(saved["repos"], list)
+        self.assertIn(saved["active"], saved["repos"])
+        # 最终状态必须来自序号最大的那次写入
+        self.assertEqual(
+            saved["repos"],
+            [os.path.normpath(path) for path in repos[:12 % len(repos) + 1]],
+        )
+        # 临时文件不能残留
+        leftovers = list(self.root.glob(".concurrent.json.*"))
+        self.assertEqual(leftovers, [])
+
+    def test_save_is_atomic_and_leaves_no_temp_files(self) -> None:
+        """写盘走临时文件 + 原子替换，写坏时不会毁掉已有快照。"""
+        config_path = self.root / "atomic.json"
+        manager = OpenedReposManager(config_path)
+        repo_a = self.root / "repo-a"
+        repo_a.mkdir()
+        manager.replace([str(repo_a)], str(repo_a))
+        good_content = config_path.read_text(encoding="utf-8")
+
+        # 模拟替换阶段失败：已有文件必须保持原样，且不留临时文件
+        import app.common.opened_repos as module_under_test
+
+        original_replace = module_under_test.os.replace
+
+        def failing_replace(src: str, dst: str) -> None:
+            raise OSError("模拟原子替换失败")
+
+        module_under_test.os.replace = failing_replace
+        try:
+            repo_b = self.root / "repo-b"
+            repo_b.mkdir()
+            manager.replace([str(repo_a), str(repo_b)], str(repo_b))
+        finally:
+            module_under_test.os.replace = original_replace
+
+        self.assertEqual(config_path.read_text(encoding="utf-8"), good_content)
+        self.assertEqual(list(self.root.glob(".atomic.json.*")), [])
+
     def test_get_all_prunes_missing_directories(self) -> None:
         manager = self.make_manager()
         repo_a = self.root / "repo-a"
@@ -261,17 +363,55 @@ class OpenedReposRestoreTest(unittest.TestCase):
 
         bridge = self._make_bridge()
         restored: list[tuple[list[str], str]] = []
-        bridge.openedReposRestored.connect(
-            lambda paths, active: restored.append(
-                ([str(item) for item in paths], str(active))
-            )
-        )
+        loop = QEventLoop()
+
+        def on_restored(paths: object, active: object) -> None:
+            restored.append(([str(item) for item in paths], str(active)))
+            loop.quit()
+
+        bridge.openedReposRestored.connect(on_restored)
+        QTimer.singleShot(10000, loop.quit)
         bridge.restoreLastRepoAsync()
-        self.app.processEvents()
+        loop.exec()
 
         # 必须发信号，否则前端永远停在“恢复中”，之后的快照都不会落盘。
         self.assertEqual(restored, [([], "")])
         self.assertEqual(bridge.repoPath, "")
+
+    def test_restore_does_not_stat_paths_on_main_thread(self) -> None:
+        """启动读快照必须在后台线程：exists() 遇到掉线网络盘会卡死主线程。"""
+        import threading
+
+        repo_a = init_repo(self.root / "repo-a")
+        manager = OpenedReposManager(self.root / "threaded.json")
+        manager.replace([str(repo_a)], str(repo_a))
+
+        stat_threads: list[int] = []
+        original_get_snapshot = manager.get_snapshot
+
+        def recording_get_snapshot() -> tuple[list[str], str]:
+            stat_threads.append(threading.get_ident())
+            return original_get_snapshot()
+
+        manager.get_snapshot = recording_get_snapshot
+        opened_module.openedReposManager = manager
+        recent_module.recentReposManager = RecentReposManager(
+            self.root / "recent.json"
+        )
+
+        bridge = self._make_bridge()
+        loop = QEventLoop()
+        bridge.openedReposRestored.connect(lambda *_: loop.quit())
+        QTimer.singleShot(10000, loop.quit)
+        bridge.restoreLastRepoAsync()
+        loop.exec()
+
+        self.assertEqual(len(stat_threads), 1, stat_threads)
+        self.assertNotEqual(
+            stat_threads[0],
+            threading.get_ident(),
+            "快照读取跑在了主线程上",
+        )
 
     def test_save_opened_repos_slot_writes_snapshot(self) -> None:
         repo_a = init_repo(self.root / "repo-a")

@@ -361,6 +361,31 @@ def test_repository_tab_bar_restores_and_persists_session() -> None:
     assert "D:/Repos/Gitora" in persisted_paths
     assert persisted_active == "D:/Repos/Gitora"
 
+    # 关闭“当前活动标签”：activePath 绑定 gitBridge.repoPath，要等异步打开完成
+    # 才更新，落盘时它还指向正被关闭的仓库。此刻必须写入接管的那个仓库，
+    # 否则 active 不在列表里，重启会回退到第一个标签。
+    bridge.object.saved_sessions.clear()
+    tabs_before_close = _tab_paths(bar)
+    active_index = tabs_before_close.index("D:/Repos/Gitora")
+    expected_fallback = (
+        tabs_before_close[active_index + 1]
+        if active_index < len(tabs_before_close) - 1
+        else tabs_before_close[active_index - 1]
+    )
+    bar._closePath("D:/Repos/Gitora")
+    app.processEvents()
+    assert bridge.object.saved_sessions
+    persisted_paths, persisted_active = bridge.object.saved_sessions[-1]
+    assert "D:/Repos/Gitora" not in persisted_paths
+    assert persisted_active == expected_fallback
+    # active 必须是列表成员，否则存储层只能回退到第一项。
+    assert persisted_active in persisted_paths
+
+    # 恢复现场：把 Gitora 重新作为活动仓库放回标签栏，供后续重排断言使用。
+    bridge.object._repo_path = "D:/Repos/Gitora"
+    bridge.object.repoPathChanged.emit("D:/Repos/Gitora")
+    app.processEvents()
+
     # 拖动重排必须持久化“新顺序”，而不是只触发一次写盘。
     bridge.object.saved_sessions.clear()
     order_before = _tab_paths(bar)

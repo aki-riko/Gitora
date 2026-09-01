@@ -235,6 +235,8 @@ class GitBridge(QObject):
         self._advanced_request_serial = 0
         self._open_request_serial = 0
         self._timeline_trace_sequence = 0
+        # 已打开仓库快照的写盘序号(主线程分配,用于丢弃线程池乱序的旧快照)
+        self._opened_repos_save_sequence = 0
 
         # 指纹计算放后台线程(跑 git 命令,不能阻塞主线程);
         # 用 _poll_busy 防重入,避免上一轮未完又起一轮。
@@ -533,42 +535,67 @@ class GitBridge(QObject):
         """
         if self._svc.repo_path:
             return
-        opened_repos = self.getOpenedRepos()
-        active_repo = self.getActiveOpenedRepo()
-        if not opened_repos:
-            # 旧版本升级上来没有会话快照，退回最近一次打开的仓库。
-            recent_repos = self.getRecentRepos()
-            opened_repos = recent_repos[:1]
-            active_repo = opened_repos[0] if opened_repos else ""
-        if not active_repo and opened_repos:
-            active_repo = opened_repos[0]
 
-        # 即使快照为空也要发信号：标签栏据此结束“恢复中”状态，之后才允许回写。
-        self.openedReposRestored.emit(opened_repos, active_repo)
-        if active_repo:
-            self.openRepoAsync(active_repo)
+        def read_snapshot() -> tuple[list, str]:
+            """后台读快照：每个路径一次 exists()，不能放主线程。"""
+            from app.common.opened_repos import openedReposManager
+            opened_repos, active_repo = openedReposManager.get_snapshot()
+            if not opened_repos:
+                # 旧版本升级上来没有会话快照，退回最近一次打开的仓库。
+                from app.common.recent_repos import recentReposManager
+                opened_repos = recentReposManager.get_all()[:1]
+                active_repo = opened_repos[0] if opened_repos else ""
+            if not active_repo and opened_repos:
+                active_repo = opened_repos[0]
+            return opened_repos, active_repo
+
+        def apply_snapshot(result: object) -> None:
+            try:
+                opened_repos, active_repo = result
+            except (TypeError, ValueError):
+                logger.error(f"已打开仓库快照返回值无效: {result!r}")
+                self.openedReposRestored.emit([], "")
+                return
+            # 即使快照为空也要发信号：标签栏据此结束“恢复中”状态，之后才允许回写。
+            self.openedReposRestored.emit(opened_repos, active_repo)
+            if active_repo:
+                self.openRepoAsync(active_repo)
+
+        return self._submit_query(
+            read_snapshot,
+            label="读取已打开仓库快照",
+            on_success=apply_snapshot,
+            # 读失败也要放行前端，否则标签栏永远停在“恢复中”，之后都不回写。
+            on_failure=lambda _exc: self.openedReposRestored.emit([], ""),
+        )
 
     @Slot(result="QVariantList")
     def getOpenedRepos(self) -> list:
-        """上次会话仍然打开的仓库 -> [path, ...]"""
+        """上次会话仍然打开的仓库 -> [path, ...]（含磁盘检查，勿在主线程调）"""
         from app.common.opened_repos import openedReposManager
         return openedReposManager.get_all()
 
     @Slot(result=str)
     def getActiveOpenedRepo(self) -> str:
-        """上次会话的活动仓库路径。"""
+        """上次会话的活动仓库路径（含磁盘检查，勿在主线程调）"""
         from app.common.opened_repos import openedReposManager
         return openedReposManager.get_active()
 
     @Slot("QVariantList", str)
-    def saveOpenedRepos(self, paths: list, active: str = ""):
-        """保存当前打开的标签页快照；写盘放后台线程，不阻塞主线程。"""
+    def saveOpenedRepos(self, paths: list, active: str):
+        """保存当前打开的标签页快照；写盘放后台线程，不阻塞主线程。
+
+        序号在主线程按调用顺序分配，随快照带到后台；线程池不保证完成顺序，
+        靠它丢弃迟到的旧快照，避免旧状态覆盖新状态。
+        """
         snapshot = [str(path) for path in (paths or []) if str(path or "")]
         active_path = str(active or "")
+        self._opened_repos_save_sequence += 1
+        sequence = self._opened_repos_save_sequence
 
         def persist() -> None:
             from app.common.opened_repos import openedReposManager
-            openedReposManager.replace(snapshot, active_path)
+            openedReposManager.replace(snapshot, active_path, sequence=sequence)
 
         return self._submit_query(persist, label="保存已打开仓库")
 

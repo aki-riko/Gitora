@@ -84,15 +84,22 @@ Item {
 
     // 把当前标签页快照写回后端；只在结构变化(新增/关闭/排序/切换)后调用，
     // 状态刷新不落盘。写盘本身在后端后台线程执行。
-    function _persistSession() {
+    // activeOverride 传空串表示“用当前 activePath”。
+    // 关闭当前活动标签时 activePath 仍指向正在关闭的仓库(它绑定
+    // gitBridge.repoPath,要等异步打开完成才更新),此时必须显式传入接管的目标
+    // 仓库,否则落盘的 active 不在列表里,重启会回退到第一个标签。
+    function _persistSessionWithActive(activeOverride) {
         if (!_sessionRestored || !gitBridge || !gitBridge.saveOpenedRepos) return
         var paths = []
         for (var i = 0; i < _tabs.length; i++) {
             var value = String(_tabs[i].path || "")
             if (value !== "") paths.push(value)
         }
-        gitBridge.saveOpenedRepos(paths, activePath)
+        var override = String(activeOverride || "")
+        gitBridge.saveOpenedRepos(paths, override !== "" ? override : activePath)
     }
+
+    function _persistSession() { _persistSessionWithActive("") }
 
     // 启动时按上次会话快照重建全部标签；活动仓库由后端并行打开。
     function restoreSession(paths, active) {
@@ -231,10 +238,13 @@ Item {
         if (activeWillClose) {
             _closingActivePath = activePath
             _selectPath(fallbackPath)
+            // 关掉的是活动标签：activePath 此刻还是那个正在关闭的仓库，
+            // 必须按接管的 fallbackPath 落盘。
+            _persistSessionWithActive(fallbackPath)
         } else {
             _syncCurrentIndex()
+            _persistSession()
         }
-        _persistSession()
         return true
     }
 
