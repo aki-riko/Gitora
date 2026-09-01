@@ -304,6 +304,14 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     _destroy_repository_scene(app, engine, component, window)
 
 
+def _tab_paths(bar) -> list[str]:
+    """读取标签栏当前可见顺序的仓库路径。"""
+    tabs = bar.property("_tabs")
+    if hasattr(tabs, "toVariant"):
+        tabs = tabs.toVariant()
+    return [str(tab["path"]) for tab in (tabs or [])]
+
+
 def test_repository_tab_bar_restores_and_persists_session() -> None:
     from PySide6.QtCore import QObject
 
@@ -353,11 +361,36 @@ def test_repository_tab_bar_restores_and_persists_session() -> None:
     assert "D:/Repos/Gitora" in persisted_paths
     assert persisted_active == "D:/Repos/Gitora"
 
-    # 拖动重排也要持久化顺序。
+    # 拖动重排必须持久化“新顺序”，而不是只触发一次写盘。
     bridge.object.saved_sessions.clear()
+    order_before = _tab_paths(bar)
     bar._reorderTabs(0, 1)
     app.processEvents()
     assert bridge.object.saved_sessions
+    persisted_paths, _persisted_active = bridge.object.saved_sessions[-1]
+    expected_order = order_before[:]
+    expected_order.insert(1, expected_order.pop(0))
+    assert persisted_paths == expected_order
+    assert persisted_paths != order_before
+    # 落盘顺序必须与标签栏当前可见顺序一致。
+    assert persisted_paths == _tab_paths(bar)
+
+    # 真实拖拽路径：引擎 TabBar 释放拖拽时发 tabsReordered，
+    # 必须走到同一条持久化分支（而不是只有直接调 _reorderTabs 才生效）。
+    fluent_bar = window.findChild(QObject, "repositoryFluentTabBar")
+    assert fluent_bar is not None
+    assert fluent_bar.property("movable")
+    bridge.object.saved_sessions.clear()
+    order_before = _tab_paths(bar)
+    last_index = len(order_before) - 1
+    fluent_bar.tabsReordered.emit(last_index, 0)
+    app.processEvents()
+    assert bridge.object.saved_sessions
+    persisted_paths, _persisted_active = bridge.object.saved_sessions[-1]
+    expected_order = order_before[:]
+    expected_order.insert(0, expected_order.pop(last_index))
+    assert persisted_paths == expected_order
+    assert persisted_paths == _tab_paths(bar)
 
     _destroy_repository_scene(app, engine, component, window)
 

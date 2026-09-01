@@ -80,6 +80,34 @@ class OpenedReposManagerTest(unittest.TestCase):
         manager.replace([str(repo_b)], str(repo_a))
         self.assertEqual(manager.get_active(), os.path.normpath(str(repo_b)))
 
+    def test_reorder_persists_new_order(self) -> None:
+        """拖动标签页改变顺序后，落盘顺序必须跟着变（不能被当成无变化跳过）。"""
+        config_path = self.root / "reorder.json"
+        manager = OpenedReposManager(config_path)
+        repo_a = self.root / "repo-a"
+        repo_b = self.root / "repo-b"
+        repo_c = self.root / "repo-c"
+        for repo in (repo_a, repo_b, repo_c):
+            repo.mkdir()
+
+        manager.replace([str(repo_a), str(repo_b), str(repo_c)], str(repo_a))
+        # 把 repo-c 拖到最前面。
+        manager.replace([str(repo_c), str(repo_a), str(repo_b)], str(repo_a))
+
+        expected = [
+            os.path.normpath(str(repo_c)),
+            os.path.normpath(str(repo_a)),
+            os.path.normpath(str(repo_b)),
+        ]
+        self.assertEqual(manager.get_all(), expected)
+        saved = json.loads(config_path.read_text(encoding="utf-8"))
+        self.assertEqual(saved["repos"], expected)
+        # 活动仓库不受重排影响。
+        self.assertEqual(saved["active"], os.path.normpath(str(repo_a)))
+
+        # 重启后读回的仍是拖动后的顺序。
+        self.assertEqual(OpenedReposManager(config_path).get_all(), expected)
+
     def test_get_all_prunes_missing_directories(self) -> None:
         manager = self.make_manager()
         repo_a = self.root / "repo-a"
