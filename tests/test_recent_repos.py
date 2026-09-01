@@ -9,7 +9,9 @@ from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
 
+from app.common import opened_repos as opened_module
 from app.common import recent_repos as recent_module
+from app.common.opened_repos import OpenedReposManager
 from app.common.recent_repos import RecentReposManager
 from app_qml.backend.git_bridge import GitBridge
 
@@ -140,6 +142,11 @@ class RecentReposTest(unittest.TestCase):
 
         previous_manager = recent_module.recentReposManager
         recent_module.recentReposManager = RecentReposManager(config_path)
+        # 会话快照为空时才会走“最近仓库”回退路径，这里显式隔离掉真实用户快照。
+        previous_opened_manager = opened_module.openedReposManager
+        opened_module.openedReposManager = OpenedReposManager(
+            self.root / "restart_opened_repos.json"
+        )
         bridge = GitBridge()
         restored: list[tuple[bool, str]] = []
         loop = QEventLoop()
@@ -166,6 +173,7 @@ class RecentReposTest(unittest.TestCase):
             bridge._poll_timer.stop()
             bridge.deleteLater()
             recent_module.recentReposManager = previous_manager
+            opened_module.openedReposManager = previous_opened_manager
             app.processEvents()
 
     def test_main_schedules_restore_only_after_qml_load(self) -> None:

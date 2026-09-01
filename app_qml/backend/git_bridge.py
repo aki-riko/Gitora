@@ -177,6 +177,8 @@ class GitBridge(QObject):
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
     repoOpenRejected = Signal(str, str)  # (请求路径, 拒绝原因)
+    # 启动恢复上次会话的标签页(全部已打开仓库, 活动仓库)
+    openedReposRestored = Signal("QVariantList", str)
     statusReady = Signal(str, int)              # 后台状态就绪(repoPath, 变更数量)
     branchReady = Signal(str, str)             # 后台当前分支就绪(repoPath, 分支)
     historyCountReady = Signal(str, int, bool)  # (repoPath, 总提交数, 是否全部引用)
@@ -524,12 +526,51 @@ class GitBridge(QObject):
 
     @Slot()
     def restoreLastRepoAsync(self):
-        """启动时异步恢复最近一次成功打开的仓库。"""
+        """启动时异步恢复上次关闭时仍然打开的全部仓库标签页。
+
+        标签栏先按快照重建全部标签，再只真正打开活动仓库；其余标签保持
+        未读取状态，等用户点选时才走 openRepoAsync，避免启动时批量跑 Git。
+        """
         if self._svc.repo_path:
             return
-        recent_repos = self.getRecentRepos()
-        if recent_repos:
-            self.openRepoAsync(recent_repos[0])
+        opened_repos = self.getOpenedRepos()
+        active_repo = self.getActiveOpenedRepo()
+        if not opened_repos:
+            # 旧版本升级上来没有会话快照，退回最近一次打开的仓库。
+            recent_repos = self.getRecentRepos()
+            opened_repos = recent_repos[:1]
+            active_repo = opened_repos[0] if opened_repos else ""
+        if not active_repo and opened_repos:
+            active_repo = opened_repos[0]
+
+        # 即使快照为空也要发信号：标签栏据此结束“恢复中”状态，之后才允许回写。
+        self.openedReposRestored.emit(opened_repos, active_repo)
+        if active_repo:
+            self.openRepoAsync(active_repo)
+
+    @Slot(result="QVariantList")
+    def getOpenedRepos(self) -> list:
+        """上次会话仍然打开的仓库 -> [path, ...]"""
+        from app.common.opened_repos import openedReposManager
+        return openedReposManager.get_all()
+
+    @Slot(result=str)
+    def getActiveOpenedRepo(self) -> str:
+        """上次会话的活动仓库路径。"""
+        from app.common.opened_repos import openedReposManager
+        return openedReposManager.get_active()
+
+    @Slot("QVariantList", str)
+    def saveOpenedRepos(self, paths: list, active: str = ""):
+        """保存当前打开的标签页快照；写盘放后台线程，不阻塞主线程。"""
+        snapshot = [str(path) for path in (paths or []) if str(path or "")]
+        active_path = str(active or "")
+
+        def persist() -> None:
+            from app.common.opened_repos import openedReposManager
+            openedReposManager.replace(snapshot, active_path)
+
+        return self._submit_query(persist, label="保存已打开仓库")
 
     @Slot(result="QVariantList")
     def getRecentRepos(self) -> list:

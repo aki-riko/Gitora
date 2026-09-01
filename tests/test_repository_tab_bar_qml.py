@@ -28,6 +28,7 @@ class _DummyGitBridge:
             repoPathChanged = Signal(str)
             repoOpened = Signal(bool, str)
             repoOpenRejected = Signal(str, str)
+            openedReposRestored = Signal("QVariantList", str)
             statusChanged = Signal()
             statusReady = Signal(str, int)
             branchReady = Signal(str, str)
@@ -35,6 +36,7 @@ class _DummyGitBridge:
             def __init__(self, path: str) -> None:
                 super().__init__()
                 self._repo_path = path
+                self.saved_sessions: list[tuple[list[str], str]] = []
 
             def _get_repo_path(self) -> str:
                 return self._repo_path
@@ -42,6 +44,12 @@ class _DummyGitBridge:
             @Slot(result="QVariantList")
             def getRecentRepos(self) -> list[str]:
                 return ["D:/Repos/PrismQML", "D:/Repos/Kaleidos"]
+
+            @Slot("QVariantList", str)
+            def saveOpenedRepos(self, paths: list, active: str) -> None:
+                self.saved_sessions.append(
+                    ([str(item) for item in (paths or [])], str(active or ""))
+                )
 
             @Slot()
             def requestStatus(self) -> None:
@@ -293,6 +301,64 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     assert bar.property("tabCount") == 2
 
     context_menu.forceReset()
+    _destroy_repository_scene(app, engine, component, window)
+
+
+def test_repository_tab_bar_restores_and_persists_session() -> None:
+    from PySide6.QtCore import QObject
+
+    app, engine, component, window, bridge = _create_repository_scene()
+    bar = window.findChild(QObject, "repositoryTabBar")
+    assert bar is not None
+
+    # 恢复完成前不允许回写，避免用启动中的空标签覆盖上次会话快照。
+    assert not bar.property("_sessionRestored")
+    bar._persistSession()
+    assert bridge.object.saved_sessions == []
+
+    session_paths = [
+        "D:/Repos/PrismQML",
+        "d:/repos/prismqml",
+        "D:/Repos/Kaleidos",
+        "D:/Repos/Mojin",
+    ]
+    bridge.object.openedReposRestored.emit(session_paths, "D:/Repos/Kaleidos")
+    app.processEvents()
+
+    expected_count = 3 if os.name == "nt" else 4
+    assert bar.property("tabCount") == expected_count
+    assert bar.property("_sessionRestored")
+    assert bar._indexForPath("D:/Repos/PrismQML") == 0
+    assert bar._indexForPath("D:/Repos/Kaleidos") == expected_count - 2
+    assert bar._indexForPath("D:/Repos/Mojin") == expected_count - 1
+    # 恢复出的标签不包含未在快照里的当前 repoPath。
+    assert bar._indexForPath("D:/Repos/Gitora") == -1
+    assert bridge.object.saved_sessions == []
+
+    # 关闭标签页后立刻落盘，快照里不再有被关掉的仓库。
+    bar._closePath("D:/Repos/Mojin")
+    app.processEvents()
+    assert bridge.object.saved_sessions
+    persisted_paths, _persisted_active = bridge.object.saved_sessions[-1]
+    assert "D:/Repos/Mojin" not in persisted_paths
+    assert len(persisted_paths) == expected_count - 1
+
+    # 打开新仓库后同样落盘，且带上当前活动仓库。
+    bridge.object.saved_sessions.clear()
+    bridge.object._repo_path = "D:/Repos/Gitora"
+    bridge.object.repoPathChanged.emit("D:/Repos/Gitora")
+    app.processEvents()
+    assert bridge.object.saved_sessions
+    persisted_paths, persisted_active = bridge.object.saved_sessions[-1]
+    assert "D:/Repos/Gitora" in persisted_paths
+    assert persisted_active == "D:/Repos/Gitora"
+
+    # 拖动重排也要持久化顺序。
+    bridge.object.saved_sessions.clear()
+    bar._reorderTabs(0, 1)
+    app.processEvents()
+    assert bridge.object.saved_sessions
+
     _destroy_repository_scene(app, engine, component, window)
 
 

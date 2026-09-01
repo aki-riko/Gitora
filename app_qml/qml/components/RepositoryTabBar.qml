@@ -24,6 +24,8 @@ Item {
     property var _pickerPaths: []
     property string _closingActivePath: ""
     property string _contextMenuPath: ""
+    // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
+    property bool _sessionRestored: false
 
     // ==================== Signals 信号 ====================
     signal repositorySelected(string path)
@@ -79,6 +81,46 @@ Item {
     }
 
     function ensurePath(path) { return _appendPath(path) }
+
+    // 把当前标签页快照写回后端；只在结构变化(新增/关闭/排序/切换)后调用，
+    // 状态刷新不落盘。写盘本身在后端后台线程执行。
+    function _persistSession() {
+        if (!_sessionRestored || !gitBridge || !gitBridge.saveOpenedRepos) return
+        var paths = []
+        for (var i = 0; i < _tabs.length; i++) {
+            var value = String(_tabs[i].path || "")
+            if (value !== "") paths.push(value)
+        }
+        gitBridge.saveOpenedRepos(paths, activePath)
+    }
+
+    // 启动时按上次会话快照重建全部标签；活动仓库由后端并行打开。
+    function restoreSession(paths, active) {
+        var values = []
+        var seen = ({})
+        for (var i = 0; i < (paths || []).length; i++) {
+            var value = String(paths[i] || "")
+            var key = _pathKey(value)
+            if (value !== "" && !seen[key]) {
+                seen[key] = true
+                values.push(value)
+            }
+        }
+        if (values.length === 0) {
+            _sessionRestored = true
+            return
+        }
+
+        var next = []
+        for (var j = 0; j < values.length; j++) next.push(_newTab(values[j]))
+        _tabs = next
+
+        var activePathValue = String(active || "")
+        if (activePathValue !== "" && _indexForPath(activePathValue) >= 0)
+            _setPending(activePathValue, true)
+        _syncCurrentIndex()
+        _sessionRestored = true
+    }
 
     function setOpenedPaths(paths) {
         var values = []
@@ -192,6 +234,7 @@ Item {
         } else {
             _syncCurrentIndex()
         }
+        _persistSession()
         return true
     }
 
@@ -242,6 +285,7 @@ Item {
         var moved = next.splice(from, 1)[0]
         next.splice(to, 0, moved)
         _tabs = next
+        _persistSession()
     }
 
     function _refreshPickerPaths() {
@@ -342,11 +386,16 @@ Item {
         target: root.gitBridge
         enabled: !!root.gitBridge
 
+        function onOpenedReposRestored(paths, active) {
+            root.restoreSession(paths, active)
+        }
+
         function onRepoPathChanged(path) {
             root.ensurePath(path)
             root._setPending(path, false)
             root._closingActivePath = ""
             root._syncCurrentIndex()
+            root._persistSession()
             if (root.gitBridge.requestStatus) root.gitBridge.requestStatus()
         }
 
@@ -355,6 +404,7 @@ Item {
                 root.ensurePath(value)
                 root._setPending(value, false)
                 root._syncCurrentIndex()
+                root._persistSession()
             } else {
                 root._markOpenFailed(value)
                 root._syncCurrentIndex()
