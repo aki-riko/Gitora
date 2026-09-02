@@ -344,9 +344,16 @@ def _run_probe(repo: Path) -> int:
             raise AssertionError("timeline did not settle at start")
         _pump(1000)
 
+        # 引擎 0.4.2.3 起 Timeline 开启 _visualOvershootEnabled，contentY 被夹紧在
+        # [minScroll, maxScroll] 内，越界量改由 _visualOvershootOffset 表达并平移行委托。
+        # 因此越界断言必须观测该偏移；contentY 仅留作诊断。顶部越界时偏移为正值。
         samples: list[float] = []
+        overshoots: list[float] = []
         viewport.contentYChanged.connect(
             lambda: samples.append(float(viewport.property("contentY")))
+        )
+        helper._visualOvershootOffsetChanged.connect(
+            lambda: overshoots.append(float(helper.property("_visualOvershootOffset")))
         )
         for wheel_index in range(6):
             _send_wheel(root, viewport, 120)
@@ -376,29 +383,38 @@ def _run_probe(repo: Path) -> int:
             )
         minimum = float(helper.property("minScroll"))
         maximum_overshoot = float(helper.property("_maxOvershoot"))
-        if not any(value < minimum - 1 for value in samples):
-            raise AssertionError({"phase": "overshoot", "samples": samples})
-        if any(value < minimum - maximum_overshoot - 1 for value in samples):
+        # contentY 被引擎夹紧，越界不再体现在这里；留作失败时的诊断线索。
+        if any(value < minimum - 1 for value in samples):
             raise AssertionError(
                 {
-                    "phase": "overshoot_limit",
+                    "phase": "content_y_should_stay_clamped",
                     "minimum": minimum,
-                    "maximum_overshoot": maximum_overshoot,
                     "samples": samples,
                 }
             )
-        lowest_index = min(range(len(samples)), key=samples.__getitem__)
-        outward = samples[: lowest_index + 1]
+        if not any(value > 1 for value in overshoots):
+            raise AssertionError({"phase": "overshoot", "overshoots": overshoots})
+        if any(value > maximum_overshoot + 1 for value in overshoots):
+            raise AssertionError(
+                {
+                    "phase": "overshoot_limit",
+                    "maximum_overshoot": maximum_overshoot,
+                    "overshoots": overshoots,
+                }
+            )
+        # 偏移越大代表越界越深，故外移段以最大偏移为界；滚轮未松开期间不应出现回落。
+        highest_index = max(range(len(overshoots)), key=overshoots.__getitem__)
+        outward = overshoots[: highest_index + 1]
         yanks = [
             (index, outward[index - 1], outward[index])
             for index in range(1, len(outward))
-            if outward[index] > outward[index - 1] + 2
+            if outward[index] < outward[index - 1] - 2
         ]
         if yanks:
             raise AssertionError({"phase": "mid_burst_realign", "yanks": yanks})
         print(
             f"{PROBE_MARKER} count={root.property('probeCommitCount')} "
-            f"samples={','.join(f'{value:.1f}' for value in samples)}"
+            f"overshoots={','.join(f'{value:.1f}' for value in overshoots)}"
         )
     finally:
         root.close()
