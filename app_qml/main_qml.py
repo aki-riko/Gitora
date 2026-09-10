@@ -23,6 +23,17 @@ def _env_flag(name: str) -> bool:
         "1", "true", "yes", "on"
     }
 
+
+def _env_int(name: str, fallback: int) -> int:
+    """Parse an opt-in integer environment value, keeping the fallback on junk."""
+    raw = os.environ.get(name, "").strip()
+    if not raw:
+        return fallback
+    try:
+        return int(raw)
+    except ValueError:
+        return fallback
+
 # ---- 是否为 Nuitka 打包态 ----
 def _is_frozen() -> bool:
     return "__compiled__" in globals() or getattr(sys, "frozen", False)
@@ -447,6 +458,26 @@ def main() -> int:
 
         get_logger("Gitora").info(
             "[TIMELINE_TRACE] enabled env=GITORA_TIMELINE_TRACE"
+        )
+    # 主线程停顿观测（默认关闭）：GITORA_STALL_TRACE=1 时按固定间隔打点，
+    # 记录超过阈值的停顿与当时的顶层窗口数，用于定位“长时间运行后响应变慢”。
+    stall_trace_enabled = _env_flag("GITORA_STALL_TRACE")
+    stall_interval_ms = max(
+        20, _env_int("GITORA_STALL_TRACE_INTERVAL_MS", 100)
+    )
+    stall_threshold_ms = max(
+        stall_interval_ms * 2, _env_int("GITORA_STALL_TRACE_THRESHOLD_MS", 250)
+    )
+    ctx.setContextProperty("GitoraStallTraceEnabled", stall_trace_enabled)
+    ctx.setContextProperty("GitoraStallTraceIntervalMs", stall_interval_ms)
+    ctx.setContextProperty("GitoraStallTraceThresholdMs", stall_threshold_ms)
+    if stall_trace_enabled:
+        from app.common.logger import get_logger
+
+        get_logger("Gitora").info(
+            "[STALL_TRACE] enabled interval=%dms threshold=%dms",
+            stall_interval_ms,
+            stall_threshold_ms,
         )
     app._qml_render_bridge = qml_render_bridge
     app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive

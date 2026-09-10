@@ -108,3 +108,13 @@ mac CI 与 Windows 打包互不依赖,可并行:先 `gh workflow run build-macos
 - 观测使用环境变量 `GITORA_TIMELINE_TRACE=1`,日志写入 `%LOCALAPPDATA%\\Gitora\\logs\\`;观测代码默认关闭。排查结束后执行 `Remove-Item Env:GITORA_TIMELINE_TRACE -ErrorAction SilentlyContinue` (或设为 `0`),完全退出并重启应用,避免把 DEBUG 观测状态当成修复条件。
 
 该问题的验收必须使用真实的虚拟 Timeline 连续同向 wheel 序列:首次越界能力仍保留,滚轮未松开期间不出现边界往返或反向明显跳变,动态委托重测不再让旧边界与新边界互相拉扯,反向输入后仍可重新触发正常回弹。修复应归属于统一的滚动/视觉位移仲裁层,不能把刷新回填逻辑当作滚动状态机。
+
+## 十一、主线程停顿观测(长跑变慢类问题的第一手证据)
+
+“长时间运行后点击/下拉响应变慢甚至卡住”属于**主线程被占住**或**渲染/原生资源累积**两类问题之一。没有真实停顿数据时禁止直接归因于引擎弹层或业务刷新,先上观测:
+
+- 观测开关 `GITORA_STALL_TRACE=1`;打点间隔 `GITORA_STALL_TRACE_INTERVAL_MS`(默认 100),停顿阈值 `GITORA_STALL_TRACE_THRESHOLD_MS`(默认 250,且被强制 >= 间隔×2)。
+- 每条记录形如 `[STALL_TRACE] #N t=<ms> gap=<实际间隔>ms interval=.. threshold=.. busy=<Git 操作中?> windows=<进程顶层窗口数>`,写入 `%LOCALAPPDATA%\Gitora\logs\gitess_YYYYMMDD.log`。
+- 判读方式:`gap` 变大且 `busy=true` / 与刷新链路事件同时出现 → 业务主线程被占住;`gap` 变大但 `busy=false` 且 `windows` 持续增长 → 原生窗口/渲染资源累积,按引擎侧处理;`gap` 正常而弹层仍慢 → 问题在弹层的显示路径而不是主线程调度。
+- QML 的 `console` 输出**不会**落进 Gitora 日志文件,观测必须经 `QmlRenderBridge.logStallTrace` 写日志(`StallTraceProbe` 已如此实现)。
+- 观测默认关闭,启用后必须完整重启应用;排查结束执行 `Remove-Item Env:GITORA_STALL_TRACE -ErrorAction SilentlyContinue`(或设为 `0`)并再次完整重启,禁止把观测状态当成修复条件。

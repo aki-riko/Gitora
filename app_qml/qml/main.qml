@@ -47,6 +47,19 @@ QtObject {
     property var windowInstance: null
     property var toastProgressHostInstance: null
 
+    // 可选主线程停顿观测（GITORA_STALL_TRACE=1）：默认关闭，关闭时不建定时器。
+    property StallTraceProbe stallTraceProbe: StallTraceProbe {
+        enabled: typeof GitoraStallTraceEnabled !== "undefined"
+            && GitoraStallTraceEnabled
+        intervalMs: typeof GitoraStallTraceIntervalMs !== "undefined"
+            ? GitoraStallTraceIntervalMs : 100
+        thresholdMs: typeof GitoraStallTraceThresholdMs !== "undefined"
+            ? GitoraStallTraceThresholdMs : 250
+        gitBridge: typeof GitBridge !== "undefined" ? GitBridge : null
+        renderBridge: typeof QmlRenderBridge !== "undefined"
+            ? QmlRenderBridge : null
+    }
+
     function applyNativeWindowIcon(targetWindow) {
         if (!targetWindow || typeof WindowIconBridge === "undefined") return
         let iconSource = (typeof AppIconFile !== "undefined" && AppIconFile !== "") ? AppIconFile : targetWindow.windowIcon
