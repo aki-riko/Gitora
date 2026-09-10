@@ -12,7 +12,30 @@ Item {
 
     property string _gitUserName: ""
     property string _gitUserEmail: ""
+    property bool _gitUserLoaded: false
+    property bool _gitUserReadFailed: false
     readonly property var _autoUpdater: Window.window ? Window.window.autoUpdaterController : null
+
+    // 提交用户卡片的提示状态：说明用途、是否已配置、以及邮箱会写进提交记录这件事。
+    readonly property bool _gitUserFilled:
+        _gitUserName.trim().length > 0 && _gitUserEmail.trim().length > 0
+    readonly property bool _gitUserEmailLooksValid:
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(_gitUserEmail.trim())
+    readonly property bool _gitUserNeedsAttention:
+        _gitUserReadFailed || !_gitUserFilled || !_gitUserEmailLooksValid
+    readonly property string _gitUserStateText: {
+        if (_gitUserReadFailed)
+            return "读取全局 Git 配置失败，可点「重新读取」重试；也可以直接填写并保存。"
+        if (!_gitUserFilled)
+            return _gitUserLoaded
+                ? "全局 Git 配置里还没有完整的用户名和邮箱。两项都填好才能保存：Git 提交必须带作者身份，缺一项就无法提交。"
+                : "正在读取全局 Git 配置…"
+        var identity = _gitUserName.trim() + " <" + _gitUserEmail.trim() + ">"
+        if (!_gitUserEmailLooksValid)
+            return "已读取 " + identity + "：邮箱缺少 @ 和域名，提交记录会原样写入。"
+                + "不想暴露私人邮箱的话，可以填 GitHub 提供的 USERNAME@users.noreply.github.com。"
+        return "已读取 " + identity + "，保存会写入全局 Git 配置。"
+    }
 
     Component.onCompleted: root._loadGitUserInfo()
 
@@ -128,12 +151,42 @@ Item {
                             }
 
                             Text {
-                                text: "保存到全局 Git 配置"
+                                text: "Git 提交的作者身份，保存到全局 Git 配置（user.name / user.email）；"
+                                    + "仓库内 .git/config 的同名配置会覆盖这里的值。"
+                                    + "提交会把邮箱写进每一条提交记录，不想用私人邮箱可填代码托管平台提供的匿名邮箱。"
                                 color: Fluent.Enums.textColor.tertiary
                                 font.family: Fluent.Enums.fontFamily
                                 font.pixelSize: Fluent.Enums.typography.caption
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Fluent.Enums.spacing.s
+
+                                Rectangle {
+                                    width: 8
+                                    height: 8
+                                    radius: 4
+                                    Layout.alignment: Qt.AlignVCenter
+                                    color: root._gitUserNeedsAttention
+                                        ? Fluent.Enums.statusLevel.getColor(
+                                            Fluent.Enums.statusLevel.warningStr)
+                                        : Fluent.Enums.statusLevel.getColor(
+                                            Fluent.Enums.statusLevel.successStr)
+                                }
+
+                                Text {
+                                    objectName: "gitUserStateText"
+                                    Layout.fillWidth: true
+                                    Layout.minimumWidth: 0
+                                    text: root._gitUserStateText
+                                    color: Fluent.Enums.textColor.tertiary
+                                    font.family: Fluent.Enums.fontFamily
+                                    font.pixelSize: Fluent.Enums.typography.caption
+                                    wrapMode: Text.WordWrap
+                                }
                             }
 
                             GridLayout {
@@ -145,6 +198,7 @@ Item {
 
                                 Fluent.LineEdit {
                                     id: gitUserNameInput
+                                    objectName: "gitUserNameInput"
                                     Layout.fillWidth: true
                                     placeholderText: "用户名"
                                     text: root._gitUserName
@@ -153,6 +207,7 @@ Item {
 
                                 Fluent.LineEdit {
                                     id: gitUserEmailInput
+                                    objectName: "gitUserEmailInput"
                                     Layout.fillWidth: true
                                     placeholderText: "邮箱"
                                     text: root._gitUserEmail
@@ -371,10 +426,24 @@ Item {
     function _loadGitUserInfo() {
         if (!GitBridge) return
         var task = GitBridge.getGlobalUserInfo()
+        if (!task) {
+            root._gitUserReadFailed = true
+            return
+        }
         task.succeeded.connect(function(result) {
-            if (!result || result.length < 2) return
+            if (!result || result.length < 2) {
+                root._gitUserReadFailed = true
+                return
+            }
+            root._gitUserReadFailed = false
             root._gitUserName = result[0] || ""
             root._gitUserEmail = result[1] || ""
+            root._gitUserLoaded = true
+        })
+        task.failed.connect(function(failure) {
+            // 读取失败要如实说明，而不是让空字段看起来像"没配置"。
+            root._gitUserReadFailed = true
+            root._gitUserLoaded = true
         })
     }
 
