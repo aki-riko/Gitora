@@ -294,6 +294,17 @@ ColumnLayout {
         root._syncingModel = false;
     }
 
+    // PrismQML ComboBox 在 model 变更的同一拍仍然用旧模型同步 currentText，
+    // 于是「整表替换后索引恰好没变」时，收起状态下显示的模型名会停留在旧模型上。
+    // 这里在落定索引后显式把显示文本对齐到新模型，避免列表已更新而框内文字说谎。
+    function applyModelSelection(combo, values, selected) {
+        var index = selected.length > 0 ? values.indexOf(selected) : -1;
+        combo.currentIndex = index;
+        var expected = index >= 0 ? String(values[index]) : "";
+        if (combo.currentText !== expected)
+            combo.currentText = expected;
+    }
+
     function ensureConfiguredModel(remote) {
         if (root._syncingModel)
             return;
@@ -337,11 +348,11 @@ ColumnLayout {
         if (remote) {
             root.remoteModels = values;
             root.remoteModel = selected;
-            remoteModelCombo.currentIndex = values.indexOf(selected);
+            root.applyModelSelection(remoteModelCombo, values, selected);
         } else {
             root.localModels = values;
             root.localModel = selected;
-            localModelCombo.currentIndex = values.indexOf(selected);
+            root.applyModelSelection(localModelCombo, values, selected);
         }
         root._syncingModel = false;
     }

@@ -410,8 +410,12 @@ class AiCommitBridge(QObject):
         def publish(ok: bool, models: list[str], message: str) -> None:
             if not self._is_serial_current(serial, cancel_event):
                 return
-            self._set_busy_if_current(serial, False)
+            # 先交付结果再解除 busy：QML 侧在 busy 结束时会清掉本次拉取的
+            # 「提供方/地址」上下文，若先发 busyChanged，modelListFinished 会
+            # 因为上下文已被清空而被判定为过期结果丢弃，导致刷新模型后下拉框
+            # 依然只有旧模型。
             self.modelListFinished.emit(provider_id, ok, models, message)
+            self._set_busy_if_current(serial, False)
 
         def succeeded(available: object) -> None:
             models = list(available)
