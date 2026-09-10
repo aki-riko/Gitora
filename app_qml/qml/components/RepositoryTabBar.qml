@@ -189,6 +189,9 @@ Item {
     }
 
     function _updateBranch(path, branch) {
+        // 后台补齐的分支结果可能晚于用户关闭该标签；这里只更新已存在的标签，
+        // 不能让迟到的结果把已关闭的标签重新创建出来。
+        if (_indexForPath(path) < 0) return
         var value = String(branch || "")
         _updateTab(path, {
             branch: value,

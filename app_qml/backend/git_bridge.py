@@ -231,6 +231,8 @@ class GitBridge(QObject):
         self._current_branch_request_serial = 0
         self._history_count_request_serial = 0
         self._branches_request_serial = 0
+        self._tab_branches_request_serial = 0
+        self._tab_branches_task = None
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
         self._open_request_serial = 0
@@ -530,8 +532,9 @@ class GitBridge(QObject):
     def restoreLastRepoAsync(self):
         """启动时异步恢复上次关闭时仍然打开的全部仓库标签页。
 
-        标签栏先按快照重建全部标签，再只真正打开活动仓库；其余标签保持
-        未读取状态，等用户点选时才走 openRepoAsync，避免启动时批量跑 Git。
+        标签栏先按快照重建全部标签，再只真正打开活动仓库；活动仓库之外的分支
+        由一个后台任务串行补齐（见 ``requestTabBranches``），既不用等用户逐个
+        点选才显示分支，也不会在启动瞬间并发拉起多个 Git 进程。
         """
         if self._svc.repo_path:
             return
@@ -560,6 +563,7 @@ class GitBridge(QObject):
             self.openedReposRestored.emit(opened_repos, active_repo)
             if active_repo:
                 self.openRepoAsync(active_repo)
+            self.requestTabBranches(opened_repos, active_repo)
 
         return self._submit_query(
             read_snapshot,
@@ -568,6 +572,67 @@ class GitBridge(QObject):
             # 读失败也要放行前端，否则标签栏永远停在“恢复中”，之后都不回写。
             on_failure=lambda _exc: self.openedReposRestored.emit([], ""),
         )
+
+    @Slot("QVariantList", str)
+    def requestTabBranches(self, paths: list, active: str = ""):
+        """后台补齐非活动标签页的当前分支，经 ``branchReady`` 逐条回传。
+
+        只提交一个后台任务并在其中串行执行，避免启动时并发拉起多个 Git 进程；
+        活动仓库由 ``requestStatus`` 负责。读取失败或空仓库的标签保持原样。
+        """
+        active_key = os.path.normcase(os.path.normpath(active)) if active else ""
+        targets: list[str] = []
+        seen: set[str] = set()
+        for value in (paths or []):
+            path = str(value or "")
+            if not path:
+                continue
+            key = os.path.normcase(os.path.normpath(path))
+            if key in seen or key == active_key:
+                continue
+            seen.add(key)
+            targets.append(path)
+        if not targets:
+            return None
+
+        self._tab_branches_request_serial += 1
+        request_serial = self._tab_branches_request_serial
+
+        def work() -> list:
+            read: list = []
+            for path in targets:
+                try:
+                    branch = self._svc.get_current_branch_at(path)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    logger.warning(
+                        f"读取标签页分支失败: {path}: {type(exc).__name__}: {exc}"
+                    )
+                    branch = ""
+                if branch:
+                    read.append((path, branch))
+            return read
+
+        def completed(result: object) -> None:
+            if request_serial != self._tab_branches_request_serial:
+                return
+            if not isinstance(result, list):
+                logger.warning(f"读取标签页分支返回值无效: {result!r}")
+                return
+            current_key = os.path.normcase(self._svc.repo_path or "")
+            for item in result:
+                path, branch = item
+                # 期间被切换成活动仓库的标签已由 requestStatus 覆盖，不重复回传。
+                if os.path.normcase(path) == current_key:
+                    continue
+                self.branchReady.emit(path, branch)
+
+        task = self._submit_query(
+            work, label="读取标签页分支", on_success=completed
+        )
+        # 暴露本次补齐任务：调用方与测试可据此等待收尾，避免后台 git 进程
+        # 与运行环境清理抢目录锁。
+        self._tab_branches_task = task
+        return task
 
     @Slot(result="QVariantList")
     def getOpenedRepos(self) -> list:

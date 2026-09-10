@@ -420,6 +420,49 @@ def test_repository_tab_bar_restores_and_persists_session() -> None:
     _destroy_repository_scene(app, engine, component, window)
 
 
+def _tab_subtitles(bar) -> list[str]:
+    """读取标签栏当前每个标签的副标题(分支文本)。"""
+    tabs = bar.property("_tabs")
+    if hasattr(tabs, "toVariant"):
+        tabs = tabs.toVariant()
+    return [str(tab.get("subtitle", "")) for tab in (tabs or [])]
+
+
+def test_repository_tab_bar_applies_background_branch_updates() -> None:
+    """启动恢复出的非活动标签页，收到后台分支结果后必须直接显示分支。"""
+    from PySide6.QtCore import QObject
+
+    app, engine, component, window, bridge = _create_repository_scene()
+    bar = window.findChild(QObject, "repositoryTabBar")
+    assert bar is not None
+
+    bridge.object.openedReposRestored.emit(
+        ["D:/Repos/PrismQML", "D:/Repos/Kaleidos"], "D:/Repos/PrismQML"
+    )
+    app.processEvents()
+    assert bar.property("tabCount") == 2
+    # 活动标签由后端异步打开，其余标签在后台分支补齐前保持未读取。
+    assert _tab_subtitles(bar) == ["打开中…", "未读取分支"]
+
+    # 后台补齐：非活动标签的分支结果同样要落到对应标签上。
+    bridge.object.branchReady.emit("D:/Repos/Kaleidos", "master")
+    app.processEvents()
+    assert _tab_subtitles(bar) == ["打开中…", "master"]
+    assert bar.property("_tabs").toVariant()[1]["branch"] == "master"
+
+    # 迟到的结果不能让已关闭的标签重新出现。
+    bar._closePath("D:/Repos/Kaleidos")
+    app.processEvents()
+    bridge.object.branchReady.emit("D:/Repos/Kaleidos", "master")
+    bridge.object.branchReady.emit("D:/Repos/Mojin", "dev")
+    app.processEvents()
+    assert bar.property("tabCount") == 1
+    assert bar._indexForPath("D:/Repos/Kaleidos") == -1
+    assert bar._indexForPath("D:/Repos/Mojin") == -1
+
+    _destroy_repository_scene(app, engine, component, window)
+
+
 def test_repository_tab_bar_keeps_prismqml_navigation_shell() -> None:
     main_source = (ROOT / "app_qml" / "qml" / "main.qml").read_text(
         encoding="utf-8"

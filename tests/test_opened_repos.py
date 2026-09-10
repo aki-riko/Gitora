@@ -16,7 +16,7 @@ from app.common.opened_repos import OpenedReposManager
 from app.common.recent_repos import RecentReposManager
 from app_qml.backend.git_bridge import GitBridge
 
-from git_test_utils import init_repo
+from git_test_utils import commit_all, init_repo, run_git, write_file
 
 
 class OpenedReposManagerTest(unittest.TestCase):
@@ -260,6 +260,7 @@ class OpenedReposRestoreTest(unittest.TestCase):
         self._previous_recent = recent_module.recentReposManager
 
     def tearDown(self) -> None:
+        self._wait_for_tab_branch_prefetch()
         opened_module.openedReposManager = self._previous_opened
         recent_module.recentReposManager = self._previous_recent
         self.app.processEvents()
@@ -267,9 +268,22 @@ class OpenedReposRestoreTest(unittest.TestCase):
 
     def _make_bridge(self) -> GitBridge:
         bridge = GitBridge()
+        self._bridge = bridge
         self.addCleanup(bridge.deleteLater)
         self.addCleanup(bridge._poll_timer.stop)
         return bridge
+
+    def _wait_for_tab_branch_prefetch(self) -> None:
+        """等启动分支补齐任务收尾，避免后台 git 进程占住待清理的临时目录。"""
+        from prismqml import TaskState
+
+        task = getattr(getattr(self, "_bridge", None), "_tab_branches_task", None)
+        if task is None or task.state in TaskState.terminal_states():
+            return
+        loop = QEventLoop()
+        task.finished.connect(loop.quit)
+        QTimer.singleShot(10000, loop.quit)
+        loop.exec()
 
     def test_restore_reopens_every_tab_from_last_session(self) -> None:
         repo_a = init_repo(self.root / "repo-a")
@@ -323,6 +337,46 @@ class OpenedReposRestoreTest(unittest.TestCase):
         # 只有活动仓库被真正打开，其余标签保持未读取。
         self.assertEqual(opened, [(True, str(repo_b))])
         self.assertEqual(bridge.repoPath, str(repo_b))
+
+    def test_restore_prefetches_branches_of_every_tab(self) -> None:
+        """启动恢复后，非活动标签页的分支要在后台补齐，不必逐个点选。"""
+        repo_a = init_repo(self.root / "repo-a")
+        repo_b = init_repo(self.root / "repo-b")
+        write_file(repo_a, "a.txt", "a\n")
+        commit_all(repo_a, "chore: a")
+        run_git(repo_a, "checkout", "-b", "feature/tab-branch")
+        write_file(repo_b, "b.txt", "b\n")
+        commit_all(repo_b, "chore: b")
+
+        opened_module.openedReposManager = OpenedReposManager(
+            self.root / "opened.json"
+        )
+        opened_module.openedReposManager.replace(
+            [str(repo_a), str(repo_b)], str(repo_b)
+        )
+        recent_module.recentReposManager = RecentReposManager(
+            self.root / "recent.json"
+        )
+
+        bridge = self._make_bridge()
+        branches: list[tuple[str, str]] = []
+        loop = QEventLoop()
+        expected = os.path.normpath(str(repo_a))
+        active = os.path.normpath(str(repo_b))
+
+        def on_branch(repo_path: str, branch: str) -> None:
+            branches.append((str(repo_path), str(branch)))
+            if os.path.normcase(str(repo_path)) == os.path.normcase(expected):
+                loop.quit()
+
+        bridge.branchReady.connect(on_branch)
+        QTimer.singleShot(10000, loop.quit)
+        bridge.restoreLastRepoAsync()
+        loop.exec()
+
+        # 非活动标签的真实分支必须回传，活动标签仍由 requestStatus 负责。
+        self.assertEqual(branches, [(expected, "feature/tab-branch")])
+        self.assertNotIn(active, [path for path, _ in branches])
 
     def test_restore_falls_back_to_recent_repo_without_snapshot(self) -> None:
         repo_a = init_repo(self.root / "repo-a")
