@@ -175,8 +175,8 @@ Fluent.DialogBoxCore {
             // 左栏:变更文件(仅多文件提交显示;文件数少,默认模式 Repeater 即可)
             ColumnLayout {
                 visible: dlg.fileRows.length > 1
-                Layout.preferredWidth: 280
-                Layout.maximumWidth: 280
+                Layout.preferredWidth: 200
+                Layout.maximumWidth: 200
                 Layout.fillHeight: true
                 spacing: Fluent.Enums.spacing.s
 

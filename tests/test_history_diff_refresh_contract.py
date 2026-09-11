@@ -19,7 +19,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("id: headerLayout", source)
         # 文件列表为左侧窄栏(多文件提交才显示),diff 吃满剩余宽高
         self.assertIn("visible: dlg.fileRows.length > 1", source)
-        self.assertIn("Layout.preferredWidth: 280", source)
+        self.assertIn("Layout.preferredWidth: 200", source)
         self.assertIn("Layout.fillHeight: true", source)
         self.assertNotIn("width: 580", source)
         self.assertNotIn("Layout.preferredHeight: 260", source)
