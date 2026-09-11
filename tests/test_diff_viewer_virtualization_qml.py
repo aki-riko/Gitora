@@ -73,7 +73,7 @@ def test_large_diff_renders_only_visible_window() -> None:
     )
     diagnostic = f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
     assert result.returncode == 0, diagnostic
-    for token in ("virtualized=true", "hscroll=true", "split_ok=true"):
+    for token in ("virtualized=true", "hscroll=true"):
         assert token in result.stdout, diagnostic
 
 
@@ -136,7 +136,7 @@ def _run_probe() -> int:
     assert pool_size < 120, f"pool={pool_size} total={total}"
     # 池内首行已绑定数据
     first = pool[0] if pool_size > 0 else None
-    assert first is not None and first.property("vr") is not None
+    assert first is not None and first.property("row") is not None
     # 内容高度 = 行数 x 行高
     canvas_height = row_height * total
 
@@ -144,21 +144,9 @@ def _run_probe() -> int:
     hscroll_ok = pump_until(lambda: float(viewer.property("_contentWidth")) > 800)
     assert hscroll_ok, f"contentWidth={viewer.property('_contentWidth')}"
 
-    # 分栏模式:配对后行数变化且池仍受控
-    viewer.setProperty("displayMode", "split")
-    split_ok = pump_until(
-        lambda: len(_js_list(viewer.property("_viewRows"))) != total
-        and len(_js_list(viewer.property("_viewRows"))) > 0
-    )
-    assert split_ok, "split recompute failed"
-    split_total = len(_js_list(viewer.property("_viewRows")))
-    split_pool = len(_js_list(viewer.property("_pool")))
-    assert split_pool < 120, split_pool
-
     print(
         f"{PROBE_MARKER} virtualized=true pool={pool_size} total={total} "
-        f"rowHeight={row_height:.1f} canvasHeight={canvas_height:.1f} "
-        f"splitTotal={split_total} splitPool={split_pool} hscroll=true split_ok=true"
+        f"rowHeight={row_height:.1f} canvasHeight={canvas_height:.1f} hscroll=true"
     )
 
     viewer.deleteLater()

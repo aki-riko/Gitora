@@ -12,7 +12,6 @@ Item {
 
     property string rawDiff: ""
     property string filterPath: ""
-    property string displayMode: "unified"
     property bool loading: false
     property string loadingText: "加载中..."
     property string emptyText: "无差异"
@@ -217,59 +216,19 @@ Item {
         return out
     }
 
-    function _buildSplitRows(rows) {
-        var out = []
-        var dels = []
-        for (var i = 0; i < rows.length; i++) {
-            var row = rows[i]
-            if (row.t === "del") {
-                dels.push(row)
-            } else if (row.t === "add") {
-                out.push({ k: "pair", l: dels.length > 0 ? dels.shift() : null, r: row })
-            } else if (row.t === "ctx") {
-                out.push({ k: "ctx2", l: row, r: row })
-            } else {
-                out.push({ k: "full", l: row, r: null })
-            }
-        }
-        for (i = 0; i < dels.length; i++)
-            out.push({ k: "pair", l: dels[i], r: null })
-        return out
-    }
-
     function _recompute() {
         var rows = root._collapseFileMeta(root._filteredRows())
-        root._viewRows = root.displayMode === "split"
-            ? root._buildSplitRows(rows) : rows
+        root._viewRows = rows
 
         var digits = 3
         var maxLen = 0
-        var i
-        if (root.displayMode === "split") {
-            for (i = 0; i < root._viewRows.length; i++) {
-                var v = root._viewRows[i]
-                if (v.l) {
-                    maxLen = Math.max(maxLen, v.l.x.length)
-                    if (v.l.o > 0) digits = Math.max(digits, String(v.l.o).length)
-                    if (v.l.n > 0) digits = Math.max(digits, String(v.l.n).length)
-                }
-                if (v.r) {
-                    maxLen = Math.max(maxLen, v.r.x.length)
-                    if (v.r.o > 0) digits = Math.max(digits, String(v.r.o).length)
-                    if (v.r.n > 0) digits = Math.max(digits, String(v.r.n).length)
-                }
-            }
-            root._contentWidth = 2 * root.lineNoWidth
-                + 2 * (root.contentHorizontalPadding + maxLen * root.charWidth) + 24
-        } else {
-            for (i = 0; i < rows.length; i++) {
-                maxLen = Math.max(maxLen, rows[i].x.length)
-                if (rows[i].o > 0) digits = Math.max(digits, String(rows[i].o).length)
-                if (rows[i].n > 0) digits = Math.max(digits, String(rows[i].n).length)
-            }
-            root._contentWidth = 2 * root.lineNoWidth
-                + root.contentHorizontalPadding + maxLen * root.charWidth + 24
+        for (var i = 0; i < rows.length; i++) {
+            maxLen = Math.max(maxLen, rows[i].x.length)
+            if (rows[i].o > 0) digits = Math.max(digits, String(rows[i].o).length)
+            if (rows[i].n > 0) digits = Math.max(digits, String(rows[i].n).length)
         }
+        root._contentWidth = 2 * root.lineNoWidth
+            + root.contentHorizontalPadding + maxLen * root.charWidth + 24
         root._maxDigits = digits
         root._syncWindow()
     }
@@ -358,7 +317,7 @@ Item {
             if (i < need) {
                 item.visible = true
                 item.y = (first + i) * root.rowHeight
-                item.vr = root._viewRows[first + i]
+                item.row = root._viewRows[first + i]
                 item.viewer = root
             } else {
                 item.visible = false
@@ -412,7 +371,6 @@ Item {
         root._requestRows()
     }
     onFilterPathChanged: root._recompute()
-    onDisplayModeChanged: root._recompute()
 
     ColumnLayout {
         anchors.fill: parent
@@ -429,16 +387,6 @@ Item {
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
                 elide: Text.ElideRight
-            }
-            Fluent.Button {
-                text: "统一"
-                style: root.displayMode === "unified" ? Fluent.Enums.button.style_primary : Fluent.Enums.button.style_transparent
-                onClicked: root.displayMode = "unified"
-            }
-            Fluent.Button {
-                text: "分栏"
-                style: root.displayMode === "split" ? Fluent.Enums.button.style_primary : Fluent.Enums.button.style_transparent
-                onClicked: root.displayMode = "split"
             }
         }
 

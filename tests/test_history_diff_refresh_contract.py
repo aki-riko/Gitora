@@ -216,18 +216,17 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("Math.max(root._viewportWidth, root._contentWidth)", source)
         self.assertNotIn("Math.max(diffScrollArea.width", source)
 
-    def test_split_view_pairs_rows_and_keeps_full_width_meta(self) -> None:
+    def test_diff_viewer_is_unified_only_without_split_mode(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
         )
 
-        build_split = source.split("function _buildSplitRows", 1)[1].split(
-            "\n    }", 1
-        )[0]
-        self.assertIn('k: "pair"', build_split)
-        self.assertIn('k: "ctx2"', build_split)
-        self.assertIn('k: "full"', build_split)
-        self.assertIn("dels.shift()", build_split)
+        # 分栏模式已整体移除:无 displayMode 属性、无配对构建、无模式切换按钮
+        self.assertNotIn("displayMode", source)
+        self.assertNotIn("_buildSplitRows", source)
+        self.assertNotIn('"split"', source)
+        self.assertNotIn('text: "分栏"', source)
+        self.assertNotIn('text: "统一"', source)
 
     def test_diff_line_number_columns_have_fixed_width(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
