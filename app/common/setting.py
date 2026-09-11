@@ -15,7 +15,7 @@ VERSION = "v1.7.1"
 APP_NAME = "Gitora"
 APP_USER_MODEL_ID = "PrismQML.Gitora"
 APP_WINDOW_WIDTH = 1100
-APP_WINDOW_HEIGHT = 720
+APP_WINDOW_HEIGHT = 880
 APP_SPLASH_SUBTITLE = "正在加载..."
 # 项目地址
 HELP_URL = "https://github.com/aki-riko/Gitora"

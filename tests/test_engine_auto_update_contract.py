@@ -84,7 +84,7 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         )
 
         self.assertIn("APP_WINDOW_WIDTH = 1100", setting_source)
-        self.assertIn("APP_WINDOW_HEIGHT = 720", setting_source)
+        self.assertIn("APP_WINDOW_HEIGHT = 880", setting_source)
         self.assertIn('"windowWidth": APP_WINDOW_WIDTH', main_source)
         self.assertIn('"windowHeight": APP_WINDOW_HEIGHT', main_source)
         self.assertIn("AppInfo.windowWidth", qml_source)
