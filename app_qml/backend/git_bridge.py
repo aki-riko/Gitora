@@ -207,9 +207,9 @@ class GitBridge(QObject):
     reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
     advancedStateReady = Signal(str, "QVariantList", "QVariantList")  # (repoPath, worktree, submodule)
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
-    _POLL_INTERVAL_MS = 2000
+    _POLL_INTERVAL_MS = 1000
     # 非活动标签页快照轮询间隔(ms):定时刷新所有已打开标签的徽标(变更数)与分支
-    _TAB_POLL_INTERVAL_MS = 5000
+    _TAB_POLL_INTERVAL_MS = 1000
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)

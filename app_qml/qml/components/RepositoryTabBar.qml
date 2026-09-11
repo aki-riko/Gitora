@@ -484,7 +484,7 @@ Item {
     Timer {
         id: tabSnapshotPollTimer
         interval: (root.gitBridge && root.gitBridge.tabPollIntervalMs > 0)
-            ? root.gitBridge.tabPollIntervalMs : 5000
+            ? root.gitBridge.tabPollIntervalMs : 1000
         repeat: true
         running: root.switchingEnabled && !!root.gitBridge
             && root.activePath !== "" && root.tabCount > 0
