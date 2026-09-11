@@ -223,16 +223,17 @@ Fluent.DialogBoxCore {
                                     dlg.commitHash, dlg._selectedFilePath)
                             }
                         }
-                        // 路径被省略时悬浮显示完整路径(原生窗口 tooltip,跨弹窗边界)
+                        // 路径被省略时悬浮在行右侧显示完整路径(原生窗口 tooltip,跨弹窗边界)
                         Fluent.ToolTip {
-                            x: Math.max(0, Math.min(fileHover.point.position.x - width / 2, parent.width - width))
-                            y: -height - Fluent.Enums.spacing.xxs
+                            x: parent.width + Fluent.Enums.spacing.s
+                            y: (parent.height - height) / 2
                             visible: fileHover.hovered && pathText.truncated
                             text: modelData.path
                         }
 
                         Row {
                             anchors.fill: parent
+                            anchors.leftMargin: Fluent.Enums.spacing.s
                             spacing: Fluent.Enums.spacing.m
                             Text {
                                 text: modelData.statusText
