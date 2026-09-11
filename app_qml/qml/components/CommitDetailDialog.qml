@@ -152,19 +152,10 @@ Fluent.DialogBoxCore {
                     }
                 }
 
-                // 元信息行:作者 · 时间
+                // 元信息单行:作者 · 时间 · 短 hash
                 Text {
                     Layout.fillWidth: true
-                    text: dlg._author + "  ·  " + dlg._date
-                    color: Fluent.Enums.textColor.tertiary
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    elide: Text.ElideRight
-                }
-                // hash(等宽)
-                Text {
-                    Layout.fillWidth: true
-                    text: dlg.commitHash
+                    text: dlg._author + "  ·  " + dlg._date + "  ·  " + dlg._shortHash
                     color: Fluent.Enums.textColor.tertiary
                     font.family: "Consolas, monospace"
                     font.pixelSize: Fluent.Enums.typography.caption
@@ -175,88 +166,99 @@ Fluent.DialogBoxCore {
 
         Fluent.Separator { Layout.fillWidth: true }
 
-        // ── 变更文件 ──(ScrollArea 自带平滑滚动条;文件数少,默认模式 Repeater 即可)
-        Fluent.Label {
-            text: "变更文件 ("
-                + (dlg.filesTruncated
-                    ? dlg.fileRows.length + " / " + dlg.totalFileCount
-                    : dlg.totalFileCount)
-                + ")"
-            type: Fluent.Enums.label.type_body_strong
-            color: Fluent.Enums.textColor.secondary
-        }
-        Fluent.ScrollArea {
-            id: filesScrollArea
+        // ── 主体:左栏变更文件 + 右侧 diff 吃满剩余空间 ──
+        RowLayout {
             Layout.fillWidth: true
-            Layout.fillHeight: false
-            Layout.preferredHeight: Math.min(dlg.fileRows.length * 24 + 4, 110)
-            Layout.maximumHeight: Math.min(dlg.fileRows.length * 24 + 4, 110)
-            padding: 0
-            type: Fluent.Enums.scroll.type_list
-            itemHeight: 24
-            listSpacing: 0
-            reuseItems: true
-            bounceEnabled: false
-            model: dlg.fileRows
-            delegate: Rectangle {
-                width: ListView.view ? ListView.view.width : 0
-                height: 24
-                radius: Fluent.Enums.radius.micro
-                readonly property bool isSelected: dlg._selectedFilePath === modelData.path
-                color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
+            Layout.fillHeight: true
+            spacing: Fluent.Enums.spacing.l
 
-                HoverHandler { id: fileHover }
-                TapHandler {
-                    onTapped: {
-                        dlg._selectedFilePath = modelData.path
-                        commitDiffViewer.setLoading("加载中...")
-                        GitBridge.requestCommitFileDiff(
-                            dlg.commitHash, dlg._selectedFilePath)
-                    }
+            // 左栏:变更文件(仅多文件提交显示;文件数少,默认模式 Repeater 即可)
+            ColumnLayout {
+                visible: dlg.fileRows.length > 1
+                Layout.preferredWidth: 280
+                Layout.maximumWidth: 280
+                Layout.fillHeight: true
+                spacing: Fluent.Enums.spacing.s
+
+                Fluent.Label {
+                    text: "变更文件 ("
+                        + (dlg.filesTruncated
+                            ? dlg.fileRows.length + " / " + dlg.totalFileCount
+                            : dlg.totalFileCount)
+                        + ")"
+                    type: Fluent.Enums.label.type_body_strong
+                    color: Fluent.Enums.textColor.secondary
                 }
+                Fluent.ScrollArea {
+                    id: filesScrollArea
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    padding: 0
+                    type: Fluent.Enums.scroll.type_list
+                    itemHeight: 24
+                    listSpacing: 0
+                    reuseItems: true
+                    bounceEnabled: false
+                    model: dlg.fileRows
+                    delegate: Rectangle {
+                        width: ListView.view ? ListView.view.width : 0
+                        height: 24
+                        radius: Fluent.Enums.radius.micro
+                        readonly property bool isSelected: dlg._selectedFilePath === modelData.path
+                        color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
 
-                Row {
-                    anchors.fill: parent
-                    spacing: Fluent.Enums.spacing.m
-                    Text {
-                        text: modelData.statusText
-                        width: 50
-                        color: Fluent.Enums.textColor.tertiary
-                        font.family: Fluent.Enums.fontFamily
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        verticalAlignment: Text.AlignVCenter
-                        height: parent.height
-                    }
-                    Text {
-                        width: parent.width - 50 - Fluent.Enums.spacing.m
-                        text: modelData.path
-                        color: Fluent.Enums.textColor.primary
-                        font.family: "Consolas, monospace"
-                        font.pixelSize: Fluent.Enums.typography.caption
-                        elide: Text.ElideMiddle
-                        verticalAlignment: Text.AlignVCenter
-                        height: parent.height
+                        HoverHandler { id: fileHover }
+                        TapHandler {
+                            onTapped: {
+                                dlg._selectedFilePath = modelData.path
+                                commitDiffViewer.setLoading("加载中...")
+                                GitBridge.requestCommitFileDiff(
+                                    dlg.commitHash, dlg._selectedFilePath)
+                            }
+                        }
+
+                        Row {
+                            anchors.fill: parent
+                            spacing: Fluent.Enums.spacing.m
+                            Text {
+                                text: modelData.statusText
+                                width: 50
+                                color: Fluent.Enums.textColor.tertiary
+                                font.family: Fluent.Enums.fontFamily
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                verticalAlignment: Text.AlignVCenter
+                                height: parent.height
+                            }
+                            Text {
+                                width: parent.width - 50 - Fluent.Enums.spacing.m
+                                text: modelData.path
+                                color: Fluent.Enums.textColor.primary
+                                font.family: "Consolas, monospace"
+                                font.pixelSize: Fluent.Enums.typography.caption
+                                elide: Text.ElideMiddle
+                                verticalAlignment: Text.AlignVCenter
+                                height: parent.height
+                            }
+                        }
                     }
                 }
             }
-        }
 
-        Fluent.Separator { Layout.fillWidth: true }
-
-        // ── diff ──(ScrollArea 自带平滑滚动条,外层 Rectangle 提供边框)
-        Rectangle {
-            Layout.fillWidth: true
-            Layout.fillHeight: true
-            radius: Fluent.Enums.radius.medium
-            color: Fluent.Enums.cardColor
-            border.width: Fluent.Enums.border.normal
-            border.color: Fluent.Enums.stateColor.border
-            DiffViewer {
-                id: commitDiffViewer
-                anchors.fill: parent
-                anchors.margins: Fluent.Enums.spacing.s
-                onFilterChanged: function(path) {
-                    dlg._selectedFilePath = path
+            // 右侧:diff(唯一占满剩余宽高的主体)
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                radius: Fluent.Enums.radius.medium
+                color: Fluent.Enums.cardColor
+                border.width: Fluent.Enums.border.normal
+                border.color: Fluent.Enums.stateColor.border
+                DiffViewer {
+                    id: commitDiffViewer
+                    anchors.fill: parent
+                    anchors.margins: Fluent.Enums.spacing.s
+                    onFilterChanged: function(path) {
+                        dlg._selectedFilePath = path
+                    }
                 }
             }
         }

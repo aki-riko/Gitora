@@ -97,6 +97,10 @@ Item {
         fileModel.clear()
         if (!GitBridge || !root.rawDiff)
             return
+        // 防御:与 _requestRows 同款存在性检查;QML 访问 QObject 缺失方法会抛 TypeError,
+        // 一旦抛出会使 setDiff → _requestRows 整链中断,行数据不加载。
+        if (GitBridge.parseDiffFiles === undefined)
+            return
         var files = GitBridge.parseDiffFiles(root.rawDiff) || []
         for (var i = 0; i < files.length; i++)
             fileModel.append(files[i])
