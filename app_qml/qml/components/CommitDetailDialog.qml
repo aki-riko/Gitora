@@ -234,30 +234,44 @@ Fluent.DialogBoxCore {
                         selectable: false
                         model: dlg.fileRows
                         delegate: Rectangle {
+                            id: fileRow
                             objectName: "commitDetailFileRow"
                             width: ListView.view ? ListView.view.width : 0
                             height: filesScrollArea.itemHeight
                             radius: Fluent.Enums.radius.micro
+                            // 本体不画底色:选中底色与悬停底色必须分成两层。
+                            // 合成一层时,点击那一刻该行同时是"悬停(中性灰)"和"选中(浅蓝)",
+                            // 于是 ColorAnimation 直接在透明黑与浅蓝之间插值 —— 中间必然扫过
+                            // rgb(104,117,126) 这样的灰,表现为切换时闪一下脏灰。
+                            color: "transparent"
                             readonly property bool isSelected: dlg._selectedFilePath === modelData.path
-                            // 行底色用"强调色的全透明版本"当未选中态,而不是字面量 "transparent":
-                            // transparent 是透明黑,和浅蓝 selected 之间插值会经过发灰的中间色,
-                            // 同色相只变 alpha,过渡才干净。
+                            // 选中底色与其"全透明版本"同色相,两者之间只差 alpha,
+                            // 所以选中层过渡全程 RGB 恒定,不会出现灰阶中间色。
                             readonly property color _selectedBg: Fluent.Enums.stateColor.selected
                             readonly property color _clearBg: Qt.rgba(
                                 _selectedBg.r, _selectedBg.g, _selectedBg.b, 0)
-                            // 选中用语义选中底色、悬停用列表 hover 层:两者不再共用同一个颜色,
-                            // 也不再画闭合蓝框(浅底 + 四边闭合蓝框看起来像聚焦输入框)。
-                            color: isSelected
-                                ? _selectedBg
-                                : (fileHover.hovered
-                                    ? Fluent.Enums.stateColor.listItemHover
-                                    : _clearBg)
-                            // 底色与指示条同步过渡,否则会"条在长、底色却在跳"
-                            Behavior on color {
-                                ColorAnimation {
-                                    duration: Fluent.Enums.duration.normal
-                                    easing.type: Easing.OutCubic
+
+                            // 选中底色层:只由 isSelected 驱动
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: fileRow.radius
+                                color: fileRow.isSelected ? fileRow._selectedBg : fileRow._clearBg
+                                // 与指示条同步过渡,否则会"条在长、底色却在跳"
+                                Behavior on color {
+                                    ColorAnimation {
+                                        duration: Fluent.Enums.duration.normal
+                                        easing.type: Easing.OutCubic
+                                    }
                                 }
+                            }
+
+                            // 悬停底色层:与选中动画解耦,保持原本的即时反馈(无过渡)
+                            Rectangle {
+                                anchors.fill: parent
+                                radius: fileRow.radius
+                                color: Fluent.Enums.stateColor.listItemHover
+                                // 选中行不再叠悬停灰(与分层的视觉结果一致)
+                                opacity: (fileRow.isSelected || !fileHover.hovered) ? 0 : 1
                             }
 
                             // 选中指示条:贴行左缘的短强调条。

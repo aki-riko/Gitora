@@ -55,6 +55,14 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         # 底色过渡必须用同色相的全透明版本,不能用 transparent(插值会发灰)
         self.assertIn("_clearBg: Qt.rgba(", source)
         self.assertIn("duration: Fluent.Enums.duration.normal", source)
+        # 选中底色与悬停底色必须分层:合成一层时,点击那一刻该行同时是悬停(中性灰)
+        # 与选中(浅蓝),ColorAnimation 会在透明黑与浅蓝之间插值,中间扫过脏灰
+        self.assertIn(
+            "fileRow.isSelected ? fileRow._selectedBg : fileRow._clearBg", source
+        )
+        self.assertIn(
+            "opacity: (fileRow.isSelected || !fileHover.hovered) ? 0 : 1", source
+        )
 
     def test_history_status_refresh_keeps_existing_timeline_until_data_arrives(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(
