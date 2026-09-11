@@ -21,6 +21,18 @@ Rectangle {
     readonly property int _rowH: viewer ? viewer.rowHeight : 18
     readonly property real _pad: viewer ? viewer.contentHorizontalPadding : 4
 
+    // 行背景:内容行按 add/del,块头/文件头为淡色带(GitHub 风格分区)
+    function _rowBandColor(row) {
+        if (!rowItem.viewer || !row) return "transparent"
+        var t = row.t
+        var c = rowItem.viewer.rowColors
+        if (t === "add") return c.addBg
+        if (t === "del") return c.delBg
+        if (t === "hunk") return c.hunkBg
+        if (t === "file") return c.fileBg
+        return "transparent"
+    }
+
     color: "transparent"
     height: _rowH
 
@@ -36,7 +48,7 @@ Rectangle {
             text: parent.value === "" ? "" : parent.value
             color: rowItem.viewer ? rowItem.viewer.rowColors.lineNo : "#888888"
             font.family: "Consolas, Cascadia Code, monospace"
-            font.pixelSize: Fluent.Enums.typography.caption
+            font.pixelSize: 13
             textFormat: Text.PlainText
         }
     }
@@ -47,14 +59,7 @@ Rectangle {
         height: rowItem._rowH
         Rectangle {
             anchors.fill: parent
-            color: {
-                if (!rowItem.viewer || !parent.row) return "transparent"
-                var t = parent.row.t
-                var c = rowItem.viewer.rowColors
-                if (t === "add") return c.addBg
-                if (t === "del") return c.delBg
-                return "transparent"
-            }
+            color: rowItem._rowBandColor(parent.row)
         }
         Text {
             anchors.fill: parent
@@ -63,7 +68,7 @@ Rectangle {
             text: rowItem.viewer ? rowItem.viewer.rowHtml(parent.row) : ""
             color: rowItem.viewer ? rowItem.viewer.rowTextDefaultColor(parent.row) : "#000000"
             font.family: "Consolas, Cascadia Code, monospace"
-            font.pixelSize: Fluent.Enums.typography.caption
+            font.pixelSize: 13
             textFormat: Text.RichText
             wrapMode: Text.NoWrap
         }
@@ -103,7 +108,7 @@ Rectangle {
         SideZone { row: rowItem.vr ? rowItem.vr.r : null }
     }
 
-    // ── 分栏视图的整行(块头/文件元信息): 跨全宽 ──
+    // ── 分栏视图的整行(文件头/块头/元信息): 跨全宽,带分区底色 ──
     Row {
         anchors.fill: parent
         visible: rowItem._splitFull
@@ -111,6 +116,10 @@ Rectangle {
         Item {
             width: rowItem.width
             height: rowItem._rowH
+            Rectangle {
+                anchors.fill: parent
+                color: rowItem._rowBandColor(rowItem.vr ? rowItem.vr.l : null)
+            }
             Text {
                 anchors.fill: parent
                 anchors.leftMargin: rowItem._pad
@@ -120,7 +129,7 @@ Rectangle {
                 color: rowItem.viewer && rowItem.vr && rowItem.vr.l
                     ? rowItem.viewer.rowTextDefaultColor(rowItem.vr.l) : "#888888"
                 font.family: "Consolas, Cascadia Code, monospace"
-                font.pixelSize: Fluent.Enums.typography.caption
+                font.pixelSize: 13
                 textFormat: Text.RichText
                 wrapMode: Text.NoWrap
             }

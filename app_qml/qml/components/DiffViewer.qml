@@ -41,22 +41,27 @@ Item {
             hunk: isDark ? "#6cb6ff" : "#0969da",
             meta: isDark ? "#8b949e" : "#6e7781",
             normal: isDark ? "#d0d0d0" : "#24292f",
-            lineNo: isDark ? "#8b949e" : "#6e7781",
+            ctx: isDark ? "#99a3ad" : "#4b535d",
+            lineNo: isDark ? "#6e7a86" : "#8c959f",
             addBg: isDark ? "#17351f" : "#dafbe1",
             delBg: isDark ? "#3a1d21" : "#ffebe9",
+            // 分区底色带:不透明预混色(半透明在 Mica 透明窗口/无合成环境会发黑)
+            hunkBg: isDark ? "#1d2733" : "#e8f0fe",
+            fileBg: isDark ? "#272e37" : "#eef1f4",
             kw: isDark ? "#ff7b72" : "#cf222e",
             str: isDark ? "#a5d6ff" : "#0a3069",
             com: isDark ? "#8b949e" : "#6e7781",
             num: isDark ? "#79c0ff" : "#0550ae",
-            wordAdd: isDark ? "rgba(46,160,67,0.55)" : "rgba(31,145,63,0.35)",
-            wordDel: isDark ? "rgba(248,81,73,0.50)" : "rgba(207,34,46,0.30)"
+            // 词级高亮底色:不透明,直接盖在行底色上形成清晰高亮块
+            wordAdd: isDark ? "#2a6f37" : "#b7ecc4",
+            wordDel: isDark ? "#7a2e2e" : "#ffc9c5"
         }
     }
 
     FontMetrics {
         id: monoMetrics
         font.family: "Consolas, Cascadia Code, monospace"
-        font.pixelSize: Fluent.Enums.typography.caption
+        font.pixelSize: 13
     }
 
     ListModel { id: fileModel }
@@ -190,6 +195,24 @@ Item {
         return out
     }
 
+    // 折叠纯噪音的文件元信息行(index/---/+++ 等),文件头行保留并展示为文件带。
+    // 语义信息(rename/Binary/No newline/截断横幅)原样保留。
+    function _collapseFileMeta(rows) {
+        var out = []
+        for (var i = 0; i < rows.length; i++) {
+            var r = rows[i]
+            if (r.t === "meta") {
+                var x = r.x
+                if (x.indexOf("index ") === 0 || x.indexOf("--- ") === 0
+                        || x.indexOf("+++ ") === 0 || x.indexOf("old mode") === 0
+                        || x.indexOf("new mode") === 0 || x.indexOf("similarity ") === 0)
+                    continue
+            }
+            out.push(r)
+        }
+        return out
+    }
+
     function _buildSplitRows(rows) {
         var out = []
         var dels = []
@@ -211,7 +234,7 @@ Item {
     }
 
     function _recompute() {
-        var rows = root._filteredRows()
+        var rows = root._collapseFileMeta(root._filteredRows())
         root._viewRows = root.displayMode === "split"
             ? root._buildSplitRows(rows) : rows
 
@@ -258,14 +281,27 @@ Item {
         if (row.t === "add") return c.add
         if (row.t === "del") return c.del
         if (row.t === "hunk") return c.hunk
-        if (row.t === "meta" || row.t === "file") return c.meta
-        return c.normal
+        if (row.t === "file") return c.normal
+        if (row.t === "meta") return c.meta
+        return c.ctx
+    }
+
+    // 文件头行展示为仓库相对路径(取不到时回退原始 diff 行)
+    function _fileDisplayText(row) {
+        if (!row || row.t !== "file")
+            return row ? row.x : ""
+        var f = root._files[row.fi]
+        if (f && (f.path || f.old_path || f.new_path))
+            return f.path || f.new_path || f.old_path
+        return (row.x || "").replace(/^diff --git a\/(\S+) b\/(\S+)$/, "$1")
     }
 
     function rowHtml(row) {
         if (!row)
             return ""
         var c = root.rowColors
+        if (row.t === "file")
+            return root._escape(root._fileDisplayText(row))
         var text = row.x || ""
         var seg = row.seg
         if (!seg || seg.length === 0)
@@ -339,6 +375,9 @@ Item {
     }
 
     readonly property real _scrollY: diffScrollArea.contentY
+    // 真实滚动视口宽(Flickable 已扣除纵向滚动条预留槽位)
+    readonly property real _viewportWidth: diffScrollArea.flickableItem
+        ? diffScrollArea.flickableItem.width : diffScrollArea.width
     on_ScrollYChanged: root._syncWindow()
 
     Component {
@@ -435,7 +474,7 @@ Item {
             color: root.rowColors.meta
             padding: 10
             font.family: "Consolas, Cascadia Code, monospace"
-            font.pixelSize: Fluent.Enums.typography.caption
+            font.pixelSize: 13
         }
 
         Fluent.ScrollArea {
@@ -450,7 +489,9 @@ Item {
 
             Item {
                 id: canvas
-                width: Math.max(diffScrollArea.width, root._contentWidth)
+                // 视口宽必须取 Flickable 实宽(已扣除纵向滚动条预留),
+                // 用外层宽会恒比视口宽出滚动条槽,造成常驻假横向滚动条。
+                width: Math.max(root._viewportWidth, root._contentWidth)
                 height: root._viewRows.length * root.rowHeight
             }
         }

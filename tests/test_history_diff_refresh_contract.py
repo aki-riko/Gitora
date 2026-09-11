@@ -199,6 +199,21 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("rowDelegateComponent.createObject(canvas)", source)
         self.assertIn("DiffRowDelegate", source)
 
+    def test_diff_viewer_collapses_noise_meta_and_fits_viewport_width(self) -> None:
+        source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
+            encoding="utf-8"
+        )
+
+        # index/---/+++ 等纯噪音行在视图层折叠;文件头行保留为文件带
+        self.assertIn("function _collapseFileMeta", source)
+        self.assertIn('x.indexOf("index ") === 0', source)
+        self.assertIn('x.indexOf("+++ ") === 0', source)
+        self.assertIn("function _fileDisplayText", source)
+        # 横向内容宽必须与 Flickable 视口宽比较,禁止用外层宽造成常驻假横向滚动条
+        self.assertIn("readonly property real _viewportWidth", source)
+        self.assertIn("Math.max(root._viewportWidth, root._contentWidth)", source)
+        self.assertNotIn("Math.max(diffScrollArea.width", source)
+
     def test_split_view_pairs_rows_and_keeps_full_width_meta(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
