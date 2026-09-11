@@ -199,13 +199,20 @@ Fluent.DialogBoxCore {
                     listSpacing: 0
                     reuseItems: true
                     bounceEnabled: false
+                    // 关闭 ScrollArea 默认当前项高亮(蓝竖条+浅蓝底):选中态由 delegate 自绘,
+                    // 否则引擎 highlight 会与自绘选中底色重叠,且 model 重置后 currentIndex
+                    // 落到 0 导致高亮钉死在第一行(照 CommitFilesPanel 同款做法)。
+                    selectable: false
                     model: dlg.fileRows
                     delegate: Rectangle {
+                        objectName: "commitDetailFileRow"
                         width: ListView.view ? ListView.view.width : 0
                         height: 24
                         radius: Fluent.Enums.radius.micro
                         readonly property bool isSelected: dlg._selectedFilePath === modelData.path
                         color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
+                        border.width: isSelected ? Fluent.Enums.border.normal : 0
+                        border.color: Fluent.Enums.accentColor
 
                         HoverHandler { id: fileHover }
                         TapHandler {
@@ -215,6 +222,13 @@ Fluent.DialogBoxCore {
                                 GitBridge.requestCommitFileDiff(
                                     dlg.commitHash, dlg._selectedFilePath)
                             }
+                        }
+                        // 路径被省略时悬浮显示完整路径(原生窗口 tooltip,跨弹窗边界)
+                        Fluent.ToolTip {
+                            x: Math.max(0, Math.min(fileHover.point.position.x - width / 2, parent.width - width))
+                            y: -height - Fluent.Enums.spacing.xxs
+                            visible: fileHover.hovered && pathText.truncated
+                            text: modelData.path
                         }
 
                         Row {
@@ -230,6 +244,7 @@ Fluent.DialogBoxCore {
                                 height: parent.height
                             }
                             Text {
+                                id: pathText
                                 width: parent.width - 50 - Fluent.Enums.spacing.m
                                 text: modelData.path
                                 color: Fluent.Enums.textColor.primary
