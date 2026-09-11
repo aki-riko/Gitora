@@ -272,9 +272,6 @@ Fluent.DialogBoxCore {
                     id: commitDiffViewer
                     anchors.fill: parent
                     anchors.margins: Fluent.Enums.spacing.s
-                    onFilterChanged: function(path) {
-                        dlg._selectedFilePath = path
-                    }
                 }
             }
         }

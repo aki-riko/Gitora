@@ -17,7 +17,6 @@ Item {
     property string emptyText: "无差异"
     readonly property int lineNumberHorizontalPadding: Fluent.Enums.spacing.none
     readonly property int contentHorizontalPadding: Fluent.Enums.spacing.xs
-    signal filterChanged(string path)
 
     // ---- 行模型(异步) ----
     property var _allRows: []
@@ -85,11 +84,6 @@ Item {
         // 相同（或同为空）字符串再次赋值不会触发属性变化信号，必须显式刷新。
         root._reloadFileModel()
         root._requestRows()
-    }
-
-    function _setFilter(path) {
-        root.filterPath = path || ""
-        root.filterChanged(root.filterPath)
     }
 
     function _reloadFileModel() {
@@ -387,34 +381,6 @@ Item {
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
                 elide: Text.ElideRight
-            }
-        }
-
-        Fluent.ScrollArea {
-            id: fileFilterScrollArea
-            Layout.fillWidth: true
-            Layout.preferredHeight: fileModel.count > 1 ? 34 : 0
-            visible: fileModel.count > 1
-            orientation: Qt.Horizontal
-            showScrollBar: false
-            padding: 0
-
-            Row {
-                id: fileFilterRow
-                spacing: Fluent.Enums.spacing.s
-                Fluent.Button {
-                    text: "全部"
-                    style: root.filterPath === "" ? Fluent.Enums.button.style_primary : Fluent.Enums.button.style_transparent
-                    onClicked: root._setFilter("")
-                }
-                Repeater {
-                    model: fileModel
-                    delegate: Fluent.Button {
-                        text: model.path
-                        style: root.filterPath === model.path ? Fluent.Enums.button.style_primary : Fluent.Enums.button.style_transparent
-                        onClicked: root._setFilter(model.path)
-                    }
-                }
             }
         }
 
