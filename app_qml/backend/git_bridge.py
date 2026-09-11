@@ -208,6 +208,8 @@ class GitBridge(QObject):
     advancedStateReady = Signal(str, "QVariantList", "QVariantList")  # (repoPath, worktree, submodule)
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
     _POLL_INTERVAL_MS = 2000
+    # 非活动标签页快照轮询间隔(ms):定时刷新所有已打开标签的徽标(变更数)与分支
+    _TAB_POLL_INTERVAL_MS = 5000
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -236,6 +238,8 @@ class GitBridge(QObject):
         self._branches_request_serial = 0
         self._tab_branches_request_serial = 0
         self._tab_branches_task = None
+        self._tab_snapshots_request_serial = 0
+        self._tab_snapshots_busy = False
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
         self._open_request_serial = 0
@@ -484,6 +488,11 @@ class GitBridge(QObject):
         """供需要页面级探查的视图复用统一轮询间隔。"""
         return self._POLL_INTERVAL_MS
 
+    @Property(int, constant=True)
+    def tabPollIntervalMs(self) -> int:
+        """供标签栏定时轮询非活动标签快照复用统一间隔。"""
+        return self._TAB_POLL_INTERVAL_MS
+
     # ==================== 仓库 ====================
     def setRepoPath(self, path: str) -> bool:
         """仅供 Python 测试/内部启动使用；QML 必须调用 ``openRepoAsync``。"""
@@ -636,6 +645,86 @@ class GitBridge(QObject):
         # 与运行环境清理抢目录锁。
         self._tab_branches_task = task
         return task
+
+    @Slot("QVariantList", str)
+    def requestTabSnapshots(self, paths: list, active: str = ""):
+        """后台刷新非活动标签页的徽标(变更数)与分支，逐条经
+        ``statusReady``/``branchReady`` 回传。
+
+        供标签栏定时轮询调用；活动仓库由指纹轮询 + ``requestStatus`` 负责，
+        这里再次剔除以防重复回传。只允许一个快照任务在跑：上一轮未完成时
+        本轮直接跳过，避免慢仓库把后台任务越堆越多；序号用于丢弃过期结果。
+        """
+        if self._tab_snapshots_busy:
+            return None
+
+        active_key = os.path.normcase(os.path.normpath(active)) if active else ""
+        targets: list[str] = []
+        seen: set[str] = set()
+        for value in (paths or []):
+            path = str(value or "")
+            if not path:
+                continue
+            key = os.path.normcase(os.path.normpath(path))
+            if key in seen or key == active_key:
+                continue
+            seen.add(key)
+            targets.append(path)
+        if not targets:
+            return None
+
+        self._tab_snapshots_request_serial += 1
+        request_serial = self._tab_snapshots_request_serial
+        self._tab_snapshots_busy = True
+
+        def work() -> list:
+            read: list = []
+            for path in targets:
+                try:
+                    count = len(self._svc.get_status_at(path))
+                except (OSError, RuntimeError, ValueError) as exc:
+                    logger.warning(
+                        f"读取标签页状态失败: {path}: {type(exc).__name__}: {exc}"
+                    )
+                    count = -1
+                try:
+                    branch = self._svc.get_current_branch_at(path)
+                except (OSError, RuntimeError, ValueError) as exc:
+                    logger.warning(
+                        f"读取标签页分支失败: {path}: {type(exc).__name__}: {exc}"
+                    )
+                    branch = ""
+                if count >= 0 or branch:
+                    read.append((path, count, branch))
+            return read
+
+        def completed(result: object) -> None:
+            self._tab_snapshots_busy = False
+            if request_serial != self._tab_snapshots_request_serial:
+                return
+            if not isinstance(result, list):
+                logger.warning(f"读取标签页快照返回值无效: {result!r}")
+                return
+            current_key = os.path.normcase(self._svc.repo_path or "")
+            for item in result:
+                path, count, branch = item
+                # 期间被切换成活动仓库的标签已由 requestStatus 覆盖，不重复回传。
+                if os.path.normcase(path) == current_key:
+                    continue
+                if count >= 0:
+                    self.statusReady.emit(path, count)
+                if branch:
+                    self.branchReady.emit(path, branch)
+
+        def failed(_exc: BaseException) -> None:
+            self._tab_snapshots_busy = False
+
+        return self._submit_query(
+            work,
+            label="读取标签页快照",
+            on_success=completed,
+            on_failure=failed,
+        )
 
     @Slot(result="QVariantList")
     def getOpenedRepos(self) -> list:

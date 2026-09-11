@@ -178,6 +178,9 @@ Item {
     }
 
     function _updateStatus(path, count) {
+        // 定时轮询的结果可能晚于用户关闭该标签；只更新已存在的标签，
+        // 不能让迟到的结果把已关闭的标签重新创建出来。
+        if (_indexForPath(path) < 0) return
         var normalizedCount = Math.max(0, Number(count) || 0)
         _updateTab(path, {
             changeCount: normalizedCount,
@@ -307,6 +310,19 @@ Item {
             ? repoScanner.mergeWithOpenedRepos(recent) : recent
     }
 
+    // 定时轮询全部标签页的徽标(变更数)与分支；活动仓库由后端指纹轮询驱动
+    // requestStatus 刷新，后端会自行剔除活动仓库避免重复回传。
+    function _pollTabSnapshots() {
+        if (!gitBridge || !gitBridge.requestTabSnapshots) return
+        var paths = []
+        for (var i = 0; i < _tabs.length; i++) {
+            var value = String(_tabs[i].path || "")
+            if (value !== "") paths.push(value)
+        }
+        if (paths.length === 0) return
+        gitBridge.requestTabSnapshots(paths, activePath)
+    }
+
     function _openRepositoryPicker() {
         if (!switchingEnabled) return
         _refreshPickerPaths()
@@ -401,6 +417,8 @@ Item {
 
         function onOpenedReposRestored(paths, active) {
             root.restoreSession(paths, active)
+            // 会话恢复后立即拉一轮标签快照，不必等第一个轮询周期。
+            Qt.callLater(root._pollTabSnapshots)
         }
 
         function onRepoPathChanged(path) {
@@ -460,6 +478,17 @@ Item {
             repositorySearchMenu.loading = false
             repositorySearchMenu.setPaths(root._pickerPaths)
         }
+    }
+
+    // 定时轮询打开页面的徽标与分支；Git 操作忙时切换被禁用，轮询同步暂停。
+    Timer {
+        id: tabSnapshotPollTimer
+        interval: (root.gitBridge && root.gitBridge.tabPollIntervalMs > 0)
+            ? root.gitBridge.tabPollIntervalMs : 5000
+        repeat: true
+        running: root.switchingEnabled && !!root.gitBridge
+            && root.activePath !== "" && root.tabCount > 0
+        onTriggered: root._pollTabSnapshots()
     }
 
     Shortcut {

@@ -1,6 +1,7 @@
 # coding: utf-8
 from __future__ import annotations
 
+import os
 import threading
 import time
 import unittest
@@ -258,6 +259,83 @@ class GitBridgeAsyncTest(unittest.TestCase):
         self.assertTrue(bridge.fileChangeModel.contains("repo/main.py", False))
         bridge.deleteLater()
         app.processEvents()
+
+    def test_tab_snapshot_poll_emits_inactive_tab_status(self) -> None:
+        """定时轮询：非活动标签的变更数与分支要回传，活动仓库不重复回传。"""
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+
+        def fake_status(repo: str) -> list[FileChange]:
+            if os.path.normcase(repo) == os.path.normcase("other"):
+                return [
+                    FileChange(f"{repo}/a.py", FileStatus.MODIFIED, False),
+                    FileChange(f"{repo}/b.py", FileStatus.MODIFIED, False),
+                ]
+            return []
+
+        bridge._svc.get_status_at = fake_status  # type: ignore[method-assign]
+        bridge._svc.get_current_branch_at = lambda repo: (  # type: ignore[method-assign]
+            "feature/tab" if os.path.normcase(repo) == os.path.normcase("other")
+            else "main"
+        )
+        statuses: list[tuple[str, int]] = []
+        branches: list[tuple[str, str]] = []
+        bridge.statusReady.connect(
+            lambda repo, count: statuses.append((repo, count))
+        )
+        bridge.branchReady.connect(
+            lambda repo, branch: branches.append((repo, branch))
+        )
+
+        try:
+            bridge.requestTabSnapshots(["repo", "other", ""], "repo")
+            self.assertTrue(self._wait_until(
+                app,
+                lambda: statuses == [("other", 2)]
+                and branches == [("other", "feature/tab")],
+            ))
+            self.assertFalse(bridge._tab_snapshots_busy)
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_tab_snapshot_poll_skips_while_previous_round_busy(self) -> None:
+        """上一轮快照任务未完成时，新一轮调用直接跳过，不堆积后台任务。"""
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        first_started = threading.Event()
+        release_first = threading.Event()
+        status_calls: list[str] = []
+
+        def fake_status(repo: str) -> list[FileChange]:
+            status_calls.append(repo)
+            first_started.set()
+            release_first.wait(timeout=5)
+            return []
+
+        bridge._svc.get_status_at = fake_status  # type: ignore[method-assign]
+        bridge._svc.get_current_branch_at = lambda _repo: "main"  # type: ignore[method-assign]
+
+        try:
+            first_task = bridge.requestTabSnapshots(["other"], "repo")
+            self.assertTrue(first_task is not None)
+            self.assertTrue(first_started.wait(timeout=2))
+            self.assertIsNone(bridge.requestTabSnapshots(["other"], "repo"))
+            release_first.set()
+            finished: list[bool] = []
+            first_task.finished.connect(lambda: finished.append(True))
+            self.assertTrue(self._wait_until(app, lambda: bool(finished)))
+            # 第一轮完成后恢复可提交，且快照任务只跑了一轮。
+            self.assertEqual(status_calls, ["other"])
+            self.assertFalse(bridge._tab_snapshots_busy)
+            self.assertIsNotNone(bridge.requestTabSnapshots(["other"], "repo"))
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
 
     def test_current_branch_query_emits_typed_branch_signal(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])

@@ -21,7 +21,9 @@ def _pump(milliseconds: int) -> None:
 
 
 class _DummyGitBridge:
-    def __init__(self, repo_path: str) -> None:
+    def __init__(
+        self, repo_path: str, tab_poll_interval: int = 10000
+    ) -> None:
         from PySide6.QtCore import QObject, Property, Signal, Slot
 
         class Bridge(QObject):
@@ -33,13 +35,18 @@ class _DummyGitBridge:
             statusReady = Signal(str, int)
             branchReady = Signal(str, str)
 
-            def __init__(self, path: str) -> None:
+            def __init__(self, path: str, interval: int) -> None:
                 super().__init__()
                 self._repo_path = path
+                self._tab_poll_interval = interval
                 self.saved_sessions: list[tuple[list[str], str]] = []
+                self.tab_snapshot_calls: list[tuple[list[str], str]] = []
 
             def _get_repo_path(self) -> str:
                 return self._repo_path
+
+            def _get_tab_poll_interval(self) -> int:
+                return self._tab_poll_interval
 
             @Slot(result="QVariantList")
             def getRecentRepos(self) -> list[str]:
@@ -55,9 +62,18 @@ class _DummyGitBridge:
             def requestStatus(self) -> None:
                 return None
 
-            repoPath = Property(str, _get_repo_path, notify=repoPathChanged)
+            @Slot("QVariantList", str)
+            def requestTabSnapshots(self, paths: list, active: str) -> None:
+                self.tab_snapshot_calls.append(
+                    ([str(item) for item in (paths or [])], str(active or ""))
+                )
 
-        self.object = Bridge(repo_path)
+            repoPath = Property(str, _get_repo_path, notify=repoPathChanged)
+            tabPollIntervalMs = Property(
+                int, _get_tab_poll_interval, constant=True
+            )
+
+        self.object = Bridge(repo_path, tab_poll_interval)
 
 
 class _DummyRepoScanner:
@@ -107,7 +123,7 @@ Window {{
 """.encode("utf-8")
 
 
-def _create_repository_scene():
+def _create_repository_scene(tab_poll_interval_ms: int = 10000):
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     os.environ.setdefault("QT_QUICK_BACKEND", "software")
 
@@ -120,7 +136,9 @@ def _create_repository_scene():
     engine = QQmlEngine()
     engine.addImportPath(str(qml_path().parent))
 
-    bridge = _DummyGitBridge("D:/Repos/Gitora")
+    bridge = _DummyGitBridge(
+        "D:/Repos/Gitora", tab_poll_interval=tab_poll_interval_ms
+    )
     scanner = _DummyRepoScanner()
     context = engine.rootContext()
     context.setContextProperty("bridge", bridge.object)
@@ -459,6 +477,57 @@ def test_repository_tab_bar_applies_background_branch_updates() -> None:
     assert bar.property("tabCount") == 1
     assert bar._indexForPath("D:/Repos/Kaleidos") == -1
     assert bar._indexForPath("D:/Repos/Mojin") == -1
+
+    _destroy_repository_scene(app, engine, component, window)
+
+
+def test_repository_tab_bar_polls_tab_snapshots_periodically() -> None:
+    """打开的页面要定时轮询：restore 后立即拉一轮，徽标随轮询结果更新，
+    迟到的快照不能复活已关闭的标签。"""
+    from PySide6.QtCore import QObject
+
+    # 轮询测试专用短周期；其余测试用默认大周期，避免高频 Timer 干扰 Popup。
+    app, engine, component, window, bridge = _create_repository_scene(
+        tab_poll_interval_ms=30
+    )
+    bar = window.findChild(QObject, "repositoryTabBar")
+    assert bar is not None
+
+    bridge.object.openedReposRestored.emit(
+        ["D:/Repos/PrismQML", "D:/Repos/Kaleidos"], "D:/Repos/PrismQML"
+    )
+    app.processEvents()
+    # 会话恢复后立即触发一轮快照轮询（Qt.callLater），全部标签路径原样上报，
+    # 活动仓库由后端剔除，不重复回传。
+    assert bridge.object.tab_snapshot_calls, "restore 后必须立即拉一轮标签快照"
+    polled_paths, polled_active = bridge.object.tab_snapshot_calls[-1]
+    assert polled_paths == ["D:/Repos/PrismQML", "D:/Repos/Kaleidos"]
+    # restore 阶段活动仓库还没完成异步打开，activePath 仍是当前 repoPath。
+    assert polled_active == "D:/Repos/Gitora"
+
+    # 定时器按 tabPollIntervalMs(dummy=30ms) 周期继续触发。
+    calls_after_restore = len(bridge.object.tab_snapshot_calls)
+    _pump(200)
+    assert len(bridge.object.tab_snapshot_calls) > calls_after_restore
+
+    # 轮询结果落到对应标签：变更数与“干净”徽标随结果刷新。
+    bridge.object.statusReady.emit("D:/Repos/Kaleidos", 26)
+    app.processEvents()
+    tabs = bar.property("_tabs").toVariant()
+    assert tabs[1]["badgeText"] == "26"
+    bridge.object.statusReady.emit("D:/Repos/Kaleidos", 0)
+    app.processEvents()
+    tabs = bar.property("_tabs").toVariant()
+    assert tabs[1]["badgeText"] == "干净"
+
+    # 迟到的快照不能让已关闭的标签重新出现。
+    bar._closePath("D:/Repos/Kaleidos")
+    app.processEvents()
+    bridge.object.statusReady.emit("D:/Repos/Kaleidos", 5)
+    bridge.object.branchReady.emit("D:/Repos/Kaleidos", "master")
+    app.processEvents()
+    assert bar.property("tabCount") == 1
+    assert bar._indexForPath("D:/Repos/Kaleidos") == -1
 
     _destroy_repository_scene(app, engine, component, window)
 
