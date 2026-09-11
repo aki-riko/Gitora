@@ -19,10 +19,31 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("id: headerLayout", source)
         # 文件列表为左侧窄栏(多文件提交才显示),diff 吃满剩余宽高
         self.assertIn("visible: dlg.fileRows.length > 1", source)
-        self.assertIn("Layout.preferredWidth: 200", source)
+        self.assertIn("Layout.preferredWidth: 240", source)
         self.assertIn("Layout.fillHeight: true", source)
         self.assertNotIn("width: 580", source)
         self.assertNotIn("Layout.preferredHeight: 260", source)
+
+    def test_commit_detail_file_list_shares_history_panel_visual_language(self) -> None:
+        source = (QML_ROOT / "components" / "CommitDetailDialog.qml").read_text(
+            encoding="utf-8"
+        )
+
+        # 左栏与右侧 diff 同款卡片材质,不再是裸列表
+        self.assertIn("color: Fluent.Enums.cardColor", source)
+        self.assertIn("border.color: Fluent.Enums.stateColor.border", source)
+        # 标题层次与 CommitFilesPanel 一致:左标题 + 右计数
+        self.assertIn('text: "变更文件"', source)
+        self.assertIn('" 个文件"', source)
+        # 行高与历史页变更文件列表一致,不再用硬编码 24
+        self.assertIn("itemHeight: Fluent.Enums.controlSize.buttonHeight", source)
+        self.assertNotIn("height: 24", source)
+        # 状态用彩色 Tag,不再固定 50px 灰字
+        self.assertIn("Fluent.Tag {", source)
+        self.assertNotIn("width: 50", source)
+        # 选中态用语义选中底色 + 左侧强调条,不再画闭合 accent 边框(看着像输入框)
+        self.assertIn("Fluent.Enums.stateColor.selected", source)
+        self.assertNotIn("border.color: Fluent.Enums.accentColor", source)
 
     def test_history_status_refresh_keeps_existing_timeline_until_data_arrives(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(

@@ -173,88 +173,137 @@ Fluent.DialogBoxCore {
             spacing: Fluent.Enums.spacing.l
 
             // 左栏:变更文件(仅多文件提交显示;文件数少,默认模式 Repeater 即可)
-            ColumnLayout {
+            // 与右侧 diff 共用同一套卡片材质(cardColor + border),标题/状态/行高则与
+            // 历史页 CommitFilesPanel 统一,避免同一个"变更文件"在同屏出现两种长相。
+            Rectangle {
                 visible: dlg.fileRows.length > 1
-                Layout.preferredWidth: 200
-                Layout.maximumWidth: 200
+                Layout.preferredWidth: 240
+                Layout.maximumWidth: 240
                 Layout.fillHeight: true
-                spacing: Fluent.Enums.spacing.s
+                radius: Fluent.Enums.radius.medium
+                color: Fluent.Enums.cardColor
+                border.width: Fluent.Enums.border.normal
+                border.color: Fluent.Enums.stateColor.border
 
-                Fluent.Label {
-                    text: "变更文件 ("
-                        + (dlg.filesTruncated
-                            ? dlg.fileRows.length + " / " + dlg.totalFileCount
-                            : dlg.totalFileCount)
-                        + ")"
-                    type: Fluent.Enums.label.type_body_strong
-                    color: Fluent.Enums.textColor.secondary
-                }
-                Fluent.ScrollArea {
-                    id: filesScrollArea
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    padding: 0
-                    type: Fluent.Enums.scroll.type_list
-                    itemHeight: 24
-                    listSpacing: 0
-                    reuseItems: true
-                    bounceEnabled: false
-                    // 关闭 ScrollArea 默认当前项高亮(蓝竖条+浅蓝底):选中态由 delegate 自绘,
-                    // 否则引擎 highlight 会与自绘选中底色重叠,且 model 重置后 currentIndex
-                    // 落到 0 导致高亮钉死在第一行(照 CommitFilesPanel 同款做法)。
-                    selectable: false
-                    model: dlg.fileRows
-                    delegate: Rectangle {
-                        objectName: "commitDetailFileRow"
-                        width: ListView.view ? ListView.view.width : 0
-                        height: 24
-                        radius: Fluent.Enums.radius.micro
-                        readonly property bool isSelected: dlg._selectedFilePath === modelData.path
-                        color: isSelected ? Fluent.Enums.stateColor.hover : (fileHover.hovered ? Fluent.Enums.stateColor.hover : "transparent")
-                        border.width: isSelected ? Fluent.Enums.border.normal : 0
-                        border.color: Fluent.Enums.accentColor
+                ColumnLayout {
+                    anchors.fill: parent
+                    anchors.margins: Fluent.Enums.spacing.m
+                    spacing: Fluent.Enums.spacing.s
 
-                        HoverHandler { id: fileHover }
-                        TapHandler {
-                            onTapped: {
-                                dlg._selectedFilePath = modelData.path
-                                commitDiffViewer.setLoading("加载中...")
-                                GitBridge.requestCommitFileDiff(
-                                    dlg.commitHash, dlg._selectedFilePath)
-                            }
+                    // 标题行:左标题 + 右计数(照 CommitFilesPanel 的标题层次)
+                    RowLayout {
+                        Layout.fillWidth: true
+                        // 与文件行文字起点对齐:行内文字同样让开 6px 强调条间距
+                        Layout.leftMargin: Fluent.Enums.spacing.s
+                        Layout.rightMargin: Fluent.Enums.spacing.s
+                        spacing: Fluent.Enums.spacing.s
+
+                        Text {
+                            text: "变更文件"
+                            color: Fluent.Enums.textColor.primary
+                            font.family: Fluent.Enums.fontFamily
+                            font.pixelSize: Fluent.Enums.typography.body
+                            font.bold: true
                         }
-                        // 路径被省略时悬浮在行左侧显示完整路径(原生窗口 tooltip,跨弹窗边界)
-                        Fluent.ToolTip {
-                            x: -width - Fluent.Enums.spacing.s
-                            y: (parent.height - height) / 2
-                            visible: fileHover.hovered && pathText.truncated
-                            text: modelData.path
+                        Item { Layout.fillWidth: true }
+                        Text {
+                            text: dlg.filesTruncated
+                                ? dlg.fileRows.length + " / " + dlg.totalFileCount + " 个文件"
+                                : dlg.totalFileCount + " 个文件"
+                            color: Fluent.Enums.textColor.tertiary
+                            font.family: Fluent.Enums.fontFamily
+                            font.pixelSize: Fluent.Enums.typography.caption
                         }
+                    }
 
-                        Row {
-                            anchors.fill: parent
-                            // 与右侧 diff 摘要行相同的左侧内边距,两边起始位置视觉对齐
-                            anchors.leftMargin: Fluent.Enums.spacing.l
-                            spacing: Fluent.Enums.spacing.m
-                            Text {
-                                text: modelData.statusText
-                                width: 50
-                                color: Fluent.Enums.textColor.tertiary
-                                font.family: Fluent.Enums.fontFamily
-                                font.pixelSize: Fluent.Enums.typography.caption
-                                verticalAlignment: Text.AlignVCenter
-                                height: parent.height
+                    Fluent.ScrollArea {
+                        id: filesScrollArea
+                        Layout.fillWidth: true
+                        Layout.fillHeight: true
+                        padding: 0
+                        type: Fluent.Enums.scroll.type_list
+                        // 行高改与历史页变更文件列表一致(引擎按钮高 32):
+                        // 原来的 24 会把多行挤成一片,且与右侧 diff 的行密度对不上。
+                        itemHeight: Fluent.Enums.controlSize.buttonHeight
+                        listSpacing: 0
+                        reuseItems: true
+                        bounceEnabled: false
+                        // 关闭 ScrollArea 默认当前项高亮(蓝竖条+浅蓝底):选中态由 delegate 自绘,
+                        // 否则引擎 highlight 会与自绘选中底色重叠,且 model 重置后 currentIndex
+                        // 落到 0 导致高亮钉死在第一行(照 CommitFilesPanel 同款做法)。
+                        selectable: false
+                        model: dlg.fileRows
+                        delegate: Rectangle {
+                            objectName: "commitDetailFileRow"
+                            width: ListView.view ? ListView.view.width : 0
+                            height: filesScrollArea.itemHeight
+                            radius: Fluent.Enums.radius.micro
+                            readonly property bool isSelected: dlg._selectedFilePath === modelData.path
+                            // 选中用语义选中底色、悬停用列表 hover 层:两者不再共用同一个颜色,
+                            // 也不再画闭合蓝框(浅底 + 四边闭合蓝框看起来像聚焦输入框)。
+                            color: isSelected
+                                ? Fluent.Enums.stateColor.selected
+                                : (fileHover.hovered
+                                    ? Fluent.Enums.stateColor.listItemHover
+                                    : "transparent")
+
+                            // 选中指示条:贴行左缘的短强调条
+                            Rectangle {
+                                anchors.left: parent.left
+                                anchors.verticalCenter: parent.verticalCenter
+                                width: 2
+                                height: parent.height - Fluent.Enums.spacing.m
+                                radius: width / 2
+                                color: Fluent.Enums.accentColor
+                                visible: parent.isSelected
                             }
-                            Text {
-                                id: pathText
-                                width: parent.width - 50 - Fluent.Enums.spacing.m
+
+                            HoverHandler { id: fileHover }
+                            TapHandler {
+                                onTapped: {
+                                    dlg._selectedFilePath = modelData.path
+                                    commitDiffViewer.setLoading("加载中...")
+                                    GitBridge.requestCommitFileDiff(
+                                        dlg.commitHash, dlg._selectedFilePath)
+                                }
+                            }
+                            // 路径被省略时悬浮在行左侧显示完整路径(原生窗口 tooltip,跨弹窗边界)
+                            Fluent.ToolTip {
+                                x: -width - Fluent.Enums.spacing.s
+                                y: (parent.height - height) / 2
+                                visible: fileHover.hovered && pathText.truncated
                                 text: modelData.path
-                                color: Fluent.Enums.textColor.primary
-                                font.family: "Consolas, monospace"
-                                font.pixelSize: Fluent.Enums.typography.caption
-                                elide: Text.ElideMiddle
-                                verticalAlignment: Text.AlignVCenter
-                                height: parent.height
+                            }
+
+                            RowLayout {
+                                anchors.fill: parent
+                                // 让开左侧强调条,并与标题行文字起点对齐
+                                anchors.leftMargin: Fluent.Enums.spacing.s
+                                anchors.rightMargin: Fluent.Enums.spacing.s
+                                spacing: Fluent.Enums.spacing.m
+
+                                // 状态改彩色 Tag,与历史页变更文件列表同一套状态语言;
+                                // 原来的固定 50px 灰字既白占 1/4 宽度,又把路径挤到只剩 130px。
+                                Fluent.Tag {
+                                    status: modelData.status === "A"
+                                        ? Fluent.Enums.statusLevel.success
+                                        : (modelData.status === "D"
+                                            ? Fluent.Enums.statusLevel.error
+                                            : (modelData.status === "R"
+                                                ? Fluent.Enums.statusLevel.warning
+                                                : Fluent.Enums.statusLevel.info))
+                                    text: modelData.statusText
+                                }
+                                Text {
+                                    id: pathText
+                                    Layout.fillWidth: true
+                                    text: modelData.path
+                                    color: Fluent.Enums.textColor.primary
+                                    font.family: "Consolas, monospace"
+                                    font.pixelSize: Fluent.Enums.typography.caption
+                                    elide: Text.ElideMiddle
+                                    verticalAlignment: Text.AlignVCenter
+                                }
                             }
                         }
                     }
