@@ -1,4 +1,7 @@
 // 可复用 diff 查看器:文件摘要 + 统一/分栏视图 + 按文件过滤
+// 渲染层为窗口化虚拟列表:只实例化可见行(± overscan),滚动零创建销毁。
+// 行数据由 GitBridge.requestDiffRows 异步解析(app/common/diff_rows.py),
+// 含词级高亮与语法着色段;旧的大 HTML 表格渲染已移除。
 import QtQuick
 import QtQuick.Layouts
 
@@ -17,6 +20,45 @@ Item {
     readonly property int contentHorizontalPadding: Fluent.Enums.spacing.xs
     signal filterChanged(string path)
 
+    // ---- 行模型(异步) ----
+    property var _allRows: []
+    property var _files: []
+    property var _viewRows: []
+    property var _pool: []
+    property int _maxDigits: 3
+    property real _contentWidth: 0
+    readonly property int _overscanRows: 12
+    readonly property int _poolSlack: 24
+    readonly property real charWidth: monoMetrics.advanceWidth("0")
+    readonly property int rowHeight: Math.ceil(monoMetrics.height) + 2
+    readonly property real lineNoWidth: _maxDigits * charWidth + 2 * lineNumberHorizontalPadding + 10
+
+    readonly property var rowColors: {
+        var isDark = (typeof ThemeManager !== "undefined") && ThemeManager.isDark
+        return {
+            add: isDark ? "#4ec97a" : "#1a7f37",
+            del: isDark ? "#f47067" : "#cf222e",
+            hunk: isDark ? "#6cb6ff" : "#0969da",
+            meta: isDark ? "#8b949e" : "#6e7781",
+            normal: isDark ? "#d0d0d0" : "#24292f",
+            lineNo: isDark ? "#8b949e" : "#6e7781",
+            addBg: isDark ? "#17351f" : "#dafbe1",
+            delBg: isDark ? "#3a1d21" : "#ffebe9",
+            kw: isDark ? "#ff7b72" : "#cf222e",
+            str: isDark ? "#a5d6ff" : "#0a3069",
+            com: isDark ? "#8b949e" : "#6e7781",
+            num: isDark ? "#79c0ff" : "#0550ae",
+            wordAdd: isDark ? "rgba(46,160,67,0.55)" : "rgba(31,145,63,0.35)",
+            wordDel: isDark ? "rgba(248,81,73,0.50)" : "rgba(207,34,46,0.30)"
+        }
+    }
+
+    FontMetrics {
+        id: monoMetrics
+        font.family: "Consolas, Cascadia Code, monospace"
+        font.pixelSize: Fluent.Enums.typography.caption
+    }
+
     ListModel { id: fileModel }
 
     function clearDiff() {
@@ -24,13 +66,12 @@ Item {
         root.filterPath = ""
         root.loading = false
         fileModel.clear()
-        root._setHtml("")
+        root._applyRows([], [])
     }
 
     function setLoading(text) {
         root.loadingText = text || "加载中..."
         root.loading = true
-        root._setHtml(root._stateHtml(root.loadingText))
     }
 
     function setDiff(rawDiff, filterPath) {
@@ -39,15 +80,7 @@ Item {
         root.loading = false
         // 相同（或同为空）字符串再次赋值不会触发属性变化信号，必须显式刷新。
         root._reloadFileModel()
-        root._rebuild()
-    }
-
-    function _setHtml(html) {
-        diffArea.text = html || ""
-        // Qt 会按 HTML 源码长度把 TextEdit 切到大文本视口剔除；表格行在
-        // Flickable 滚动后可能不再补画。赋值会重置该标志，因此每次都关闭。
-        if (typeof QmlRenderBridge !== "undefined" && QmlRenderBridge)
-            QmlRenderBridge.disableTextViewportCulling(diffArea)
+        root._requestRows()
     }
 
     function _setFilter(path) {
@@ -64,29 +97,236 @@ Item {
             fileModel.append(files[i])
     }
 
-    function _activeDiff() {
-        if (!root.rawDiff)
-            return ""
+    // ---- 行数据获取 ----
+    function _requestRows() {
+        if (!root.rawDiff) {
+            root._applyRows([], [])
+            return
+        }
+        if (typeof GitBridge !== "undefined" && GitBridge && GitBridge.requestDiffRows) {
+            GitBridge.requestDiffRows(root.rawDiff)
+            return
+        }
+        // 无桥环境回退:仅分类行,无词级/语法着色
+        root._applyRows(root._fallbackRows(root.rawDiff), [])
+    }
+
+    function _applyRows(rows, files) {
+        root._allRows = rows || []
+        root._files = files || []
+        root._recompute()
+    }
+
+    function _fallbackRows(raw) {
+        var rows = []
+        var o = 0
+        var n = 0
+        var fi = -1
+        var lines = raw.split("\n")
+        for (var i = 0; i < lines.length; i++) {
+            var ln = lines[i]
+            if (ln.indexOf("diff ") === 0) {
+                fi++
+                rows.push({ t: "file", o: -1, n: -1, x: ln, fi: fi })
+                o = 0
+                n = 0
+                continue
+            }
+            if (fi < 0 || ln.indexOf("@@") === 0) {
+                if (fi < 0) {
+                    rows.push({ t: "meta", o: -1, n: -1, x: ln, fi: 0 })
+                    continue
+                }
+                var match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(ln)
+                if (match) {
+                    o = parseInt(match[1])
+                    n = parseInt(match[2])
+                }
+                rows.push({ t: "hunk", o: -1, n: -1, x: ln, fi: fi })
+                continue
+            }
+            if (root._isFileMeta(ln)) {
+                rows.push({ t: "meta", o: -1, n: -1, x: ln, fi: fi })
+            } else if (ln.charAt(0) === "+") {
+                rows.push({ t: "add", o: -1, n: n++, x: ln.substring(1), fi: fi })
+            } else if (ln.charAt(0) === "-") {
+                rows.push({ t: "del", o: o++, n: -1, x: ln.substring(1), fi: fi })
+            } else if (ln.charAt(0) === " ") {
+                rows.push({ t: "ctx", o: o++, n: n++, x: ln.substring(1), fi: fi })
+            } else if (ln !== "") {
+                rows.push({ t: "meta", o: -1, n: -1, x: ln, fi: fi })
+            }
+        }
+        return rows
+    }
+
+    function _isFileMeta(line) {
+        return line.indexOf("+++") === 0 || line.indexOf("---") === 0
+            || line.indexOf("index ") === 0
+            || line.indexOf("new file mode") === 0 || line.indexOf("deleted file mode") === 0
+            || line.indexOf("rename from ") === 0 || line.indexOf("rename to ") === 0
+    }
+
+    // ---- 过滤与视图行构建 ----
+    function _filteredRows() {
+        var rows = root._allRows
         if (!root.filterPath)
-            return root.rawDiff
-        if (GitBridge && GitBridge.filterDiffByPath)
-            return GitBridge.filterDiffByPath(root.rawDiff, root.filterPath)
-        return root.rawDiff
+            return rows
+        var target = -1
+        for (var i = 0; i < root._files.length; i++) {
+            var f = root._files[i]
+            if (f.path === root.filterPath || f.old_path === root.filterPath
+                    || f.new_path === root.filterPath) {
+                target = i
+                break
+            }
+        }
+        if (target < 0)
+            return []  // 与旧 filter_unified_diff 未命中返回空一致
+        var out = []
+        for (i = 0; i < rows.length; i++)
+            if (rows[i].fi === target)
+                out.push(rows[i])
+        return out
     }
 
-    function _rebuild() {
-        if (root.loading) {
-            root._setHtml(root._stateHtml(root.loadingText))
-            return
+    function _buildSplitRows(rows) {
+        var out = []
+        var dels = []
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i]
+            if (row.t === "del") {
+                dels.push(row)
+            } else if (row.t === "add") {
+                out.push({ k: "pair", l: dels.length > 0 ? dels.shift() : null, r: row })
+            } else if (row.t === "ctx") {
+                out.push({ k: "ctx2", l: row, r: row })
+            } else {
+                out.push({ k: "full", l: row, r: null })
+            }
         }
-        var diff = root._activeDiff()
-        if (!diff) {
-            root._setHtml(root._stateHtml(root.emptyText))
-            return
-        }
-        root._setHtml(root.displayMode === "split" ? root._sideBySideHtml(diff) : root._unifiedHtml(diff))
+        for (i = 0; i < dels.length; i++)
+            out.push({ k: "pair", l: dels[i], r: null })
+        return out
     }
 
+    function _recompute() {
+        var rows = root._filteredRows()
+        root._viewRows = root.displayMode === "split"
+            ? root._buildSplitRows(rows) : rows
+
+        var digits = 3
+        var maxLen = 0
+        var i
+        if (root.displayMode === "split") {
+            for (i = 0; i < root._viewRows.length; i++) {
+                var v = root._viewRows[i]
+                if (v.l) {
+                    maxLen = Math.max(maxLen, v.l.x.length)
+                    if (v.l.o > 0) digits = Math.max(digits, String(v.l.o).length)
+                    if (v.l.n > 0) digits = Math.max(digits, String(v.l.n).length)
+                }
+                if (v.r) {
+                    maxLen = Math.max(maxLen, v.r.x.length)
+                    if (v.r.o > 0) digits = Math.max(digits, String(v.r.o).length)
+                    if (v.r.n > 0) digits = Math.max(digits, String(v.r.n).length)
+                }
+            }
+            root._contentWidth = 2 * root.lineNoWidth
+                + 2 * (root.contentHorizontalPadding + maxLen * root.charWidth) + 24
+        } else {
+            for (i = 0; i < rows.length; i++) {
+                maxLen = Math.max(maxLen, rows[i].x.length)
+                if (rows[i].o > 0) digits = Math.max(digits, String(rows[i].o).length)
+                if (rows[i].n > 0) digits = Math.max(digits, String(rows[i].n).length)
+            }
+            root._contentWidth = 2 * root.lineNoWidth
+                + root.contentHorizontalPadding + maxLen * root.charWidth + 24
+        }
+        root._maxDigits = digits
+        root._syncWindow()
+    }
+
+    // ---- 渲染富文本(词级底色 + 语法着色段) ----
+    function _escape(text) {
+        return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    }
+
+    function rowTextDefaultColor(row) {
+        var c = root.rowColors
+        if (!row) return c.meta
+        if (row.t === "add") return c.add
+        if (row.t === "del") return c.del
+        if (row.t === "hunk") return c.hunk
+        if (row.t === "meta" || row.t === "file") return c.meta
+        return c.normal
+    }
+
+    function rowHtml(row) {
+        if (!row)
+            return ""
+        var c = root.rowColors
+        var text = row.x || ""
+        var seg = row.seg
+        if (!seg || seg.length === 0)
+            return root._escape(text)
+        var out = ""
+        for (var i = 0; i < seg.length; i++) {
+            var s = seg[i][0]
+            var e = seg[i][1]
+            var fg = seg[i][2]
+            var bg = seg[i][3]
+            var piece = root._escape(text.substring(s, e))
+            if (piece === "")
+                continue
+            var color = fg === "k" ? c.kw : fg === "s" ? c.str
+                : fg === "c" ? c.com : fg === "n" ? c.num
+                : root.rowTextDefaultColor(row)
+            var style = "color:" + color
+            if (bg === "a")
+                style += ";background-color:" + c.wordAdd
+            else if (bg === "d")
+                style += ";background-color:" + c.wordDel
+            out += '<span style="' + style + '">' + piece + '</span>'
+        }
+        return out
+    }
+
+    // ---- 窗口化虚拟渲染(delegate 池复用,滚动零创建销毁) ----
+    function _syncWindow() {
+        var total = root._viewRows.length
+        var viewportH = Math.max(0, diffScrollArea.height)
+        var cy = Math.max(0, root._scrollY)
+        var first = 0
+        var last = -1
+        if (total > 0) {
+            first = Math.max(0, Math.floor(cy / root.rowHeight) - root._overscanRows)
+            last = Math.min(total - 1,
+                Math.ceil((cy + viewportH) / root.rowHeight) + root._overscanRows)
+        }
+        var need = Math.max(0, last - first + 1)
+        while (root._pool.length < need) {
+            var created = rowDelegateComponent.createObject(canvas)
+            if (created === null)
+                break
+            root._pool.push(created)
+        }
+        while (root._pool.length > need + root._poolSlack)
+            root._pool.pop().destroy()
+        for (var i = 0; i < root._pool.length; i++) {
+            var item = root._pool[i]
+            if (i < need) {
+                item.visible = true
+                item.y = (first + i) * root.rowHeight
+                item.vr = root._viewRows[first + i]
+                item.viewer = root
+            } else {
+                item.visible = false
+            }
+        }
+    }
+
+    // ---- 摘要与旧接口保持一致 ----
     function _summaryText() {
         var additions = 0
         var deletions = 0
@@ -98,158 +338,38 @@ Item {
         return files + "  +" + additions + "  -" + deletions
     }
 
-    function _escape(text) {
-        return (text || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    }
+    readonly property real _scrollY: diffScrollArea.contentY
+    on_ScrollYChanged: root._syncWindow()
 
-    function _colors() {
-        var isDark = (typeof ThemeManager !== "undefined") && ThemeManager.isDark
-        return {
-            add: isDark ? "#4ec97a" : "#1a7f37",
-            del: isDark ? "#f47067" : "#cf222e",
-            hunk: isDark ? "#6cb6ff" : "#0969da",
-            meta: isDark ? "#8b949e" : "#6e7781",
-            normal: isDark ? "#d0d0d0" : "#24292f",
-            lineNo: isDark ? "#8b949e" : "#6e7781",
-            addBg: isDark ? "#17351f" : "#dafbe1",
-            delBg: isDark ? "#3a1d21" : "#ffebe9"
+    Component {
+        id: rowDelegateComponent
+        DiffRowDelegate {
+            width: parent ? parent.width : 0
         }
     }
 
-    function _stateHtml(text) {
-        var c = root._colors()
-        return '<div style="font-family:Consolas,monospace;color:' + c.meta + ';padding:10px">'
-            + root._escape(text) + '</div>'
-    }
-
-    function _isFileMeta(line) {
-        return line.indexOf("+++") === 0 || line.indexOf("---") === 0
-            || line.indexOf("diff ") === 0 || line.indexOf("index ") === 0
-            || line.indexOf("new file mode") === 0 || line.indexOf("deleted file mode") === 0
-            || line.indexOf("rename from ") === 0 || line.indexOf("rename to ") === 0
-    }
-
-    function _tableStart() {
-        return '<table cellspacing="0" cellpadding="0" style="border-collapse:collapse;font-family:Consolas,monospace;font-size:12px">'
-    }
-
-    function _numCell(value, color) {
-        return '<td width="1" style="color:' + color + ';text-align:right;padding:0 '
-            + root.lineNumberHorizontalPadding + 'px;white-space:pre">'
-            + (value === "" ? "&nbsp;" : value) + '</td>'
-    }
-
-    function _textCell(text, color, bg) {
-        return '<td style="color:' + color + ';background:' + bg
-            + ';white-space:pre;padding:0 ' + root.contentHorizontalPadding + 'px">'
-            + root._escape(text) + '</td>'
-    }
-
-    // Qt 富文本的自动表格布局会把 colspan 文件头宽度平均分给行号列，
-    // 导致正文被推到视口中后部。元信息也使用与正文相同的显式列结构。
-    function _unifiedMetaRow(text, color, lineColor) {
-        return "<tr>" + root._numCell("", lineColor) + root._numCell("", lineColor)
-            + root._textCell(text, color, "transparent") + "</tr>"
-    }
-
-    // 分栏元信息不参与四列正文的宽度计算，否则长文件路径会把两侧代码推得很远。
-    function _splitMetaRow(text, color) {
-        return '</table><div style="color:' + color + ';white-space:pre;padding:0 '
-            + root.contentHorizontalPadding + 'px">'
-            + root._escape(text) + '</div>' + root._tableStart()
-    }
-
-    function _unifiedHtml(raw) {
-        var c = root._colors()
-        var lines = raw.split("\n")
-        var html = [root._tableStart()]
-        var oldNo = 0
-        var newNo = 0
-        for (var i = 0; i < lines.length; i++) {
-            var ln = lines[i]
-            var match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(ln)
-            if (match) {
-                oldNo = parseInt(match[1])
-                newNo = parseInt(match[2])
-                html.push(root._unifiedMetaRow(ln, c.hunk, c.lineNo))
-            } else if (root._isFileMeta(ln)) {
-                html.push(root._unifiedMetaRow(ln, c.meta, c.lineNo))
-            } else if (ln.charAt(0) === "+") {
-                html.push("<tr>" + root._numCell("", c.lineNo) + root._numCell(newNo++, c.lineNo)
-                    + root._textCell(ln, c.add, c.addBg) + "</tr>")
-            } else if (ln.charAt(0) === "-") {
-                html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._numCell("", c.lineNo)
-                    + root._textCell(ln, c.del, c.delBg) + "</tr>")
-            } else if (ln.charAt(0) === " ") {
-                html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._numCell(newNo++, c.lineNo)
-                    + root._textCell(ln, c.normal, "transparent") + "</tr>")
-            } else if (ln !== "") {
-                html.push(root._unifiedMetaRow(ln, c.meta, c.lineNo))
+    Connections {
+        target: typeof GitBridge !== "undefined" && GitBridge ? GitBridge : null
+        function onDiffRowsReady(rawDiff, rowsJson) {
+            if (rawDiff !== root.rawDiff)
+                return  // 过期响应,丢弃(与提交详情对话框防过期同策略)
+            var payload
+            try {
+                payload = JSON.parse(rowsJson || "{}")
+            } catch (e) {
+                payload = { files: [], rows: [] }
             }
+            root._applyRows(payload.rows || [], payload.files || [])
         }
-        html.push("</table>")
-        return html.join("")
-    }
-
-    function _sideBySideHtml(raw) {
-        var c = root._colors()
-        var lines = raw.split("\n")
-        var html = [root._tableStart()]
-        var oldNo = 0
-        var newNo = 0
-        for (var i = 0; i < lines.length; i++) {
-            var ln = lines[i]
-            var match = /^@@ -(\d+)(?:,\d+)? \+(\d+)(?:,\d+)? @@/.exec(ln)
-            if (match) {
-                oldNo = parseInt(match[1])
-                newNo = parseInt(match[2])
-                html.push(root._splitMetaRow(ln, c.hunk))
-            } else if (root._isFileMeta(ln)) {
-                html.push(root._splitMetaRow(ln, c.meta))
-            } else if (ln.charAt(0) === "-") {
-                var deleted = []
-                var added = []
-                while (i < lines.length && lines[i].charAt(0) === "-" && !root._isFileMeta(lines[i])) {
-                    deleted.push(lines[i].substring(1))
-                    i++
-                }
-                while (i < lines.length && lines[i].charAt(0) === "+" && !root._isFileMeta(lines[i])) {
-                    added.push(lines[i].substring(1))
-                    i++
-                }
-                i--
-                var maxRows = Math.max(deleted.length, added.length)
-                for (var row = 0; row < maxRows; row++) {
-                    var leftNo = row < deleted.length ? oldNo++ : ""
-                    var rightNo = row < added.length ? newNo++ : ""
-                    var leftText = row < deleted.length ? deleted[row] : ""
-                    var rightText = row < added.length ? added[row] : ""
-                    html.push("<tr>" + root._numCell(leftNo, c.lineNo) + root._textCell(leftText, c.del, c.delBg)
-                        + root._numCell(rightNo, c.lineNo) + root._textCell(rightText, c.add, c.addBg) + "</tr>")
-                }
-            } else if (ln.charAt(0) === "+") {
-                html.push("<tr>" + root._numCell("", c.lineNo) + root._textCell("", c.normal, "transparent")
-                    + root._numCell(newNo++, c.lineNo) + root._textCell(ln.substring(1), c.add, c.addBg) + "</tr>")
-            } else if (ln.charAt(0) === " ") {
-                var text = ln.substring(1)
-                html.push("<tr>" + root._numCell(oldNo++, c.lineNo) + root._textCell(text, c.normal, "transparent")
-                    + root._numCell(newNo++, c.lineNo) + root._textCell(text, c.normal, "transparent") + "</tr>")
-            } else if (ln !== "") {
-                html.push(root._splitMetaRow(ln, c.meta))
-            }
-        }
-        html.push("</table>")
-        return html.join("")
     }
 
     onRawDiffChanged: {
         root.loading = false
         root._reloadFileModel()
-        root._rebuild()
+        root._requestRows()
     }
-    onFilterPathChanged: root._rebuild()
-    onDisplayModeChanged: root._rebuild()
-    onLoadingChanged: root._rebuild()
+    onFilterPathChanged: root._recompute()
+    onDisplayModeChanged: root._recompute()
 
     ColumnLayout {
         anchors.fill: parent
@@ -307,25 +427,31 @@ Item {
             }
         }
 
+        Text {
+            Layout.fillWidth: true
+            Layout.fillHeight: true
+            visible: root._viewRows.length === 0
+            text: root.loading ? root.loadingText : root.emptyText
+            color: root.rowColors.meta
+            padding: 10
+            font.family: "Consolas, Cascadia Code, monospace"
+            font.pixelSize: Fluent.Enums.typography.caption
+        }
+
         Fluent.ScrollArea {
             id: diffScrollArea
             Layout.fillWidth: true
             Layout.fillHeight: true
+            visible: root._viewRows.length > 0
             orientation: Qt.Horizontal | Qt.Vertical
             padding: 0
+            onHeightChanged: root._syncWindow()
+            onWidthChanged: root._syncWindow()
 
-            TextEdit {
-                id: diffArea
-                width: Math.max(parent ? parent.width : 0, paintedWidth)
-                height: Math.max(1, paintedHeight)
-                readOnly: true
-                selectByMouse: true
-                textFormat: TextEdit.RichText
-                wrapMode: TextEdit.NoWrap
-                font.family: "Consolas, Cascadia Code, monospace"
-                font.pixelSize: Fluent.Enums.typography.caption
-                color: Fluent.Enums.textColor.primary
-                text: ""
+            Item {
+                id: canvas
+                width: Math.max(diffScrollArea.width, root._contentWidth)
+                height: root._viewRows.length * root.rowHeight
             }
         }
     }

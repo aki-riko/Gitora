@@ -22,6 +22,7 @@ from app.common.git_service import (
     WorktreeInfo, SubmoduleInfo, DiffFile,
     MAX_CLEAN_PREVIEW, MAX_CONFLICT_FILE_SIZE, MAX_RULE_FILE_SIZE,
 )
+from app.common.diff_rows import parse_diff_rows, rows_to_json
 from app.common.logger import get_logger
 from app.common.prism_task import submit_to_pool
 from app_qml.backend.file_change_model import FileChangeListModel
@@ -187,6 +188,8 @@ class GitBridge(QObject):
     searchReady = Signal(str, "QVariantList")       # 后台搜索结果就绪(repoPath, 结果)
     # 以下为耗时操作异步化新增信号(均带请求参数供前端校验防过期)
     diffReady = Signal(str, str, bool, str)              # (repoPath, path, staged, diff内容)
+    # 结构化 diff 行模型(QML DiffViewer 虚拟化渲染): (rawDiff, JSON)
+    diffRowsReady = Signal(str, str)
     commitDiffReady = Signal(str, str, str)              # (repoPath, hash, diff)
     commitFileDiffReady = Signal(str, str, str, str)     # (repoPath, hash, path, diff)
     branchesReady = Signal(str, "QVariantList")          # (repoPath, 分支列表)
@@ -988,6 +991,28 @@ class GitBridge(QObject):
     def filterDiffByPath(self, raw_diff: str, path: str) -> str:
         """从多文件 diff 中取指定文件段。"""
         return GitService.filter_unified_diff(raw_diff, path)
+
+    @Slot(str)
+    def requestDiffRows(self, raw_diff: str):
+        """后台解析 unified diff 为结构化行模型,完成发 diffRowsReady(rawDiff, json)。
+
+        纯文本解析,不依赖已打开仓库;失败也发信号(json 为空模型),QML 据此回退。
+        """
+        def work() -> str:
+            return rows_to_json(parse_diff_rows(raw_diff or ""))
+
+        def succeed(data: Any) -> None:
+            self.diffRowsReady.emit(raw_diff or "", str(data))
+
+        def fail(_exc: BaseException) -> None:
+            self.diffRowsReady.emit(raw_diff or "", '{"files":[],"rows":[]}')
+
+        return self._submit_query(
+            work,
+            label="解析 diff 行模型",
+            on_success=succeed,
+            on_failure=fail,
+        )
 
     # ==================== 提交 ====================
     @Slot(str, result=QObject)

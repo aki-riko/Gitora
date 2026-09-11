@@ -185,58 +185,54 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         self.assertIn("hash !== root.requestHash", handler)
         self.assertIn("root.commit.hash !== hash", handler)
 
-    def test_diff_tables_do_not_use_full_span_rows_that_distort_columns(self) -> None:
+    def test_diff_viewer_renders_virtualized_rows_without_html_table(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
         )
 
-        self.assertNotIn("colspan=", source)
-        self.assertIn('<td width="1"', source)
-        self.assertIn("function _unifiedMetaRow", source)
-        self.assertIn("function _splitMetaRow", source)
+        # 旧的大 HTML 表格渲染必须彻底移除
+        self.assertNotIn("<td", source)
+        self.assertNotIn("TextEdit", source)
+        self.assertNotIn("disableTextViewportCulling", source)
+        # 虚拟化窗口化渲染必须存在:delegate 池 + 可见窗口同步
+        self.assertIn("function _syncWindow", source)
+        self.assertIn("rowDelegateComponent.createObject(canvas)", source)
+        self.assertIn("DiffRowDelegate", source)
 
-    def test_split_metadata_does_not_stretch_the_code_columns(self) -> None:
+    def test_split_view_pairs_rows_and_keeps_full_width_meta(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
         )
 
-        split_meta = source.split("function _splitMetaRow", 1)[1].split("\n    }", 1)[0]
-        self.assertIn("</table><div", split_meta)
-        self.assertIn("root._escape(text)", split_meta)
-        self.assertIn("root._tableStart()", split_meta)
-        self.assertNotIn("root._textCell(text", split_meta)
+        build_split = source.split("function _buildSplitRows", 1)[1].split(
+            "\n    }", 1
+        )[0]
+        self.assertIn('k: "pair"', build_split)
+        self.assertIn('k: "ctx2"', build_split)
+        self.assertIn('k: "full"', build_split)
+        self.assertIn("dels.shift()", build_split)
 
-    def test_diff_line_number_columns_have_no_horizontal_padding(self) -> None:
+    def test_diff_line_number_columns_have_fixed_width(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
         )
 
         self.assertIn(
-            "readonly property int lineNumberHorizontalPadding: Fluent.Enums.spacing.none",
+            "readonly property real lineNoWidth: _maxDigits * charWidth",
             source,
         )
-        self.assertIn(
-            "readonly property int contentHorizontalPadding: Fluent.Enums.spacing.xs",
-            source,
-        )
-        num_cell = source.split("function _numCell", 1)[1].split("\n    }", 1)[0]
-        self.assertIn("+ root.lineNumberHorizontalPadding +", num_cell)
-        self.assertNotIn("root.contentHorizontalPadding", num_cell)
-        self.assertEqual(source.count("+ root.contentHorizontalPadding +"), 2)
-        self.assertNotIn("padding:0 8px", source)
+        self.assertIn("property int _maxDigits: 3", source)
 
-    def test_rich_text_diff_disables_broken_viewport_culling_after_assignment(self) -> None:
+    def test_diff_viewer_uses_async_row_model_with_stale_guard(self) -> None:
         source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
             encoding="utf-8"
         )
-        set_html = source.split("function _setHtml", 1)[1].split("\n    }", 1)[0]
 
-        self.assertIn('diffArea.text = html || ""', set_html)
-        self.assertIn(
-            "QmlRenderBridge.disableTextViewportCulling(diffArea)", set_html
-        )
-        self.assertEqual(source.count("diffArea.text ="), 1)
-        self.assertNotIn("smoothScroll: false", source)
+        self.assertIn("GitBridge.requestDiffRows(root.rawDiff)", source)
+        self.assertIn("function onDiffRowsReady(rawDiff, rowsJson)", source)
+        self.assertIn("rawDiff !== root.rawDiff", source)
+        # 双轴滚动契约保持(引擎 ScrollArea 默认模式)
+        self.assertIn("orientation: Qt.Horizontal | Qt.Vertical", source)
 
     def test_commit_detail_explicitly_finishes_repeated_diff_loading(self) -> None:
         viewer_source = (QML_ROOT / "components" / "DiffViewer.qml").read_text(
@@ -253,7 +249,7 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
 
         self.assertIn("root.loading = false", set_diff)
         self.assertIn("root._reloadFileModel()", set_diff)
-        self.assertIn("root._rebuild()", set_diff)
+        self.assertIn("root._requestRows()", set_diff)
         self.assertIn(
             "commitDiffViewer.setDiff(dlg._rawDiff, dlg._selectedFilePath)",
             diff_ready,
