@@ -208,8 +208,10 @@ def test_refresh_models_replaces_dropdown_options(tmp_path: Path) -> None:
         _destroy_scene(app, engine, component, window)
 
 
-def test_refresh_selects_first_model_over_previous_choice(tmp_path: Path) -> None:
-    """刷新模型后模型名默认落在列表第一个，而不是保留旧选择。"""
+def test_refresh_keeps_matching_model_and_replaces_mismatched_text(
+    tmp_path: Path,
+) -> None:
+    """刷新模型的口径：相符则保留当前模型，不符才换成列表第一个（含输入框文本）。"""
     provider = _MutableModelProvider(("alpha-model", "beta-model"))
     app, engine, component, window, bridge = _create_scene(tmp_path, provider)
     try:
@@ -224,55 +226,87 @@ def test_refresh_selects_first_model_over_previous_choice(tmp_path: Path) -> Non
         _wait_for_refresh(results, 1)
         assert results[0][1] is True, results[0][3]
 
-        # 用户手动把模型名改成第二个（它仍然在可用列表里）
+        # 情形一：当前模型仍在列表里 → 保留用户选择，不改成第一个
         connection.setProperty("remoteModel", "beta-model")
         _pump(30)
-        assert connection.property("remoteModel") == "beta-model"
         assert combo.property("currentText") == "beta-model"
-
-        # 再刷新一次：默认应回到列表第一个，而不是继续留在第二个
         assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
         _wait_for_refresh(results, 2)
         assert results[1][1] is True, results[1][3]
+        assert connection.property("remoteModel") == "beta-model"
+        assert combo.property("currentText") == "beta-model"
 
-        assert _js_list(connection.property("remoteModels")) == [
-            "alpha-model", "beta-model"
-        ], _js_list(connection.property("remoteModels"))
-        assert connection.property("remoteModel") == "alpha-model"
+        # 情形二：远端换了模型，当前模型不在新列表里 → 模型名与输入框文本都换掉。
+        # 这里刻意让当前模型停在索引 0：整表替换后索引仍是 0，引擎不会自己同步
+        # currentText，正是最容易漏掉的一条路径。
+        connection.setProperty("remoteModel", "alpha-model")
+        _pump(30)
         assert combo.property("currentIndex") == 0
         assert combo.property("currentText") == "alpha-model"
-    finally:
-        _destroy_scene(app, engine, component, window)
 
-
-def test_refresh_selects_first_local_model(tmp_path: Path) -> None:
-    """本地 Ollama 分支同样在刷新后默认选中列表第一个模型。"""
-    provider = _MutableModelProvider(("zeta-model", "alpha-model"))
-    app, engine, component, window, bridge = _create_scene(tmp_path, provider)
-    try:
-        connection = window.findChild(QObject, "aiConnectionSection")
-        combo = window.findChild(QObject, "localModelCombo")
-        assert connection is not None and combo is not None
-
-        results: list[tuple] = []
-        bridge.modelListFinished.connect(lambda *args: results.append(args))
-
-        connection.setProperty("providerIndex", 0)
-        connection.setProperty("localEndpoint", "http://127.0.0.1:11434")
-        connection.setProperty("localModel", "beta-model")
-        _pump(30)
+        provider.models = ("gamma-model", "delta-model")
         assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
-        _wait_for_refresh(results, 1)
-        provider_id, ok, _models, message = results[0]
-        assert provider_id == "ollama"
-        assert ok, message
+        _wait_for_refresh(results, 3)
+        assert results[2][1] is True, results[2][3]
 
-        # 后端按名称排序后回传，列表第一个即排序后的第一个
-        available = _js_list(connection.property("localModels"))
-        assert available == ["alpha-model", "zeta-model"], available
-        assert connection.property("localModel") == "alpha-model"
+        available = _js_list(connection.property("remoteModels"))
+        assert available == ["delta-model", "gamma-model"], available
+        assert connection.property("remoteModel") == "delta-model"
         assert _js_list(combo.property("model")) == available
         assert combo.property("currentIndex") == 0
-        assert combo.property("currentText") == "alpha-model"
+        # 这一条是关键：整表替换而索引恰好没变时，输入框文本也必须被刷新
+        assert combo.property("currentText") == "delta-model"
     finally:
         _destroy_scene(app, engine, component, window)
+
+
+def test_refresh_model_rule_is_identical_for_every_provider(tmp_path: Path) -> None:
+    """三个模型来源共用同一口径：本地 Ollama、远程 OpenAI 兼容、Anthropic。"""
+    cases = (
+        ("本地 Ollama", 0, "localModelCombo", "localModels", "localModel", "ollama"),
+        (
+            "远程 OpenAI 兼容 API", 1, "remoteModelCombo", "remoteModels",
+            "remoteModel", "openai_responses",
+        ),
+        (
+            "Anthropic Messages API", 2, "remoteModelCombo", "remoteModels",
+            "remoteModel", "anthropic",
+        ),
+    )
+    for label, index, combo_name, list_prop, model_prop, provider_id in cases:
+        provider = _MutableModelProvider(("alpha-model", "beta-model"))
+        app, engine, component, window, bridge = _create_scene(tmp_path, provider)
+        try:
+            connection = window.findChild(QObject, "aiConnectionSection")
+            combo = window.findChild(QObject, combo_name)
+            assert connection is not None and combo is not None
+
+            results: list[tuple] = []
+            bridge.modelListFinished.connect(lambda *args: results.append(args))
+
+            connection.setProperty("providerIndex", index)
+            _pump(30)
+            assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
+            _wait_for_refresh(results, 1)
+            assert results[0][0] == provider_id, (label, results[0])
+            assert results[0][1] is True, (label, results[0][3])
+
+            # 相符：保留用户选择
+            connection.setProperty(model_prop, "beta-model")
+            _pump(30)
+            assert combo.property("currentText") == "beta-model", label
+            assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
+            _wait_for_refresh(results, 2)
+            assert connection.property(model_prop) == "beta-model", label
+            assert combo.property("currentText") == "beta-model", label
+
+            # 不符：换成列表第一个，并刷新输入框文本
+            provider.models = ("zeta-model",)
+            assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
+            _wait_for_refresh(results, 3)
+            assert _js_list(connection.property(list_prop)) == ["zeta-model"], label
+            assert connection.property(model_prop) == "zeta-model", label
+            assert combo.property("currentIndex") == 0, label
+            assert combo.property("currentText") == "zeta-model", label
+        finally:
+            _destroy_scene(app, engine, component, window)

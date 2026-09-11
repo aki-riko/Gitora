@@ -333,8 +333,11 @@ ColumnLayout {
         }
     }
 
-    // 刷新模型后一律默认选中列表第一个模型：服务端模型可能被换掉，保留旧选择会
-    // 让下拉框停在远端已经不存在的名字上。列表顺序由后端按名称排序后给回。
+    // 刷新模型后的模型名口径：当前模型仍在新列表里就保留它（用户的选择不被改），
+    // 一旦不符（远端换了模型/改名了）就把模型名与输入框显示文本一起换成列表第一个
+    // ——引擎在整表替换而索引恰好没变时不会自己同步 currentText。
+    // 三个模型来源共用这一条规则：本地 Ollama 走 local* 分支，远程 OpenAI 兼容与
+    // Anthropic 都走 remote* 分支。列表顺序由后端按名称排序后给回。
     function setAvailableModels(provider, models) {
         var remote = provider !== "ollama";
         var values = [];
@@ -343,7 +346,9 @@ ColumnLayout {
             if (value.length > 0 && values.indexOf(value) < 0)
                 values.push(value);
         }
-        var selected = values.length > 0 ? values[0] : "";
+        var selected = remote ? root.remoteModel : root.localModel;
+        if (values.indexOf(selected) < 0)
+            selected = values.length > 0 ? values[0] : "";
         root._syncingModel = true;
         if (remote) {
             root.remoteModels = values;
