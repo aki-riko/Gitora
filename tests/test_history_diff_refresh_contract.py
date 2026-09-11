@@ -44,6 +44,17 @@ class HistoryDiffRefreshContractTest(unittest.TestCase):
         # 选中态用语义选中底色 + 左侧强调条,不再画闭合 accent 边框(看着像输入框)
         self.assertIn("Fluent.Enums.stateColor.selected", source)
         self.assertNotIn("border.color: Fluent.Enums.accentColor", source)
+        # 指示条与行底色在出现/切换时有过渡,不是硬切;
+        # 且指示条必须由 scale/opacity 驱动,visible 直接绑 isSelected 会吃掉退场动画
+        self.assertIn("Behavior on scale", source)
+        self.assertIn("Behavior on opacity", source)
+        self.assertIn("Behavior on color", source)
+        self.assertIn("scale: parent.isSelected ? 1 : 0", source)
+        self.assertIn("visible: opacity > 0", source)
+        self.assertNotIn("visible: parent.isSelected", source)
+        # 底色过渡必须用同色相的全透明版本,不能用 transparent(插值会发灰)
+        self.assertIn("_clearBg: Qt.rgba(", source)
+        self.assertIn("duration: Fluent.Enums.duration.normal", source)
 
     def test_history_status_refresh_keeps_existing_timeline_until_data_arrives(self) -> None:
         source = (QML_ROOT / "views" / "HistoryView.qml").read_text(

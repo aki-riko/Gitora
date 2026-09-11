@@ -239,15 +239,30 @@ Fluent.DialogBoxCore {
                             height: filesScrollArea.itemHeight
                             radius: Fluent.Enums.radius.micro
                             readonly property bool isSelected: dlg._selectedFilePath === modelData.path
+                            // 行底色用"强调色的全透明版本"当未选中态,而不是字面量 "transparent":
+                            // transparent 是透明黑,和浅蓝 selected 之间插值会经过发灰的中间色,
+                            // 同色相只变 alpha,过渡才干净。
+                            readonly property color _selectedBg: Fluent.Enums.stateColor.selected
+                            readonly property color _clearBg: Qt.rgba(
+                                _selectedBg.r, _selectedBg.g, _selectedBg.b, 0)
                             // 选中用语义选中底色、悬停用列表 hover 层:两者不再共用同一个颜色,
                             // 也不再画闭合蓝框(浅底 + 四边闭合蓝框看起来像聚焦输入框)。
                             color: isSelected
-                                ? Fluent.Enums.stateColor.selected
+                                ? _selectedBg
                                 : (fileHover.hovered
                                     ? Fluent.Enums.stateColor.listItemHover
-                                    : "transparent")
+                                    : _clearBg)
+                            // 底色与指示条同步过渡,否则会"条在长、底色却在跳"
+                            Behavior on color {
+                                ColorAnimation {
+                                    duration: Fluent.Enums.duration.normal
+                                    easing.type: Easing.OutCubic
+                                }
+                            }
 
-                            // 选中指示条:贴行左缘的短强调条
+                            // 选中指示条:贴行左缘的短强调条。
+                            // 始终存在、只由 scale/opacity 驱动 —— 若让 visible 直接跟着 isSelected,
+                            // 取消选中是瞬时的,退场动画根本没机会播。
                             Rectangle {
                                 anchors.left: parent.left
                                 anchors.verticalCenter: parent.verticalCenter
@@ -255,7 +270,24 @@ Fluent.DialogBoxCore {
                                 height: parent.height - Fluent.Enums.spacing.m
                                 radius: width / 2
                                 color: Fluent.Enums.accentColor
-                                visible: parent.isSelected
+                                // 由行中部向上下两端长出 / 收回
+                                transformOrigin: Item.Center
+                                scale: parent.isSelected ? 1 : 0
+                                opacity: parent.isSelected ? 1 : 0
+                                visible: opacity > 0
+
+                                Behavior on scale {
+                                    NumberAnimation {
+                                        duration: Fluent.Enums.duration.normal
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
+                                Behavior on opacity {
+                                    NumberAnimation {
+                                        duration: Fluent.Enums.duration.normal
+                                        easing.type: Easing.OutCubic
+                                    }
+                                }
                             }
 
                             HoverHandler { id: fileHover }
