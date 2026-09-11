@@ -333,6 +333,8 @@ ColumnLayout {
         }
     }
 
+    // 刷新模型后一律默认选中列表第一个模型：服务端模型可能被换掉，保留旧选择会
+    // 让下拉框停在远端已经不存在的名字上。列表顺序由后端按名称排序后给回。
     function setAvailableModels(provider, models) {
         var remote = provider !== "ollama";
         var values = [];
@@ -341,9 +343,7 @@ ColumnLayout {
             if (value.length > 0 && values.indexOf(value) < 0)
                 values.push(value);
         }
-        var selected = remote ? root.remoteModel : root.localModel;
-        if (values.indexOf(selected) < 0)
-            selected = values.length > 0 ? values[0] : "";
+        var selected = values.length > 0 ? values[0] : "";
         root._syncingModel = true;
         if (remote) {
             root.remoteModels = values;

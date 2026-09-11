@@ -206,3 +206,73 @@ def test_refresh_models_replaces_dropdown_options(tmp_path: Path) -> None:
         assert combo.property("currentText") == "gamma-model"
     finally:
         _destroy_scene(app, engine, component, window)
+
+
+def test_refresh_selects_first_model_over_previous_choice(tmp_path: Path) -> None:
+    """刷新模型后模型名默认落在列表第一个，而不是保留旧选择。"""
+    provider = _MutableModelProvider(("alpha-model", "beta-model"))
+    app, engine, component, window, bridge = _create_scene(tmp_path, provider)
+    try:
+        connection = window.findChild(QObject, "aiConnectionSection")
+        combo = window.findChild(QObject, "remoteModelCombo")
+        assert connection is not None and combo is not None
+
+        results: list[tuple] = []
+        bridge.modelListFinished.connect(lambda *args: results.append(args))
+
+        assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
+        _wait_for_refresh(results, 1)
+        assert results[0][1] is True, results[0][3]
+
+        # 用户手动把模型名改成第二个（它仍然在可用列表里）
+        connection.setProperty("remoteModel", "beta-model")
+        _pump(30)
+        assert connection.property("remoteModel") == "beta-model"
+        assert combo.property("currentText") == "beta-model"
+
+        # 再刷新一次：默认应回到列表第一个，而不是继续留在第二个
+        assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
+        _wait_for_refresh(results, 2)
+        assert results[1][1] is True, results[1][3]
+
+        assert _js_list(connection.property("remoteModels")) == [
+            "alpha-model", "beta-model"
+        ], _js_list(connection.property("remoteModels"))
+        assert connection.property("remoteModel") == "alpha-model"
+        assert combo.property("currentIndex") == 0
+        assert combo.property("currentText") == "alpha-model"
+    finally:
+        _destroy_scene(app, engine, component, window)
+
+
+def test_refresh_selects_first_local_model(tmp_path: Path) -> None:
+    """本地 Ollama 分支同样在刷新后默认选中列表第一个模型。"""
+    provider = _MutableModelProvider(("zeta-model", "alpha-model"))
+    app, engine, component, window, bridge = _create_scene(tmp_path, provider)
+    try:
+        connection = window.findChild(QObject, "aiConnectionSection")
+        combo = window.findChild(QObject, "localModelCombo")
+        assert connection is not None and combo is not None
+
+        results: list[tuple] = []
+        bridge.modelListFinished.connect(lambda *args: results.append(args))
+
+        connection.setProperty("providerIndex", 0)
+        connection.setProperty("localEndpoint", "http://127.0.0.1:11434")
+        connection.setProperty("localModel", "beta-model")
+        _pump(30)
+        assert QMetaObject.invokeMethod(connection, "fetchModelsRequested")
+        _wait_for_refresh(results, 1)
+        provider_id, ok, _models, message = results[0]
+        assert provider_id == "ollama"
+        assert ok, message
+
+        # 后端按名称排序后回传，列表第一个即排序后的第一个
+        available = _js_list(connection.property("localModels"))
+        assert available == ["alpha-model", "zeta-model"], available
+        assert connection.property("localModel") == "alpha-model"
+        assert _js_list(combo.property("model")) == available
+        assert combo.property("currentIndex") == 0
+        assert combo.property("currentText") == "alpha-model"
+    finally:
+        _destroy_scene(app, engine, component, window)
