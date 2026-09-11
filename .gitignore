@@ -57,3 +57,6 @@ venv/
 # 交接文档(临时,不入库)
 HANDOFF.md
 PLAN_AUTOUPDATE.md
+
+# DSH file-upload plugin: per-session upload staging inside the workspace
+.dsh-uploads/
