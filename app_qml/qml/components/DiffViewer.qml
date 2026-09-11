@@ -377,7 +377,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 // 与左栏文件行内容相同的左侧内边距,两边起始位置视觉对齐
-                leftPadding: Fluent.Enums.spacing.s
+                leftPadding: Fluent.Enums.spacing.l
                 text: fileModel.count > 0 ? root._summaryText() : ""
                 color: Fluent.Enums.textColor.tertiary
                 font.family: Fluent.Enums.fontFamily

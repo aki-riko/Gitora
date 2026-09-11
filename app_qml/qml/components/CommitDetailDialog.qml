@@ -233,7 +233,8 @@ Fluent.DialogBoxCore {
 
                         Row {
                             anchors.fill: parent
-                            anchors.leftMargin: Fluent.Enums.spacing.s
+                            // 与右侧 diff 摘要行相同的左侧内边距,两边起始位置视觉对齐
+                            anchors.leftMargin: Fluent.Enums.spacing.l
                             spacing: Fluent.Enums.spacing.m
                             Text {
                                 text: modelData.statusText
