@@ -163,6 +163,18 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("Fluent.ScrollArea", dialog)
         self.assertIn("预览后新增的改动仍会被跳过", dialog)
 
+    def test_recent_repositories_use_permanent_outside_drawer(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("Fluent.Drawer {", source)
+        self.assertIn("id: recentReposDrawer", source)
+        self.assertIn("mode: Fluent.Enums.drawer.mode_outside", source)
+        self.assertIn("position: Fluent.Enums.position.right", source)
+        self.assertIn("if (root.visible) recentReposDrawer.open()", source)
+        self.assertIn("onVisibleChanged: recentReposDrawer.syncVisibility()", source)
+        self.assertNotIn("id: recentReposDialog", source)
+        self.assertNotIn("onClicked: recentReposDialog.openPanel()", source)
+
     def test_repo_view_applies_empty_diff_and_replaces_remote_model(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 
