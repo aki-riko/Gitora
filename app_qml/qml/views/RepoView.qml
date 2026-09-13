@@ -801,13 +801,23 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 spacing: Fluent.Enums.spacing.s
-                Text {
+                ColumnLayout {
                     Layout.fillWidth: true
-                    font.family: Fluent.Enums.fontFamily
-                    font.pixelSize: Fluent.Enums.typography.subtitle
-                    font.bold: true
-                    color: Fluent.Enums.textColor.primary
-                    text: "最近仓库"
+                    spacing: Fluent.Enums.spacing.xxs
+                    Text {
+                        font.family: Fluent.Enums.fontFamily
+                        font.pixelSize: Fluent.Enums.typography.subtitle
+                        font.bold: true
+                        color: Fluent.Enums.textColor.primary
+                        text: "最近仓库"
+                    }
+                    Text {
+                        objectName: "recentReposDialogTitle"
+                        text: recentRepoModel.count + " 个记录"
+                        color: Fluent.Enums.textColor.secondary
+                        font.family: Fluent.Enums.fontFamily
+                        font.pixelSize: Fluent.Enums.typography.caption
+                    }
                 }
                 ColumnLayout {
                     Layout.alignment: Qt.AlignTop
@@ -829,14 +839,6 @@ Item {
                         }
                     }
                 }
-            }
-            Text {
-                Layout.fillWidth: true
-                objectName: "recentReposDialogTitle"
-                text: recentRepoModel.count + " 个记录"
-                color: Fluent.Enums.textColor.secondary
-                font.family: Fluent.Enums.fontFamily
-                font.pixelSize: Fluent.Enums.typography.caption
             }
             Fluent.ScrollArea {
                 id: recentRepoList

@@ -192,6 +192,8 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertLess(refresh_index, clear_index)
         operation_column = source[source.rfind("ColumnLayout {", 0, refresh_index):clear_index]
         self.assertIn("Layout.alignment: Qt.AlignTop", operation_column)
+        self.assertIn('text: "最近仓库"', source)
+        self.assertIn('text: recentRepoModel.count + " 个记录"', source)
 
     def test_repo_view_applies_empty_diff_and_replaces_remote_model(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
