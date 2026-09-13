@@ -826,13 +826,11 @@ Item {
                         text: "刷新"
                         icon: Fluent.Enums.icon.arrow_sync
                         style: Fluent.Enums.button.style_transparent
+                        feature: Fluent.Enums.button.feature_split
+                        menuItems: ["清空"]
                         onClicked: recentReposDrawer.refresh()
-                    }
-                    Fluent.Button {
-                        text: "清空"
-                        enabled: recentRepoModel.count > 0
-                        style: Fluent.Enums.button.style_transparent
-                        onClicked: {
+                        onMenuItemClicked: function(index, text) {
+                            if (index !== 0 || recentRepoModel.count === 0) return
                             GitBridge.clearRecentRepos()
                             recentReposDrawer.refresh()
                             openButton.rebuildList()
