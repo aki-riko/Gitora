@@ -131,5 +131,10 @@ Gitora 的历史崩溃多为 Qt 侧**原生访问违例**(`0xC0000005`),进程�
 - QML 侧面包屑经 `QmlRenderBridge.logCrashTrace`(`GitoraCrashTraceEnabled` 门控),QML 的 `console` 输出不落日志文件,必须走这个通道。
 - 全内存转储:`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\{python.exe,Gitora.exe}` 设 `DumpType=2`(REG_DWORD,全内存)、`DumpCount=10`、`DumpFolder=%LOCALAPPDATA%\Gitora\CrashDumps`(REG_EXPAND_SZ)。**该键在 HKLM,配置需要管理员**;不设 `DumpType` 时 WER 默认只写 mini 转储(堆数据缺失,无法定位 QML 文档)。
 - 复验限制:在 DSH/沙箱会话内派生的进程位于 Job 对象中(受限令牌),其崩溃**不会**进入 WER,因此转储只能由用户自己启动的实例产生;会话内只能验证配置值本身,不能验证落盘结果。
-- 判读:拿到转储后用 `%TEMP%` 下的零依赖解析脚本读异常流、模块表、寄存器与栈回溯;`.pdata`(RUNTIME_FUNCTION)可在无符号条件下精确界定崩溃函数边界。
+- 判读:用仓库内零依赖工具 [tools/crash_dump_report.py](tools/crash_dump_report.py) 直接还原链条(异常流/寄存器/栈回溯),`--function <dll> <rva>` 再用 PE 导出表 + `.pdata`(RUNTIME_FUNCTION) 在无符号条件下精确界定崩溃函数边界并反查故障指令机器码:
+  ```powershell
+  .venv\Scripts\python.exe tools\crash_dump_report.py "$env:LOCALAPPDATA\Gitora\CrashDumps\python.exe.<pid>.dmp"
+  .venv\Scripts\python.exe tools\crash_dump_report.py --function "<Qt6Qml.dll 路径>" 0x<rva>
+  ```
+  全内存转储的判据:体积远大于 mini 转储(同一进程 mini 约几十 MB),且 `--module <名字>` 能列出目标模块的完整调用帧。
 - 观测默认关闭,排查结束执行 `Remove-Item Env:GITORA_CRASH_TRACE,Env:GITORA_QML_TRACE -ErrorAction SilentlyContinue` 并完整重启,禁止把观测状态当成修复条件。
