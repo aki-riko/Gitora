@@ -809,11 +809,25 @@ Item {
                     color: Fluent.Enums.textColor.primary
                     text: "最近仓库"
                 }
-                Fluent.Button {
-                    text: "刷新"
-                    icon: Fluent.Enums.icon.arrow_sync
-                    style: Fluent.Enums.button.style_transparent
-                    onClicked: recentReposDrawer.refresh()
+                ColumnLayout {
+                    Layout.alignment: Qt.AlignTop
+                    spacing: Fluent.Enums.spacing.xxs
+                    Fluent.Button {
+                        text: "刷新"
+                        icon: Fluent.Enums.icon.arrow_sync
+                        style: Fluent.Enums.button.style_transparent
+                        onClicked: recentReposDrawer.refresh()
+                    }
+                    Fluent.Button {
+                        text: "清空"
+                        enabled: recentRepoModel.count > 0
+                        style: Fluent.Enums.button.style_transparent
+                        onClicked: {
+                            GitBridge.clearRecentRepos()
+                            recentReposDrawer.refresh()
+                            openButton.rebuildList()
+                        }
+                    }
                 }
             }
             Text {
@@ -823,19 +837,6 @@ Item {
                 color: Fluent.Enums.textColor.secondary
                 font.family: Fluent.Enums.fontFamily
                 font.pixelSize: Fluent.Enums.typography.caption
-            }
-            RowLayout {
-                Layout.fillWidth: true
-                Fluent.Button {
-                    text: "清空"
-                    enabled: recentRepoModel.count > 0
-                    style: Fluent.Enums.button.style_transparent
-                    onClicked: {
-                        GitBridge.clearRecentRepos()
-                        recentReposDrawer.refresh()
-                        openButton.rebuildList()
-                    }
-                }
             }
             Fluent.ScrollArea {
                 id: recentRepoList

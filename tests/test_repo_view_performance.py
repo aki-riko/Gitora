@@ -184,6 +184,15 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertNotIn("recentDrawerStartupTimer", source)
         self.assertNotIn("host._splashDismissed", source)
 
+    def test_recent_drawer_places_clear_under_refresh(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        refresh_index = source.index('text: "刷新"')
+        clear_index = source.index('text: "清空"')
+        self.assertLess(refresh_index, clear_index)
+        operation_column = source[source.rfind("ColumnLayout {", 0, refresh_index):clear_index]
+        self.assertIn("Layout.alignment: Qt.AlignTop", operation_column)
+
     def test_repo_view_applies_empty_diff_and_replaces_remote_model(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
 
