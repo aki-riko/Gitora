@@ -788,11 +788,8 @@ Item {
             if (root.visible) {
                 if (_startupReady) {
                     if (!opened) open()
-                } else {
-                    recentDrawerStartupTimer.restart()
                 }
             } else if (opened) {
-                recentDrawerStartupTimer.stop()
                 close()
             }
         }
@@ -901,7 +898,6 @@ Item {
 
         Component.onCompleted: {
             recentReposDrawer.refresh()
-            if (root.visible) recentDrawerStartupTimer.start()
         }
         onOpenedChanged: {
             if (opened) recentReposDrawer.refresh()
@@ -910,22 +906,10 @@ Item {
 
     onVisibleChanged: recentReposDrawer.syncVisibility()
 
-    // 外置 Drawer 必须等 FastSplash 揭幕并交接主窗口后首次打开，避免宿主几何
-    // 尚未稳定时以默认坐标出现在左上角。
-    Timer {
-        id: recentDrawerStartupTimer
-        interval: 16
-        repeat: true
-        running: false
-        onTriggered: {
-            var host = root.Window.window
-            if (!host) return
-            var splash = host._splashInstance
-            var splashReady = host._splashDismissed
-                && (!splash || splash.visible === false)
-            if (!splashReady) return
+    Connections {
+        target: typeof StartupHandoffBridge !== "undefined" ? StartupHandoffBridge : null
+        function onStartupHandoffReady() {
             recentReposDrawer._startupReady = true
-            stop()
             if (root.visible && !recentReposDrawer.opened)
                 recentReposDrawer.open()
         }

@@ -379,6 +379,7 @@ from app_qml.backend.ai_commit_bridge import AiCommitBridge  # noqa: E402
 from app_qml.backend.ai_commit_plan_bridge import AiCommitPlanBridge  # noqa: E402
 from app_qml.backend.qml_render_bridge import QmlRenderBridge  # noqa: E402
 from app_qml.backend.window_icon_bridge import WindowIconBridge  # noqa: E402
+from app_qml.backend.startup_handoff_bridge import StartupHandoffBridge  # noqa: E402
 
 
 APP_LOGO_PATH = os.path.join(
@@ -437,6 +438,7 @@ def main() -> int:
     repo_scanner = RepoScanner()
     qml_render_bridge = QmlRenderBridge()
     window_icon_bridge = WindowIconBridge()
+    startup_handoff_bridge = StartupHandoffBridge(app._fast_splash)
     ctx = engine.rootContext()
     ctx.setContextProperty("GitBridge", git_bridge)
     ctx.setContextProperty("AiCommitBridge", ai_commit_bridge)
@@ -446,6 +448,7 @@ def main() -> int:
     ctx.setContextProperty("RepoScanner", repo_scanner)
     ctx.setContextProperty("QmlRenderBridge", qml_render_bridge)
     ctx.setContextProperty("WindowIconBridge", window_icon_bridge)
+    ctx.setContextProperty("StartupHandoffBridge", startup_handoff_bridge)
     ctx.setContextProperty(
         "GitoraSelftestMode", bool(os.environ.get("GITESS_QML_SELFTEST"))
     )
