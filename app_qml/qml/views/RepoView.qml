@@ -887,7 +887,7 @@ Item {
                         }
                     }
                     Fluent.ToolTip {
-                        x: parent.width + Fluent.Enums.spacing.s
+                        x: -width - Fluent.Enums.spacing.s
                         y: (parent.height - height) / 2
                         visible: recentHover.hovered
                         text: recentRepoPathText.text
