@@ -263,7 +263,7 @@ Item {
             if (!GitBridge || repoPath !== GitBridge.repoPath) return
             // 仅当结果对应当前选中项时才填充(防快速切换的过期结果覆盖)
             if (path === root.selectedPath && staged === root.selectedStaged)
-                diffViewer.rawDiff = content || ""
+                diffViewer.setDiff(content || "")
         }
         function onRepoOpened(ok, pathOrErr) {
             if (ok) openButton.rebuildList()
@@ -894,9 +894,10 @@ Item {
 
         function openFor(mode) {
             _mode = mode
-            _remoteNames = []
+            var remoteNames = []
             for (var i = 0; i < root._remoteInfo.length; i++)
-                _remoteNames.push(root._remoteInfo[i].name)
+                remoteNames.push(root._remoteInfo[i].name)
+            _remoteNames = remoteNames
             syncRemoteCombo.currentIndex = _remoteNames.indexOf(root._defaultRemoteName())
             syncBranchInput.text = root._defaultBranchName()
             open()

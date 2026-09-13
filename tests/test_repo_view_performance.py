@@ -163,6 +163,14 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("Fluent.ScrollArea", dialog)
         self.assertIn("预览后新增的改动仍会被跳过", dialog)
 
+    def test_repo_view_applies_empty_diff_and_replaces_remote_model(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn('diffViewer.setDiff(content || "")', source)
+        self.assertIn("var remoteNames = []", source)
+        self.assertIn("_remoteNames = remoteNames", source)
+        self.assertIn("id: syncRemoteCombo", source)
+
 
 if __name__ == "__main__":
     unittest.main()
