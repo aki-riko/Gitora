@@ -772,6 +772,7 @@ Item {
         drawerHeight: root.Window.window ? root.Window.window.height : 720
         modal: false
         animationDuration: 180
+        property bool _startupReady: false
 
         ListModel { id: recentRepoModel }
 
@@ -785,8 +786,13 @@ Item {
         function syncVisibility() {
             refresh()
             if (root.visible) {
-                if (!opened) open()
+                if (_startupReady) {
+                    if (!opened) open()
+                } else {
+                    recentDrawerStartupTimer.restart()
+                }
             } else if (opened) {
+                recentDrawerStartupTimer.stop()
                 close()
             }
         }
@@ -895,7 +901,7 @@ Item {
 
         Component.onCompleted: {
             recentReposDrawer.refresh()
-            if (root.visible) recentReposDrawer.open()
+            if (root.visible) recentDrawerStartupTimer.start()
         }
         onOpenedChanged: {
             if (opened) recentReposDrawer.refresh()
@@ -903,6 +909,27 @@ Item {
     }
 
     onVisibleChanged: recentReposDrawer.syncVisibility()
+
+    // 外置 Drawer 必须等 FastSplash 揭幕并交接主窗口后首次打开，避免宿主几何
+    // 尚未稳定时以默认坐标出现在左上角。
+    Timer {
+        id: recentDrawerStartupTimer
+        interval: 16
+        repeat: true
+        running: false
+        onTriggered: {
+            var host = root.Window.window
+            if (!host) return
+            var splash = host._splashInstance
+            var splashReady = host._splashDismissed
+                && (!splash || splash.visible === false)
+            if (!splashReady) return
+            recentReposDrawer._startupReady = true
+            stop()
+            if (root.visible && !recentReposDrawer.opened)
+                recentReposDrawer.open()
+        }
+    }
 
     // 指定远程/分支执行同步操作
     Fluent.MessageBox {

@@ -170,10 +170,22 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn("id: recentReposDrawer", source)
         self.assertIn("mode: Fluent.Enums.drawer.mode_outside", source)
         self.assertIn("position: Fluent.Enums.position.right", source)
-        self.assertIn("if (root.visible) recentReposDrawer.open()", source)
+        self.assertIn("if (root.visible) recentDrawerStartupTimer.start()", source)
         self.assertIn("onVisibleChanged: recentReposDrawer.syncVisibility()", source)
         self.assertNotIn("id: recentReposDialog", source)
         self.assertNotIn("onClicked: recentReposDialog.openPanel()", source)
+
+    def test_recent_drawer_waits_for_fast_splash_handoff(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
+
+        self.assertIn("id: recentDrawerStartupTimer", source)
+        self.assertIn("host._splashDismissed", source)
+        self.assertIn("splash.visible === false", source)
+        self.assertIn("recentReposDrawer.open()", source)
+        self.assertNotIn(
+            "if (root.visible) recentReposDrawer.open()\n        }\n        onOpenedChanged",
+            source,
+        )
 
     def test_repo_view_applies_empty_diff_and_replaces_remote_model(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
