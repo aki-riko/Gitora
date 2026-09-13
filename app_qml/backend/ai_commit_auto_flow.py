@@ -147,7 +147,7 @@ class AiCommitAutoFlowMixin:
         serial, _cancel_event = self._start_request(clear_prepared=False)
         self._execution_guard = True
         self._git.push(
-            "origin",
+            "",
             "",
             callback=lambda ok, message: self._autoPushFinished.emit(
                 serial, ok, message

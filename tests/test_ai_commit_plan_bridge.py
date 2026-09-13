@@ -257,7 +257,7 @@ class AiCommitPlanBridgeTest(unittest.TestCase):
         self.assertEqual(finished[0][0], True)
         self.assertIn("2 个 Commit", finished[0][1])
         self.assertEqual(len(pushes), 1)
-        self.assertEqual(pushes[0][0], "origin")
+        self.assertEqual(pushes[0][0], "")
         self.assertEqual(
             run_git(self.repo, "log", "-2", "--format=%s").stdout.splitlines(),
             ["feat: 规划改动 2", "feat: 规划改动 1"],

@@ -880,6 +880,7 @@ Item {
     Fluent.MessageBox {
         id: syncDialog
         property string _mode: "pull"
+        property var _remoteNames: []
         readonly property string _displayTitle: {
             if (_mode === "pull") return "指定拉取"
             if (_mode === "pullRebase") return "指定变基拉取"
@@ -893,20 +894,23 @@ Item {
 
         function openFor(mode) {
             _mode = mode
-            syncRemoteInput.text = root._defaultRemoteName()
+            _remoteNames = []
+            for (var i = 0; i < root._remoteInfo.length; i++)
+                _remoteNames.push(root._remoteInfo[i].name)
+            syncRemoteCombo.currentIndex = _remoteNames.indexOf(root._defaultRemoteName())
             syncBranchInput.text = root._defaultBranchName()
             open()
         }
 
         function validate() {
-            var remote = syncRemoteInput.text.trim()
+            var remote = syncRemoteCombo.currentText.trim()
             var branch = syncBranchInput.text.trim()
-            if (remote.length === 0) return false
+            if (syncRemoteCombo.currentIndex < 0 || remote.length === 0) return false
             return _mode === "fetch" || branch.length > 0
         }
 
         onAccepted: {
-            var remote = syncRemoteInput.text.trim()
+            var remote = syncRemoteCombo.currentText.trim()
             var branch = syncBranchInput.text.trim()
             if (_mode === "fetch") {
                 GitBridge.fetchRemote(remote)
@@ -930,10 +934,13 @@ Item {
                 objectName: "syncDialogTitle"
                 text: syncDialog._displayTitle
             }
-            Fluent.LineEdit {
-                id: syncRemoteInput
+            Fluent.ComboBox {
+                id: syncRemoteCombo
+                objectName: "syncRemoteCombo"
                 Layout.fillWidth: true
-                placeholderText: "远程名"
+                model: syncDialog._remoteNames
+                enabled: syncDialog._remoteNames.length > 0
+                placeholderText: "暂无远程仓库"
             }
             Fluent.LineEdit {
                 id: syncBranchInput

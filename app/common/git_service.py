@@ -1739,7 +1739,65 @@ class GitService(QObject):
             return ""
         return branch
 
-    def push(self, remote: str = "origin", branch: str = "", force: bool = False, callback: Callable[[bool, str], None] = None):
+    def _upstream_remote(self) -> str:
+        """返回当前分支 upstream 的远程名；没有 upstream 时返回空串。"""
+        success, upstream, _ = self._run_git_sync(
+            ['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']
+        )
+        if not success or "/" not in upstream.strip():
+            return ""
+        return upstream.strip().split("/", 1)[0]
+
+    def _push_remotes_sync(
+        self,
+        remotes: list[str],
+        branch: str,
+        force: bool = False,
+        timeout: int = 60,
+        set_upstream_remote: str = "",
+        on_progress: Callable[[int, str], None] | None = None,
+    ) -> list[tuple[str, bool, str]]:
+        """按顺序推送多个远程，返回每个远程的结果。"""
+        results: list[tuple[str, bool, str]] = []
+        total = max(1, len(remotes))
+        for index, remote_name in enumerate(remotes):
+            args = ['push', '--progress']
+            if remote_name == set_upstream_remote:
+                args.append('-u')
+            if force:
+                args.append('--force-with-lease')
+            args.extend((remote_name, branch))
+
+            def report_progress(percent: int, message: str) -> None:
+                if on_progress:
+                    overall = round((index + percent / 100) * 100 / total)
+                    on_progress(overall, f"{remote_name}: {message}")
+
+            success, _stdout, stderr = self._run_git_push_sync(
+                args, timeout=timeout, on_progress=report_progress
+            )
+            results.append((remote_name, success, stderr))
+        return results
+
+    @staticmethod
+    def _push_result_message(
+        results: list[tuple[str, bool, str]],
+        error_title: str = "推送失败",
+    ) -> tuple[bool, str]:
+        failures = [
+            f"{remote}: {GitService._friendly_git_error(stderr, error_title)}"
+            for remote, success, stderr in results
+            if not success
+        ]
+        if not failures:
+            if len(results) == 1:
+                return True, "推送成功"
+            return True, "已推送到: " + ", ".join(remote for remote, _, _ in results)
+        successes = [remote for remote, success, _ in results if success]
+        prefix = "已推送到: " + ", ".join(successes) + "；" if successes else ""
+        return False, prefix + "；".join(failures)
+
+    def push(self, remote: str = "", branch: str = "", force: bool = False, callback: Callable[[bool, str], None] = None):
         """通过 PrismQML 线程池推送到远程。"""
         self.operationStarted.emit("正在推送...")
         remote = (remote or "").strip()
@@ -1750,7 +1808,7 @@ class GitService(QObject):
         def work() -> tuple[bool, str]:
             resolved_branch = branch
             remotes = self.get_remotes()
-            if remote not in remotes:
+            if remote and remote not in remotes:
                 message = (
                     f"未配置远程 '{remote}',请先在「分支」或克隆向导中添加远程仓库"
                     if not remotes
@@ -1764,24 +1822,28 @@ class GitService(QObject):
             if self._bad_ref(resolved_branch):
                 return False, "非法的分支名"
 
-            args = ['push', '--progress', '-u']
-            if force:
-                args.append('--force-with-lease')
-            args.extend((remote, resolved_branch))
+            target_remotes = [remote] if remote else remotes
+            if not target_remotes:
+                return False, "没有配置远程仓库"
+            current_upstream = self._upstream_remote()
+            upstream_remote = (
+                remote
+                if remote
+                else current_upstream
+                if current_upstream in target_remotes
+                else target_remotes[0]
+            )
             task = current_task()
-            success, _stdout, stderr = self._run_git_push_sync(
-                args,
-                timeout=60,
+            results = self._push_remotes_sync(
+                target_remotes,
+                resolved_branch,
+                force=force,
+                set_upstream_remote=upstream_remote,
                 on_progress=lambda percent, message: task.report_progress(
                     (percent, message)
                 ),
             )
-            return (
-                success,
-                "推送成功"
-                if success
-                else self._friendly_git_error(stderr, "推送失败"),
-            )
+            return self._push_result_message(results)
 
         def finished(result: object) -> None:
             success, message = result
@@ -2409,24 +2471,29 @@ class GitService(QObject):
             # 步骤5：推送（同步执行）
             report(66, "推送到远程...")
             current_branch = self.get_current_branch()
-            args = ['push', '--progress', '-u', 'origin', current_branch]
-
             def emit_push_progress(percent: int, detail: str) -> None:
                 overall = 66 + round(percent * 0.33)
                 report(overall, detail)
 
-            success, stdout, stderr = self._run_git_push_sync(
-                args, timeout=60, on_progress=emit_push_progress
+            target_remote = self._upstream_remote()
+            if target_remote not in remotes:
+                target_remote = remotes[0]
+            results = self._push_remotes_sync(
+                remotes,
+                current_branch,
+                set_upstream_remote=target_remote,
+                on_progress=emit_push_progress,
             )
-            
+            success, push_message = self._push_result_message(results)
+
             if success:
                 report(100, "完成")
                 if has_committed:
-                    return True, "一键提交推送成功"
+                    return True, "一键提交推送成功（" + push_message + "）"
                 else:
-                    return True, "推送成功（无新提交）"
+                    return True, push_message + "（无新提交）"
             else:
-                return False, f"推送失败: {self._friendly_git_error(stderr, '未知错误')}"
+                return False, f"推送失败: {push_message}"
         
         def on_finished(result: object) -> None:
             success, msg = result
@@ -2955,31 +3022,47 @@ class GitService(QObject):
             return True, f"已删除远程Tag: {name}"
         return False, self._friendly_git_error(stderr, "删除远程Tag失败")
 
-    def push_tag(self, name: str, remote: str = "origin") -> tuple[bool, str]:
+    def push_tag(self, name: str, remote: str = "") -> tuple[bool, str]:
         """推送Tag到远程"""
         if self._bad_ref(name):
             return False, "非法的标签名"
-        if remote not in self.get_remotes():
+        remotes = self.get_remotes()
+        if remote and remote not in remotes:
             return False, f"未配置远程 '{remote}',请先添加远程仓库"
-        success, _, stderr = self._run_git_push_sync(
-            ['push', '--progress', remote, name], timeout=120
-        )
+        targets = [remote] if remote else remotes
+        if not targets:
+            return False, "没有配置远程仓库"
+        results = []
+        for target in targets:
+            success, _, stderr = self._run_git_push_sync(
+                ['push', '--progress', target, name], timeout=120
+            )
+            results.append((target, success, stderr))
+        success, message = self._push_result_message(results, "推送Tag失败")
         if success:
             self.progressUpdated.emit(100, "推送标签完成")
-            return True, f"已推送Tag: {name}"
-        return False, self._friendly_git_error(stderr, "推送Tag失败")
+            return True, f"已推送Tag: {name}（{message}）"
+        return False, message
 
-    def push_all_tags(self, remote: str = "origin") -> tuple[bool, str]:
+    def push_all_tags(self, remote: str = "") -> tuple[bool, str]:
         """推送所有Tag到远程"""
-        if remote not in self.get_remotes():
+        remotes = self.get_remotes()
+        if remote and remote not in remotes:
             return False, f"未配置远程 '{remote}',请先添加远程仓库"
-        success, _, stderr = self._run_git_push_sync(
-            ['push', '--progress', remote, '--tags'], timeout=120
-        )
+        targets = [remote] if remote else remotes
+        if not targets:
+            return False, "没有配置远程仓库"
+        results = []
+        for target in targets:
+            success, _, stderr = self._run_git_push_sync(
+                ['push', '--progress', target, '--tags'], timeout=120
+            )
+            results.append((target, success, stderr))
+        success, message = self._push_result_message(results, "推送Tag失败")
         if success:
             self.progressUpdated.emit(100, "推送标签完成")
-            return True, "已推送所有Tag"
-        return False, self._friendly_git_error(stderr, "推送Tag失败")
+            return True, "已推送所有Tag（" + message + "）"
+        return False, message
 
     def checkout_tag(self, name: str) -> tuple[bool, str]:
         """切换到Tag（分离头指针状态）"""

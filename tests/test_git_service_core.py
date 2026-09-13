@@ -447,6 +447,77 @@ class GitServiceCoreTest(unittest.TestCase):
         self.assertTrue(any("正在计数对象" in item for item in messages))
         self.assertTrue(any("正在写入对象" in item for item in messages))
 
+    def test_push_without_remote_targets_all_remotes_and_preserves_upstream(self) -> None:
+        first_remote = init_bare_repo(self.root / "first-remote.git")
+        second_remote = init_bare_repo(self.root / "second-remote.git")
+        repo = init_repo(self.root / "multi-remote-repo")
+        write_file(repo, "payload.txt", "multi-remote\n")
+        commit = commit_all(repo, "multi-remote")
+        run_git(repo, "remote", "add", "first", str(first_remote))
+        run_git(repo, "remote", "add", "second", str(second_remote))
+        service = self.service_for(repo)
+
+        ok, message = self.wait_operation(service, service.push)
+
+        self.assertTrue(ok, message)
+        self.assertIn("first", message)
+        self.assertIn("second", message)
+        for remote in (first_remote, second_remote):
+            self.assertEqual(
+                run_git(remote, "rev-parse", "refs/heads/master").stdout.strip(),
+                commit,
+            )
+        self.assertEqual(
+            run_git(
+                repo,
+                "rev-parse",
+                "--abbrev-ref",
+                "--symbolic-full-name",
+                "@{u}",
+            ).stdout.strip(),
+            "first/master",
+        )
+
+    def test_default_tag_push_targets_all_remotes(self) -> None:
+        first_remote = init_bare_repo(self.root / "tag-first-remote.git")
+        second_remote = init_bare_repo(self.root / "tag-second-remote.git")
+        repo = init_repo(self.root / "tag-multi-remote-repo")
+        write_file(repo, "payload.txt", "tag\n")
+        commit_all(repo, "tag")
+        run_git(repo, "tag", "v-multi")
+        run_git(repo, "remote", "add", "first", str(first_remote))
+        run_git(repo, "remote", "add", "second", str(second_remote))
+        service = self.service_for(repo)
+
+        ok, message = service.push_tag("v-multi")
+
+        self.assertTrue(ok, message)
+        for remote in (first_remote, second_remote):
+            self.assertEqual(
+                run_git(remote, "rev-parse", "refs/tags/v-multi").stdout.strip(),
+                run_git(repo, "rev-parse", "v-multi").stdout.strip(),
+            )
+
+    def test_push_continues_to_later_remote_after_earlier_failure(self) -> None:
+        unavailable = self.root / "missing-remote.git"
+        healthy = init_bare_repo(self.root / "healthy-remote.git")
+        repo = init_repo(self.root / "partial-remote-repo")
+        write_file(repo, "payload.txt", "partial\n")
+        commit = commit_all(repo, "partial")
+        run_git(repo, "remote", "add", "missing", str(unavailable))
+        run_git(repo, "remote", "add", "healthy", str(healthy))
+        service = self.service_for(repo)
+
+        ok, message = self.wait_operation(service, service.push)
+
+        self.assertFalse(ok)
+        self.assertIn("missing", message)
+        self.assertIn("healthy", message)
+        self.assertEqual(
+            run_git(healthy, "rev-parse", "refs/heads/master").stdout.strip(),
+            commit,
+        )
+
     def test_unmerged_branch_requires_force_delete(self) -> None:
         repo = init_repo(self.root / "repo")
         write_file(repo, "base.txt", "base\n")
