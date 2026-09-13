@@ -861,6 +861,7 @@ Item {
                         anchors.rightMargin: Fluent.Enums.spacing.s
                         spacing: Fluent.Enums.spacing.s
                         Text {
+                            id: recentRepoPathText
                             Layout.fillWidth: true
                             text: model.path
                             color: Fluent.Enums.textColor.primary
@@ -884,6 +885,12 @@ Item {
                                 openButton.rebuildList()
                             }
                         }
+                    }
+                    Fluent.ToolTip {
+                        x: parent.width + Fluent.Enums.spacing.s
+                        y: (parent.height - height) / 2
+                        visible: recentHover.hovered
+                        text: recentRepoPathText.text
                     }
                 }
             }
