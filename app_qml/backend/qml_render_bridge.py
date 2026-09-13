@@ -30,3 +30,11 @@ class QmlRenderBridge(QObject):
     def logStallTrace(self, message: str) -> None:
         """把 QML 侧观测写入应用日志：QML 的 console 输出不落 Gitora 日志文件。"""
         logger.info(str(message))
+
+    @Slot(str)
+    def logCrashTrace(self, message: str) -> None:
+        """崩溃取证面包屑：仅在 GITORA_CRASH_TRACE=1 时落日志，默认静默丢弃。"""
+        from app_qml.backend.crash_trace import crash_trace_enabled
+
+        if crash_trace_enabled():
+            logger.info("[CRASH_TRACE] %s", message)

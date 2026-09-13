@@ -118,3 +118,18 @@ mac CI 与 Windows 打包互不依赖,可并行:先 `gh workflow run build-macos
 - 判读方式:`gap` 变大且 `busy=true` / 与刷新链路事件同时出现 → 业务主线程被占住;`gap` 变大但 `busy=false` 且 `windows` 持续增长 → 原生窗口/渲染资源累积,按引擎侧处理;`gap` 正常而弹层仍慢 → 问题在弹层的显示路径而不是主线程调度。
 - QML 的 `console` 输出**不会**落进 Gitora 日志文件,观测必须经 `QmlRenderBridge.logStallTrace` 写日志(`StallTraceProbe` 已如此实现)。
 - 观测默认关闭,启用后必须完整重启应用;排查结束执行 `Remove-Item Env:GITORA_STALL_TRACE -ErrorAction SilentlyContinue`(或设为 `0`)并再次完整重启,禁止把观测状态当成修复条件。
+
+## 十二、崩溃取证观测与全内存转储
+
+Gitora 的历史崩溃多为 Qt 侧**原生访问违例**(`0xC0000005`),进程被直接终止:Python 层没有 traceback,业务日志止于崩溃前最后一条(例如 2026-09-14 02:52 那次,`Qt6Qml.dll+0x1a3790`,`movzx eax, byte ptr [rbx]`,`rbx=0x2B23B099000` 未映射)。这类问题**禁止**在没有真实现场时直接改代码:
+
+- 观测开关 `GITORA_CRASH_TRACE=1`(默认关闭,关闭时不注册任何处理器、不改任何环境变量):
+  - `faulthandler` 捕获 Windows 致命异常,把崩溃时刻**所有线程的 Python 栈**写入 `%LOCALAPPDATA%\Gitora\logs\gitora_crash_YYYYMMDD.log`(首行形如 `Windows fatal exception: access violation`)。这是原生崩溃唯一能留下的 Python 现场。
+  - Qt 消息处理器把 Qt/QML 的 warning/critical/fatal(含 `file:line`)以 `[QT] <file>:<line> <msg>` 写入 Gitora 日志,同时保留 Qt 默认的 stderr 输出。
+  - QML 引擎 `engine.warnings` 逐条以 `[QML] ...` 落日志。
+- `GITORA_QML_TRACE=1` 额外打开 `QML_IMPORT_TRACE`、`QSG_INFO` 与 `qt.qml.binding.removal.info`,用于定位具体 QML 文档与绑定销毁。
+- QML 侧面包屑经 `QmlRenderBridge.logCrashTrace`(`GitoraCrashTraceEnabled` 门控),QML 的 `console` 输出不落日志文件,必须走这个通道。
+- 全内存转储:`HKLM\SOFTWARE\Microsoft\Windows\Windows Error Reporting\LocalDumps\{python.exe,Gitora.exe}` 设 `DumpType=2`(REG_DWORD,全内存)、`DumpCount=10`、`DumpFolder=%LOCALAPPDATA%\Gitora\CrashDumps`(REG_EXPAND_SZ)。**该键在 HKLM,配置需要管理员**;不设 `DumpType` 时 WER 默认只写 mini 转储(堆数据缺失,无法定位 QML 文档)。
+- 复验限制:在 DSH/沙箱会话内派生的进程位于 Job 对象中(受限令牌),其崩溃**不会**进入 WER,因此转储只能由用户自己启动的实例产生;会话内只能验证配置值本身,不能验证落盘结果。
+- 判读:拿到转储后用 `%TEMP%` 下的零依赖解析脚本读异常流、模块表、寄存器与栈回溯;`.pdata`(RUNTIME_FUNCTION)可在无符号条件下精确界定崩溃函数边界。
+- 观测默认关闭,排查结束执行 `Remove-Item Env:GITORA_CRASH_TRACE,Env:GITORA_QML_TRACE -ErrorAction SilentlyContinue` 并完整重启,禁止把观测状态当成修复条件。

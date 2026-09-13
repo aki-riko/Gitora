@@ -356,6 +356,16 @@ if not PRISMQML_PKG_DIR:
 os.environ.setdefault("QT_LOGGING_RULES", "qt.text.font.db=false")
 os.environ.setdefault("QML_XHR_ALLOW_FILE_READ", "1")
 
+from app_qml.backend.crash_trace import (  # noqa: E402
+    attach_qml_warning_logger,
+    configure_trace_env,
+    crash_trace_enabled,
+    install_crash_trace,
+)
+
+# 崩溃取证观测（默认关闭）：观测用环境变量必须早于 QGuiApplication 构造。
+configure_trace_env()
+
 from PySide6.QtCore import QUrl  # noqa: E402
 from PySide6.QtGui import QGuiApplication  # noqa: E402
 
@@ -388,6 +398,8 @@ APP_LOGO_PATH = os.path.join(
 
 
 def main() -> int:
+    # 崩溃取证观测（默认关闭）：faulthandler + Qt 消息处理器，需早于 App 构造。
+    install_crash_trace()
     # FastSplash 在 App 构造期间创建；提前提供应用身份，避免首帧等待 QML 元数据。
     QGuiApplication.setApplicationDisplayName(APP_NAME)
     app = App(
@@ -400,6 +412,8 @@ def main() -> int:
         persist_appearance=True,
     )
     engine = app.engine
+    # 崩溃取证观测（默认关闭）：QML 引擎告警逐条落日志。
+    attach_qml_warning_logger(engine)
 
     # 单实例检查(PrismQML SingleInstance:Windows Named Mutex + 本地套接字 IPC);
     # 自检模式跳过。第二实例会通知主实例激活窗口后静默退出,不弹框。
@@ -456,6 +470,8 @@ def main() -> int:
     ctx.setContextProperty(
         "GitoraTimelineTraceEnabled", timeline_trace_enabled
     )
+    # 崩溃取证面包屑开关（默认关闭）：QML 侧据此决定是否调用 QmlRenderBridge.logCrashTrace
+    ctx.setContextProperty("GitoraCrashTraceEnabled", crash_trace_enabled())
     if timeline_trace_enabled:
         from app.common.logger import get_logger
 
