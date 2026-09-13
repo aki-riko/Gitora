@@ -40,6 +40,9 @@ build_dist/
 dist_installer/
 release_artifacts/
 
+# macOS 构建产物（CI 下载的未签名 dmg，体积约 190MB，不入库）
+build_mac/
+
 # 日志文件
 *.log
 
