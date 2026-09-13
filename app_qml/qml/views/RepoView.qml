@@ -800,9 +800,9 @@ Item {
             spacing: Fluent.Enums.spacing.s
             RowLayout {
                 Layout.fillWidth: true
+                width: parent.width
                 spacing: Fluent.Enums.spacing.s
                 ColumnLayout {
-                    Layout.fillWidth: true
                     spacing: Fluent.Enums.spacing.xxs
                     Text {
                         font.family: Fluent.Enums.fontFamily
@@ -819,6 +819,7 @@ Item {
                         font.pixelSize: Fluent.Enums.typography.caption
                     }
                 }
+                Item { Layout.fillWidth: true }
                 ColumnLayout {
                     Layout.alignment: Qt.AlignTop
                     spacing: Fluent.Enums.spacing.xxs

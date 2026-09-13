@@ -196,6 +196,8 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertIn('text: recentRepoModel.count + " 个记录"', source)
         self.assertIn("feature: Fluent.Enums.button.feature_split", source)
         self.assertIn('menuItems: ["清空"]', source)
+        self.assertIn("width: parent.width", source)
+        self.assertIn("Item { Layout.fillWidth: true }", source)
 
     def test_repo_view_applies_empty_diff_and_replaces_remote_model(self) -> None:
         source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
