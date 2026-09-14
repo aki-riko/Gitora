@@ -3585,6 +3585,34 @@ class GitService(QObject):
             return False, message
         return True, f"已更新远程地址: {name}"
 
+    def update_remote(
+        self,
+        old_name: str,
+        new_name: str,
+        fetch_url: str,
+        push_url: str = "",
+    ) -> tuple[bool, str]:
+        """完整编辑远程名称、抓取 URL 和推送 URL。"""
+        old_name = (old_name or "").strip()
+        new_name = (new_name or "").strip()
+        if self._bad_ref(old_name) or self._bad_ref(new_name):
+            return False, "非法的远程名"
+        fetch_url = (fetch_url or "").strip()
+        push_url = (push_url or "").strip()
+        if self._bad_url(fetch_url) or (push_url and self._bad_url(push_url)):
+            return False, "不支持或不安全的远程地址"
+
+        target_name = old_name
+        if old_name != new_name:
+            success, message = self.rename_remote(old_name, new_name)
+            if not success:
+                return False, message
+            target_name = new_name
+        success, message = self.set_remote_urls(target_name, fetch_url, push_url)
+        if not success:
+            return False, message
+        return True, f"已更新远程信息: {target_name}"
+
     def rename_remote(self, old_name: str, new_name: str) -> tuple[bool, str]:
         """重命名远程仓库配置。"""
         old_name = (old_name or "").strip()

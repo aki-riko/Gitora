@@ -1811,6 +1811,17 @@ class GitBridge(QObject):
             lambda: self._svc.set_remote_urls(name, fetch_url, push_url),
         )
 
+    @Slot(str, str, str, str, result=QObject)
+    def updateRemote(
+        self, old_name: str, new_name: str, fetch_url: str, push_url: str
+    ):
+        return self._submit_operation(
+            "正在更新远程信息...",
+            lambda: self._svc.update_remote(
+                old_name, new_name, fetch_url, push_url
+            ),
+        )
+
     @Slot(str, str, result=QObject)
     def renameRemote(self, old_name: str, new_name: str):
         return self._submit_operation(

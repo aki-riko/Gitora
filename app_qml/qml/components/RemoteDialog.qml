@@ -113,10 +113,10 @@ Fluent.DialogBoxCore {
                     }
                 }
                 Fluent.Button {
-                    text: "修改"
+                    text: "编辑信息"
                     onClicked: {
                         dlg._editTarget = model.rName
-                        editNameInput.text = model.rName
+                        editRemoteNameInput.text = model.rName
                         editFetchUrlInput.text = model.rFetchUrl
                         editPushUrlInput.text = model.rPushUrl
                         editRemoteBox.open()
@@ -199,32 +199,39 @@ Fluent.DialogBoxCore {
         }
     }
 
-    // 修改远程抓取/推送 URL
+    // 编辑远程名称、抓取 URL 和推送 URL
     Fluent.MessageBox {
         id: editRemoteBox
         title: ""
         confirmText: "保存"
         cancelText: "取消"
+        function validate() {
+            return editRemoteNameInput.text.trim().length > 0
+                && editFetchUrlInput.text.trim().length > 0
+        }
         onAccepted: {
-            var name = dlg._editTarget
+            var oldName = dlg._editTarget
+            var newName = editRemoteNameInput.text.trim()
             var fetchUrl = editFetchUrlInput.text.trim()
             var pushUrl = editPushUrlInput.text.trim()
-            var task = GitBridge.setRemoteUrls(name, fetchUrl, pushUrl)
+            var task = GitBridge.updateRemote(
+                oldName, newName, fetchUrl, pushUrl)
             task.succeeded.connect(function(result) {
                 if (result && result[0]) dlg.refresh()
             })
+            dlg._editTarget = ""
         }
         ColumnLayout {
             width: 400
             spacing: Fluent.Enums.spacing.s
             DialogTitle {
                 objectName: "editRemoteDialogTitle"
-                text: "修改远程 URL"
+                text: "编辑远程信息"
             }
             Fluent.LineEdit {
-                id: editNameInput
+                id: editRemoteNameInput
                 Layout.fillWidth: true
-                enabled: false   // 远程名不可改,改名等于删旧建新
+                placeholderText: "远程名称"
             }
             Fluent.LineEdit {
                 id: editFetchUrlInput

@@ -47,22 +47,33 @@ class RemoteConfigTest(unittest.TestCase):
             push_url,
         )
 
-        changed_fetch_url = "https://gitee.example/Aquila/Gitora-mirror.git"
-        ok, message = service.set_remote_url("origin", changed_fetch_url)
+        renamed_fetch_url = "https://gitee.example/Aquila/Gitora-renamed.git"
+        renamed_push_url = "ssh://git@aquila.example:28022/Aquila/Gitora.git"
+        ok, message = service.update_remote(
+            "origin", "upstream", renamed_fetch_url, renamed_push_url
+        )
         self.assertTrue(ok, message)
         self.assertEqual(
             service.get_remote_config_info(),
-            [("origin", changed_fetch_url, push_url)],
+            [("upstream", renamed_fetch_url, renamed_push_url)],
         )
 
-        ok, message = service.set_remote_push_url("origin", "")
+        changed_fetch_url = "https://gitee.example/Aquila/Gitora-mirror.git"
+        ok, message = service.set_remote_url("upstream", changed_fetch_url)
         self.assertTrue(ok, message)
         self.assertEqual(
             service.get_remote_config_info(),
-            [("origin", changed_fetch_url, changed_fetch_url)],
+            [("upstream", changed_fetch_url, renamed_push_url)],
+        )
+
+        ok, message = service.set_remote_push_url("upstream", "")
+        self.assertTrue(ok, message)
+        self.assertEqual(
+            service.get_remote_config_info(),
+            [("upstream", changed_fetch_url, changed_fetch_url)],
         )
         self.assertNotEqual(
-            run_git(repo, "config", "--get-all", "remote.origin.pushurl", check=False).returncode,
+            run_git(repo, "config", "--get-all", "remote.upstream.pushurl", check=False).returncode,
             0,
         )
 
