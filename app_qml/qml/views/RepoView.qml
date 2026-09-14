@@ -418,6 +418,16 @@ Item {
                     } else if (index === 2) syncDialog.openFor("pushForce")
                 }
             }
+            Fluent.Button {
+                text: "刷新全部远程"
+                icon: Fluent.Enums.icon.arrow_sync
+                onClicked: GitBridge.fetchAll()
+            }
+            Fluent.Button {
+                text: "远程"
+                icon: Fluent.Enums.icon.globe
+                onClicked: remoteManageDialog.openPanel()
+            }
         }
 
         Text {
@@ -1059,6 +1069,9 @@ Item {
         // 异步执行,结果经全局 operationFinished 统一弹 toast(与普通 pull/push 一致)
         onConfirmed: GitBridge.forceResetToUpstream()
     }
+
+    // 仓库级远程配置管理(添加/编辑/删除)
+    RemoteDialog { id: remoteManageDialog }
 
     // 危险操作:修补「已推送」的提交(会与远端历史分叉,之后需强制推送才能同步)
     DangerDialog {

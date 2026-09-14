@@ -224,12 +224,6 @@ Item {
                 font.family: Fluent.Enums.fontFamily
             }
             Item { Layout.fillWidth: true }
-            Fluent.Button { text: "刷新全部远程"; icon: Fluent.Enums.icon.arrow_sync; onClicked: GitBridge.fetchAll() }
-            Fluent.Button {
-                text: "远程"
-                icon: Fluent.Enums.icon.globe
-                onClicked: remoteManageDialog.openPanel()
-            }
             Fluent.Button {
                 text: "新建分支"
                 style: Fluent.Enums.button.style_primary
@@ -485,6 +479,4 @@ Item {
         }
     }
 
-    // 远程管理面板(添加/修改URL/删除)
-    RemoteDialog { id: remoteManageDialog }
 }
