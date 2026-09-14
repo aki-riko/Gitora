@@ -418,15 +418,18 @@ Item {
                     } else if (index === 2) syncDialog.openFor("pushForce")
                 }
             }
-            Fluent.Button {
-                text: "刷新全部远程"
-                icon: Fluent.Enums.icon.arrow_sync
-                onClicked: GitBridge.fetchAll()
-            }
+            // 远程:主按钮打开远程管理面板;下拉出刷新全部远程(fetch --all --prune)
             Fluent.Button {
                 text: "远程"
                 icon: Fluent.Enums.icon.globe
+                feature: Fluent.Enums.button.feature_split
+                menuItems: [
+                    { "text": "刷新全部远程", "icon": Fluent.Enums.icon.arrow_sync }
+                ]
                 onClicked: remoteManageDialog.openPanel()
+                onMenuItemClicked: function(index, text) {
+                    if (index === 0) GitBridge.fetchAll()
+                }
             }
         }
 
