@@ -1,4 +1,4 @@
-// 远程仓库管理面板:列出所有远程,支持添加 / 修改 URL / 删除。
+// 远程仓库管理面板:列出所有远程,支持添加 / 修改抓取与推送 URL / 删除。
 // 数据源 GitBridge.getRemoteInfo() 的 PrismQML TaskHandle；增删改后异步刷新。
 import QtQuick
 import QtQuick.Layouts
@@ -37,8 +37,16 @@ Fluent.DialogBoxCore {
         task.succeeded.connect(function(remotes) {
             dlg._remotes = remotes || []
             remoteModel.clear()
-            for (var i = 0; i < dlg._remotes.length; i++)
-                remoteModel.append({ "rName": dlg._remotes[i].name, "rUrl": dlg._remotes[i].url })
+            for (var i = 0; i < dlg._remotes.length; i++) {
+                var remote = dlg._remotes[i]
+                var fetchUrl = remote.fetchUrl || remote.url
+                var pushUrl = remote.pushUrl || fetchUrl
+                remoteModel.append({
+                    "rName": remote.name,
+                    "rFetchUrl": fetchUrl,
+                    "rPushUrl": pushUrl
+                })
+            }
         })
     }
 
@@ -70,7 +78,7 @@ Fluent.DialogBoxCore {
             font.pixelSize: Fluent.Enums.typography.body
         }
 
-        // 远程列表:每项 name + url + 修改/删除
+        // 远程列表:每项 name + fetch/push URL + 修改/删除
         Repeater {
             model: remoteModel
             delegate: RowLayout {
@@ -88,7 +96,15 @@ Fluent.DialogBoxCore {
                         font.bold: true
                     }
                     Text {
-                        text: model.rUrl
+                        text: "抓取: " + model.rFetchUrl
+                        color: Fluent.Enums.textColor.tertiary
+                        font.family: Fluent.Enums.fontFamily
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        elide: Text.ElideMiddle
+                        Layout.fillWidth: true
+                    }
+                    Text {
+                        text: "推送: " + model.rPushUrl
                         color: Fluent.Enums.textColor.tertiary
                         font.family: Fluent.Enums.fontFamily
                         font.pixelSize: Fluent.Enums.typography.caption
@@ -101,7 +117,8 @@ Fluent.DialogBoxCore {
                     onClicked: {
                         dlg._editTarget = model.rName
                         editNameInput.text = model.rName
-                        editUrlInput.text = model.rUrl
+                        editFetchUrlInput.text = model.rFetchUrl
+                        editPushUrlInput.text = model.rPushUrl
                         editRemoteBox.open()
                     }
                 }
@@ -182,7 +199,7 @@ Fluent.DialogBoxCore {
         }
     }
 
-    // 修改远程 URL
+    // 修改远程抓取/推送 URL
     Fluent.MessageBox {
         id: editRemoteBox
         title: ""
@@ -190,8 +207,9 @@ Fluent.DialogBoxCore {
         cancelText: "取消"
         onAccepted: {
             var name = dlg._editTarget
-            var url = editUrlInput.text
-            var task = GitBridge.setRemoteUrl(name, url)
+            var fetchUrl = editFetchUrlInput.text.trim()
+            var pushUrl = editPushUrlInput.text.trim()
+            var task = GitBridge.setRemoteUrls(name, fetchUrl, pushUrl)
             task.succeeded.connect(function(result) {
                 if (result && result[0]) dlg.refresh()
             })
@@ -209,9 +227,20 @@ Fluent.DialogBoxCore {
                 enabled: false   // 远程名不可改,改名等于删旧建新
             }
             Fluent.LineEdit {
-                id: editUrlInput
+                id: editFetchUrlInput
                 Layout.fillWidth: true
-                placeholderText: "新的远程 URL"
+                placeholderText: "抓取 URL"
+            }
+            Text {
+                text: "推送 URL(留空则跟随抓取 URL)"
+                color: Fluent.Enums.textColor.secondary
+                font.family: Fluent.Enums.fontFamily
+                font.pixelSize: Fluent.Enums.typography.caption
+            }
+            Fluent.LineEdit {
+                id: editPushUrlInput
+                Layout.fillWidth: true
+                placeholderText: "推送 URL"
             }
         }
     }

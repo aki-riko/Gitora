@@ -1186,8 +1186,13 @@ class GitBridge(QObject):
         """异步读取远程列表，返回 PrismQML ``TaskHandle``。"""
         return self._submit_query(
             lambda: [
-                {"name": name, "url": url}
-                for name, url in self._svc.get_remote_info()
+                {
+                    "name": name,
+                    "url": fetch_url,
+                    "fetchUrl": fetch_url,
+                    "pushUrl": push_url,
+                }
+                for name, fetch_url, push_url in self._svc.get_remote_config_info()
             ],
             label="获取远程列表",
         )
@@ -1790,6 +1795,20 @@ class GitBridge(QObject):
         return self._submit_operation(
             "正在更新远程仓库地址...",
             lambda: self._svc.set_remote_url(name, url),
+        )
+
+    @Slot(str, str, result=QObject)
+    def setRemotePushUrl(self, name: str, url: str):
+        return self._submit_operation(
+            "正在更新远程推送地址...",
+            lambda: self._svc.set_remote_push_url(name, url),
+        )
+
+    @Slot(str, str, str, result=QObject)
+    def setRemoteUrls(self, name: str, fetch_url: str, push_url: str):
+        return self._submit_operation(
+            "正在更新远程抓取和推送地址...",
+            lambda: self._svc.set_remote_urls(name, fetch_url, push_url),
         )
 
     @Slot(str, str, result=QObject)

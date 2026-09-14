@@ -3535,6 +3535,56 @@ class GitService(QObject):
             return True, f"已修改远程URL: {name}"
         return False, self._friendly_git_error(stderr, "修改远程URL失败")
 
+    def set_remote_push_url(self, name: str, url: str) -> tuple[bool, str]:
+        """修改远程的显式推送 URL；空值表示跟随抓取 URL。"""
+        if self._bad_ref(name):
+            return False, "非法的远程名"
+        url = (url or "").strip()
+        if url and self._bad_url(url):
+            return False, "不支持或不安全的远程地址"
+
+        config_key = f"remote.{name}.pushurl"
+        has_push_url, _, _ = self._run_git_sync(
+            ["config", "--local", "--get-all", config_key]
+        )
+        if has_push_url:
+            success, _, stderr = self._run_git_sync(
+                ["config", "--local", "--unset-all", config_key]
+            )
+            if not success:
+                return False, self._friendly_git_error(stderr, "清除远程推送URL失败")
+
+        if url:
+            success, _, stderr = self._run_git_sync(
+                ["config", "--local", "--replace-all", config_key, url]
+            )
+            if not success:
+                return False, self._friendly_git_error(stderr, "修改远程推送URL失败")
+
+        self.statusChanged.emit()
+        return True, f"已修改远程推送URL: {name}"
+
+    def set_remote_urls(
+        self, name: str, fetch_url: str, push_url: str = ""
+    ) -> tuple[bool, str]:
+        """同时修改远程抓取 URL 和推送 URL。推送 URL 为空时回退到抓取 URL。"""
+        if self._bad_ref(name):
+            return False, "非法的远程名"
+        fetch_url = (fetch_url or "").strip()
+        if self._bad_url(fetch_url):
+            return False, "不支持或不安全的远程地址"
+        push_url = (push_url or "").strip()
+        if push_url and self._bad_url(push_url):
+            return False, "不支持或不安全的远程地址"
+
+        success, _, stderr = self._run_git_sync(["remote", "set-url", name, fetch_url])
+        if not success:
+            return False, self._friendly_git_error(stderr, "修改远程URL失败")
+        success, message = self.set_remote_push_url(name, push_url)
+        if not success:
+            return False, message
+        return True, f"已更新远程地址: {name}"
+
     def rename_remote(self, old_name: str, new_name: str) -> tuple[bool, str]:
         """重命名远程仓库配置。"""
         old_name = (old_name or "").strip()
@@ -3552,6 +3602,17 @@ class GitService(QObject):
         success, stdout, _ = self._run_git_sync(['remote', 'get-url', name])
         return stdout.strip() if success else ""
 
+    def get_remote_urls(self, name: str) -> tuple[str, str]:
+        """获取远程抓取 URL 和生效的推送 URL。"""
+        if self._bad_ref(name):
+            return "", ""
+        fetch_url = self.get_remote_url(name)
+        success, stdout, _ = self._run_git_sync(
+            ["config", "--local", "--get-all", f"remote.{name}.pushurl"]
+        )
+        push_urls = [line.strip() for line in stdout.splitlines() if line.strip()] if success else []
+        return fetch_url, push_urls[0] if push_urls else fetch_url
+
     def get_remote_info(self) -> list[tuple[str, str]]:
         """获取远程仓库详细信息
         
@@ -3564,6 +3625,15 @@ class GitService(QObject):
             if remote:
                 url = self.get_remote_url(remote)
                 result.append((remote, url))
+        return result
+
+    def get_remote_config_info(self) -> list[tuple[str, str, str]]:
+        """获取远程名称、抓取 URL 和生效的推送 URL。"""
+        result = []
+        for remote in self.get_remotes():
+            if remote:
+                fetch_url, push_url = self.get_remote_urls(remote)
+                result.append((remote, fetch_url, push_url))
         return result
 
     # ==================== 提交详情 ====================
