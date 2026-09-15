@@ -562,6 +562,7 @@ class GitService(QObject):
                 "",
                 self._friendly_git_error(str(exc), "Git 后台操作失败"),
             ),
+            on_cancelled=lambda: callback(False, "", "Git 操作已取消"),
         )
 
     def _run_git_push_async(
@@ -1860,6 +1861,8 @@ class GitService(QObject):
             on_failure=lambda exc: finished((
                 False, self._friendly_git_error(str(exc), "推送失败")
             )),
+            # 取消也必须收尾:否则 operationFinished 不发,界面会永久停在 busy。
+            on_cancelled=lambda: finished((False, "推送已取消")),
             on_progress=lambda update: self.progressUpdated.emit(
                 int(update[0]), str(update[1])
             ),
@@ -1975,6 +1978,7 @@ class GitService(QObject):
             on_failure=lambda exc: finished((
                 False, self._friendly_git_error(str(exc), "拉取失败")
             )),
+            on_cancelled=lambda: finished((False, "拉取已取消")),
         )
 
     def fetch(self, remote: str = "origin", callback: Callable[[bool, str], None] = None):
@@ -2009,6 +2013,7 @@ class GitService(QObject):
             on_failure=lambda exc: finished((
                 False, self._friendly_git_error(str(exc), "获取失败")
             )),
+            on_cancelled=lambda: finished((False, "获取远程更新已取消")),
         )
 
     def fetch_all(self, callback: Callable[[bool, str], None] = None):
@@ -2045,6 +2050,7 @@ class GitService(QObject):
                 False,
                 self._friendly_git_error(str(exc), "获取全部远程更新失败"),
             )),
+            on_cancelled=lambda: finished((False, "获取全部远程更新已取消")),
         )
 
     def _resolve_current_upstream(self) -> tuple[bool, str, str, str]:
@@ -2112,6 +2118,7 @@ class GitService(QObject):
             on_failure=lambda exc: on_finished((
                 False, self._friendly_git_error(str(exc), "远程覆盖本地失败")
             )),
+            on_cancelled=lambda: on_finished((False, "远程覆盖本地已取消")),
         )
 
     # ==================== 分支操作 ====================
@@ -2515,6 +2522,7 @@ class GitService(QObject):
             on_failure=lambda exc: on_finished((
                 False, self._friendly_git_error(str(exc), "一键提交推送失败")
             )),
+            on_cancelled=lambda: on_finished((False, "一键提交推送已取消")),
             on_progress=report_progress,
         )
 

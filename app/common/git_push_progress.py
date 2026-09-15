@@ -14,6 +14,13 @@ from .logger import get_logger
 
 logger = get_logger("GitPushProgress")
 
+# 超时后的清理宽限期。只用于等待"杀进程树 + 关管道"生效，不参与业务超时判定。
+# 只杀顶层 git.exe 时，git 派生的 ssh / git-remote-https / 凭据助手会继续持有
+# stdout/stderr 管道写端，读取任务永远等不到 EOF，后台线程会被永久钉死
+# （表现：进度停在某个百分比、operationBusy 恒为 true、日志再无输出）。
+_CLEANUP_GRACE_SECONDS = 5.0
+_KILL_TREE_TIMEOUT_SECONDS = 5.0
+
 
 @dataclass(frozen=True)
 class PushProgress:
@@ -165,6 +172,84 @@ def _publish_progress_line(
         on_progress(update.percent, update.message)
 
 
+def _push_child_env() -> dict[str, str]:
+    """构造 push 子进程环境：关闭"会无声挂住"的交互式提示。
+
+    GUI 进程没有可交互终端：git 的终端凭据提示会直接写到 /dev/tty，界面完全看不到，
+    进程就停在那里等输入。这里只关掉这类提示，让它们快速失败；
+    GIT_ASKPASS / 凭据助手等**非交互**取凭据的路径保持原样不动。
+    """
+    env = os.environ.copy()
+    env["GIT_TERMINAL_PROMPT"] = "0"
+    env["GCM_INTERACTIVE"] = "never"
+    # 调用方没显式指定 ssh 命令时，禁用 ssh 交互提示并给 TCP 连接一个上限；
+    # 否则需要口令/键盘交互的 ssh 会以同样的方式无声挂住。git 仍会按 URL 追加端口。
+    if "GIT_SSH_COMMAND" not in env and "GIT_SSH" not in env:
+        env["GIT_SSH_COMMAND"] = "ssh -o BatchMode=yes -o ConnectTimeout=30"
+    return env
+
+
+async def _kill_process_tree(process: asyncio.subprocess.Process) -> None:
+    """杀掉整棵进程树，而不是只终止顶层 git.exe。
+
+    子进程（ssh / git-remote-https / 凭据助手）会继承 stdout/stderr 管道写端，
+    只杀 git.exe 的话它们仍然让管道保持打开，读取端永远等不到 EOF。
+    """
+    pid = process.pid
+    if os.name == "nt" and pid:
+        try:
+            killer = await asyncio.create_subprocess_exec(
+                "taskkill", "/F", "/T", "/PID", str(pid),
+                stdout=asyncio.subprocess.DEVNULL,
+                stderr=asyncio.subprocess.DEVNULL,
+                creationflags=subprocess.CREATE_NO_WINDOW,
+            )
+            await asyncio.wait_for(
+                killer.wait(), timeout=_KILL_TREE_TIMEOUT_SECONDS
+            )
+        except (OSError, subprocess.SubprocessError, TimeoutError):
+            logger.warning("taskkill 清理 Git 子进程树失败，回退为直接终止", exc_info=True)
+    try:
+        process.kill()
+    except OSError:
+        pass
+
+
+async def _await_bounded(awaitable, timeout: float) -> bool:
+    """在限定时间内等待；超时即取消并返回 False。清理路径绝不允许无界等待。"""
+    try:
+        await asyncio.wait_for(awaitable, timeout=timeout)
+        return True
+    except TimeoutError:
+        return False
+    except asyncio.CancelledError:
+        raise
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def _close_pipe_readers(process: asyncio.subprocess.Process) -> None:
+    """关闭读管道，让 Proactor 上挂起的 ReadFile 立即结束。
+
+    否则事件循环关闭时会在未完成的 overlapped 操作上空转（``IocpProactor.close``
+    的 ``while self._cache``），同样表现为卡死。
+    """
+    transport_owner = getattr(process, "_transport", None)
+    for fd in (1, 2):
+        transport = None
+        if transport_owner is not None:
+            try:
+                transport = transport_owner.get_pipe_transport(fd)
+            except (AttributeError, RuntimeError):
+                transport = None
+        if transport is None:
+            continue
+        try:
+            transport.close()
+        except (RuntimeError, OSError):
+            pass
+
+
 async def _run_git_push(
     command: list[str],
     cwd: str,
@@ -174,8 +259,10 @@ async def _run_git_push(
     process = await asyncio.create_subprocess_exec(
         *command,
         cwd=cwd,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=_push_child_env(),
         creationflags=subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0,
     )
     stdout_chunks: list[str] = []
@@ -191,9 +278,20 @@ async def _run_git_push(
         await asyncio.wait_for(process.wait(), timeout=timeout)
     except TimeoutError:
         timed_out = True
-        process.kill()
-        await process.wait()
-    await asyncio.gather(stdout_reader, stderr_reader)
+        await _kill_process_tree(process)
+        await _await_bounded(process.wait(), _CLEANUP_GRACE_SECONDS)
+    readers_done = await _await_bounded(
+        asyncio.gather(stdout_reader, stderr_reader, return_exceptions=True),
+        _CLEANUP_GRACE_SECONDS,
+    )
+    if not readers_done:
+        # 仍有子进程持有管道写端：放弃剩余输出并关掉读端，避免后台线程被永久钉死。
+        logger.warning(
+            "Git push 结束后管道仍被占用，放弃读取输出: %s", " ".join(command)
+        )
+        stdout_reader.cancel()
+        stderr_reader.cancel()
+        _close_pipe_readers(process)
     stdout = "".join(stdout_chunks)
     stderr = "".join(stderr_chunks)
     if timed_out:
