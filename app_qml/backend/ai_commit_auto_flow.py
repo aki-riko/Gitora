@@ -138,7 +138,13 @@ class AiCommitAutoFlowMixin:
                 self._emit_error_if_current(serial, "自动提交计划组失败")
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     def _start_auto_push(self) -> None:
         if self._git.repo_path != self._auto_repo_path:

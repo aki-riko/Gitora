@@ -565,45 +565,6 @@ class GitService(QObject):
             on_cancelled=lambda: callback(False, "", "Git 操作已取消"),
         )
 
-    def _run_git_push_async(
-        self,
-        args: list[str],
-        callback: Callable[[bool, str, str], None],
-        timeout: int = 60,
-    ) -> None:
-        if not self._repo_path:
-            callback(False, "", "未设置仓库路径")
-            return
-        command = ['git', '-c', 'core.quotepath=false'] + args
-        repo_path = self._repo_path
-
-        def work() -> tuple[bool, str, str]:
-            task = current_task()
-            result = run_git_push_with_progress(
-                command,
-                repo_path,
-                timeout,
-                lambda percent, message: task.report_progress(
-                    (percent, message)
-                ),
-            )
-            return result.success, result.stdout, result.stderr
-
-        def report_progress(update: object) -> None:
-            percent, message = update
-            self.progressUpdated.emit(int(percent), str(message))
-
-        return submit_to_pool(
-            work,
-            on_success=lambda result: callback(*result),
-            on_failure=lambda exc: callback(
-                False,
-                "",
-                self._friendly_git_error(str(exc), "Git 推送任务失败"),
-            ),
-            on_progress=report_progress,
-        )
-
     def _run_git_push_sync(
         self,
         args: list[str],

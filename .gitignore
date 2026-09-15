@@ -63,3 +63,5 @@ PLAN_AUTOUPDATE.md
 
 # DSH file-upload plugin: per-session upload staging inside the workspace
 .dsh-uploads/
+# WorkBuddy AI 工作区数据（项目记忆与上下文，不入库）
+.workbuddy-ai/

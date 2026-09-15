@@ -200,7 +200,13 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                 self._emit_error_if_current(serial, "准备提交规划上下文失败")
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot(str, bool)
     def generatePrepared(self, request_id: str, remote_consent: bool) -> None:
@@ -279,7 +285,13 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                 self._emit_error_if_current(serial, "生成文件级规划失败")
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot(str)
     def cancelPrepared(self, request_id: str) -> None:
@@ -324,6 +336,10 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
             ),
             on_failure=lambda exc: self._workspace_check_failed(
                 repo, expected, exc
+            ),
+            # 取消 = 本次复验没有结论，按失败路径处理（标记计划为过期）。
+            on_cancelled=lambda: self._workspace_check_failed(
+                repo, expected, RuntimeError("工作区复验已取消")
             ),
         )
 
@@ -434,7 +450,13 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                 self._emit_error_if_current(serial, "应用下一提交组失败")
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot()
     def notifyCommitSucceeded(self) -> None:
@@ -479,7 +501,13 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
                 )
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot(int, str, object, object)
     def _apply_resolved(
@@ -559,6 +587,10 @@ class AiCommitPlanBridge(AiCommitAutoFlowMixin, QObject):
             on_success=self._restore_discarded_apply_finished,
             on_failure=lambda exc: self._restore_discarded_apply_finished(
                 (False, f"恢复暂存区时发生异常: {exc}")
+            ),
+            # 必须走同一个收尾函数，否则 _execution_guard 会永远保持为真。
+            on_cancelled=lambda: self._restore_discarded_apply_finished(
+                (False, "恢复暂存区已取消")
             ),
         )
 

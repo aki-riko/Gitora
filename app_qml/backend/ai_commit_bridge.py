@@ -258,7 +258,13 @@ class AiCommitBridge(QObject):
                 self._emit_error_if_current(serial, "准备提交上下文失败")
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot(str, bool)
     def generatePrepared(self, request_id: str, remote_consent: bool) -> None:
@@ -332,7 +338,13 @@ class AiCommitBridge(QObject):
                 )
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot(str)
     def cancelPrepared(self, request_id: str) -> None:
@@ -381,7 +393,13 @@ class AiCommitBridge(QObject):
                     self.connectionTestFinished.emit(False, "模型连接检测失败")
             self._set_busy_if_current(serial, False)
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot()
     def fetchModels(self) -> None:
@@ -429,7 +447,13 @@ class AiCommitBridge(QObject):
                 logger.error(f"获取 AI 模型列表异常: {type(exc).__name__}: {exc}")
                 publish(False, [], "获取模型列表失败")
 
-        submit_to_pool(work, on_success=succeeded, on_failure=failed)
+        submit_to_pool(
+            work,
+            on_success=succeeded,
+            on_failure=failed,
+            # 取消也要解除 busy，否则界面会永久停在「AI 处理中」。
+            on_cancelled=lambda: self._set_busy_if_current(serial, False),
+        )
 
     @Slot()
     def invalidateWorkspace(self) -> None:
