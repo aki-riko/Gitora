@@ -1,16 +1,14 @@
 // 仓库视图(阶段 2:完整迁移 repo_interface.py)
 // 布局:Header(仓库信息+操作) + SplitPane(左:文件列表+提交面板 / 右:Diff)
+// 仓库入口(打开/初始化)统一由顶部标签栏的“+”菜单承载,本页不再放仓库入口按钮。
 import QtQuick
 import QtQuick.Layouts
-import QtQuick.Dialogs
 
 import PrismQML as Fluent
 import "../components"
 
 Item {
     id: root
-    readonly property real _repoPathMenuTextWidth: Fluent.Enums.controlSize.cardWidth
-        + Fluent.Enums.spacing.xxxl * 3
 
     // 当前选中的文件(用于 diff)
     property string selectedPath: ""
@@ -26,22 +24,6 @@ Item {
     property bool _aiResultPending: false
     property var _remoteInfo: []
     property string _currentBranch: ""
-
-    function _ensureInitGuide() {
-        if (!initGuideLoader.active) initGuideLoader.active = true
-        return initGuideLoader.item
-    }
-
-    FontMetrics {
-        id: repoPathFontMetrics
-        font.family: Fluent.Enums.fontFamily
-        font.pixelSize: Fluent.Enums.typography.body
-    }
-
-    function _displayRepoPath(path) {
-        return repoPathFontMetrics.elidedText(
-            path || "", Text.ElideMiddle, root._repoPathMenuTextWidth)
-    }
     readonly property var changeModel: GitBridge ? GitBridge.fileChangeModel : null
     readonly property int changeCount: changeModel ? changeModel.count : 0
 
@@ -266,8 +248,8 @@ Item {
                 diffViewer.setDiff(content || "")
         }
         function onRepoOpened(ok, pathOrErr) {
-            if (ok) openButton.rebuildList()
-            else console.warn("打开仓库失败:", pathOrErr)
+            // 仓库入口已移到标签栏“+”菜单,这里只保留失败提示。
+            if (!ok) console.warn("打开仓库失败:", pathOrErr)
         }
     }
 
@@ -333,46 +315,6 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
-            Fluent.Button {
-                id: openButton
-                objectName: "repositoryOpenButton"
-                text: "打开"
-                icon: Fluent.Enums.icon.folder
-                feature: Fluent.Enums.button.feature_split
-                menu: repositorySearchMenu
-                toolTipText: "搜索并打开仓库"
-                property var pathList: []
-
-                function rebuildList() {
-                    var recent = GitBridge ? GitBridge.getRecentRepos() : []
-                    pathList = (typeof RepoScanner !== "undefined" && RepoScanner !== null)
-                        ? RepoScanner.mergeWithOpenedRepos(recent)
-                        : recent
-                }
-
-                Component.onCompleted: rebuildList()
-                onClicked: folderDialog.open()
-                onMenuAboutToOpen: {
-                    // Open the cached list immediately; path validation may block on a
-                    // sleeping or disconnected drive. 立即使用缓存列表打开；路径校验
-                    // 可能因休眠或断开的磁盘阻塞 UI 线程。
-                    repositorySearchMenu.loading = (typeof RepoScanner !== "undefined")
-                        && RepoScanner !== null && RepoScanner.scanning
-                    repositorySearchMenu.prepareForOpen(pathList)
-                }
-
-                Connections {
-                    target: (typeof RepoScanner !== "undefined" && RepoScanner !== null) ? RepoScanner : null
-                    function onScanFinished(n) {
-                        openButton.rebuildList()
-                        if (repositorySearchMenu.isOpen) {
-                            repositorySearchMenu.loading = false
-                            repositorySearchMenu.setPaths(openButton.pathList)
-                        }
-                    }
-                }
-            }
-            Fluent.Button { text: "初始化"; icon: Fluent.Enums.icon.add; onClicked: initFolderDialog.open() }
             // 拉取:主按钮 pull;下拉出变基/抓取/克隆/指定同步/远程覆盖本地
             Fluent.Button {
                 text: "拉取"
@@ -720,57 +662,10 @@ Item {
         }
     }
 
-    RepositorySearchMenu {
-        id: repositorySearchMenu
-        pathFormatter: root._displayRepoPath
-        onPathSelected: function(path) {
-            GitBridge.openRepoAsync(path)
-        }
-    }
-
-    FolderDialog {
-        id: folderDialog
-        title: "选择 Git 仓库目录"
-        onAccepted: {
-            var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
-            GitBridge.openRepoAsync(path)
-        }
-    }
-
     // 克隆对话框
     CloneDialog {
         id: cloneDialog
         onCloneRequested: function(url, path) { GitBridge.clone(url, path) }
-    }
-
-    // 初始化:先选目录,再走引导
-    FolderDialog {
-        id: initFolderDialog
-        title: "选择要初始化的目录"
-        onAccepted: {
-            var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
-            var task = GitBridge.initRepo(path)
-            task.succeeded.connect(function(result) {
-                if (!result || !result[0]) return
-                GitBridge.openRepoAsync(path)
-                var guide = root._ensureInitGuide()
-                if (!guide) return
-                guide.repoPath = path
-                guide.currentIndex = 0
-                guide.show()
-            })
-        }
-    }
-
-    // 初始化引导窗口只在用户完成目录初始化后创建，避免首屏生成第二个 HWND。
-    Loader {
-        id: initGuideLoader
-        active: false
-        sourceComponent: Component {
-            InitRepoGuide {
-                onCompleted: function(p) { root.reload() }
-            }
-        }
     }
 
     // 文件历史
@@ -847,7 +742,6 @@ Item {
                             if (index !== 0 || recentRepoModel.count === 0) return
                             GitBridge.clearRecentRepos()
                             recentReposDrawer.refresh()
-                            openButton.rebuildList()
                         }
                     }
                 }
@@ -895,7 +789,6 @@ Item {
                             onClicked: {
                                 GitBridge.removeRecentRepo(model.path)
                                 recentReposDrawer.refresh()
-                                openButton.rebuildList()
                             }
                         }
                     }
