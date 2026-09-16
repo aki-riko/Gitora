@@ -29,6 +29,9 @@ def test_conflict_viewer_and_clean_preview_use_bounded_async_payloads() -> None:
     assert "GitBridge.requestConflictFile(path)" in conflict
     assert "property var lineRows: []" in conflict
     assert "model: dlg.lineRows" in conflict
+    assert "function _decorateLines(lines)" in conflict
+    assert "dlg.lineRows = dlg._decorateLines(lines)" in conflict
+    assert "function _lineBackground(row)" in conflict
     assert "GitBridge.readConflictFile(" not in conflict
     assert "function onCleanPreviewReady(repoPath, files, total, isTruncated)" in clean
     assert "dlg.truncated" in clean

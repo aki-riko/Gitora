@@ -30,6 +30,28 @@ Fluent.MessageBox {
         dlg.open()
     }
 
+    function _decorateLines(lines) {
+        var rows = []
+        var region = "normal"
+        var sourceLines = lines || []
+        for (var i = 0; i < sourceLines.length; i++) {
+            var line = String(sourceLines[i])
+            var kind = region
+            if (line.indexOf("<<<<<<<") === 0) {
+                kind = "oursMarker"
+                region = "ours"
+            } else if (line.indexOf("=======") === 0) {
+                kind = "separator"
+                region = "theirs"
+            } else if (line.indexOf(">>>>>>>") === 0) {
+                kind = "theirsMarker"
+                region = "normal"
+            }
+            rows.push({text: line, kind: kind})
+        }
+        return rows
+    }
+
     Connections {
         target: GitBridge
         function onRepoPathChanged(path) {
@@ -43,17 +65,40 @@ Fluent.MessageBox {
             if (!GitBridge || repoPath !== GitBridge.repoPath
                     || repoPath !== dlg._requestRepoPath || path !== dlg._requestPath)
                 return
-            dlg.lineRows = lines || []
+            dlg.lineRows = dlg._decorateLines(lines)
             dlg.loading = false
             dlg.truncated = !!isTruncated
         }
     }
 
-    function _lineColor(line) {
-        if (line.indexOf("<<<<<<<") === 0) return Fluent.Enums.accentColor
-        if (line.indexOf("=======") === 0) return Fluent.Enums.statusLevel.warningColor
-        if (line.indexOf(">>>>>>>") === 0) return Fluent.Enums.statusLevel.successColor
+    function _lineColor(row) {
+        if (!row || row.kind === "normal") return Fluent.Enums.textColor.primary
+        if (row.kind === "ours" || row.kind === "oursMarker") return Fluent.Enums.accentColor
+        if (row.kind === "separator") return Fluent.Enums.statusLevel.warningColor
+        if (row.kind === "theirs" || row.kind === "theirsMarker") return Fluent.Enums.statusLevel.successColor
         return Fluent.Enums.textColor.primary
+    }
+
+    function _lineBackground(row) {
+        if (!row || row.kind === "normal") return "transparent"
+        if (row.kind === "ours" || row.kind === "oursMarker") {
+            return Qt.rgba(Fluent.Enums.accentColor.r, Fluent.Enums.accentColor.g,
+                           Fluent.Enums.accentColor.b, row.kind === "oursMarker" ? 0.2 : 0.08)
+        }
+        if (row.kind === "separator") {
+            return Qt.rgba(Fluent.Enums.statusLevel.warningColor.r,
+                           Fluent.Enums.statusLevel.warningColor.g,
+                           Fluent.Enums.statusLevel.warningColor.b, 0.2)
+        }
+        return Qt.rgba(Fluent.Enums.statusLevel.successColor.r,
+                       Fluent.Enums.statusLevel.successColor.g,
+                       Fluent.Enums.statusLevel.successColor.b,
+                       row.kind === "theirsMarker" ? 0.2 : 0.08)
+    }
+
+    function _lineMarkerColor(row) {
+        if (!row || row.kind === "normal") return "transparent"
+        return _lineColor(row)
     }
 
     ColumnLayout {
@@ -83,16 +128,30 @@ Fluent.MessageBox {
                 bounceEnabled: false
                 padding: 0
                 model: dlg.lineRows
-                delegate: Text {
+                delegate: Rectangle {
                     width: ListView.view ? ListView.view.width : 0
                     height: lineList.itemHeight
-                    text: modelData
-                    color: dlg._lineColor(modelData)
-                    font.family: "Consolas, monospace"
-                    font.pixelSize: Fluent.Enums.typography.caption
-                    textFormat: Text.PlainText
-                    wrapMode: Text.NoWrap
-                    verticalAlignment: Text.AlignVCenter
+                    color: dlg._lineBackground(modelData)
+
+                    Rectangle {
+                        anchors.left: parent.left
+                        anchors.top: parent.top
+                        anchors.bottom: parent.bottom
+                        width: 3
+                        color: dlg._lineMarkerColor(modelData)
+                    }
+
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 8
+                        text: modelData.text
+                        color: dlg._lineColor(modelData)
+                        font.family: "Consolas, monospace"
+                        font.pixelSize: Fluent.Enums.typography.caption
+                        textFormat: Text.PlainText
+                        wrapMode: Text.NoWrap
+                        verticalAlignment: Text.AlignVCenter
+                    }
                 }
             }
             Text {
