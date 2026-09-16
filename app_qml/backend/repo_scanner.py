@@ -31,7 +31,12 @@ _PROGRESS_EVERY_DIRECTORIES = 100
 
 
 def _list_fixed_drives() -> List[str]:
-    """枚举所有固定磁盘根(Windows)。"""
+    """枚举所有固定磁盘根(Windows)。
+
+    ``os.path.isdir`` 会真的去探测盘符:映射到已断开的网络共享时,重定向器要等
+    网络超时,单次探测可以阻塞数十秒。因此本函数**只允许在线程池里调用**
+    (见 ``_resolve_scan_roots``),绝不能落在 GUI 主线程上。
+    """
     drives = []
     for letter in string.ascii_uppercase:
         root = f"{letter}:\\"
@@ -40,12 +45,24 @@ def _list_fixed_drives() -> List[str]:
     return drives
 
 
-def _scan_repositories(roots: List[str]) -> int:
+def _resolve_scan_roots(roots: Optional[List[str]]) -> List[str]:
+    """确定扫描根目录:显式传入的原样使用,否则枚举固定磁盘根。
+
+    盘符枚举包含磁盘/网络探测,可能长时间阻塞;它必须发生在线程池线程里,
+    调用方 ``RepoScanner.start`` 跑在 GUI 主线程上。
+    """
+    return list(roots) if roots else _list_fixed_drives()
+
+
+def _scan_repositories(roots: Optional[List[str]]) -> int:
     """在线程池扫描仓库，并通过引擎进度通道发布结果。"""
     task = current_task()
+    # 根目录枚举与日志都在池线程内完成:start() 在 GUI 主线程,不能有任何磁盘探测。
+    resolved_roots = _resolve_scan_roots(roots)
+    logger.info(f"开始扫描 Git 仓库,根目录: {resolved_roots}")
     count = 0
     visited = 0
-    for root in roots:
+    for root in resolved_roots:
         task.raise_if_cancelled()
         for dirpath, dirnames, _filenames in os.walk(root, topdown=True):
             task.raise_if_cancelled()
@@ -107,12 +124,15 @@ class RepoScanner(QObject):
     @Slot()
     @Slot("QVariantList")
     def start(self, roots=None):
-        """开始扫描;roots 为空则扫所有固定磁盘。"""
+        """开始扫描;roots 为空则在线程池内枚举固定磁盘。
+
+        本方法由 GUI 主线程调用(QML 定时器),因此这里**不能**做任何磁盘或网络
+        探测:根目录枚举推迟到池线程(_scan_repositories)。历史故障记录见
+        ``docs/startup-hang-root-cause.md``。
+        """
         if self.scanning:
             logger.info("扫描已在进行中,忽略重复请求")
             return
-        roots = list(roots) if roots else _list_fixed_drives()
-        logger.info(f"开始扫描 Git 仓库,根目录: {roots}")
         self._results = self._cache.get_all()
         self._scan_found_count = 0
         self._scanning = True

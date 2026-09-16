@@ -191,3 +191,46 @@ def test_repo_scanner_uses_engine_task_and_reports_on_main_thread(
         scanner.shutdown()
         scanner.deleteLater()
         app.processEvents()
+
+
+def test_repo_scanner_resolves_drive_roots_off_the_calling_thread(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """盘符枚举会做磁盘/网络探测,必须在池线程里跑。
+
+    断开的网络盘会让 ``os.path.isdir`` 阻塞数十秒;历史故障里 ``start()`` 在 GUI
+    主线程枚举盘符,导致启动页停在揭幕阶段再也不交接(Windows 记录 AppHangB1)。
+    """
+    from app_qml.backend import repo_scanner as scanner_module
+
+    app = QCoreApplication.instance() or QCoreApplication([])
+    (tmp_path / "only" / ".git").mkdir(parents=True)
+
+    probe_threads: list[threading.Thread] = []
+
+    def stalled_drive_probe() -> list[str]:
+        probe_threads.append(threading.current_thread())
+        time.sleep(0.4)  # 模拟网络盘无响应时的阻塞探测
+        return [str(tmp_path)]
+
+    monkeypatch.setattr(scanner_module, "_list_fixed_drives", stalled_drive_probe)
+    scanner = RepoScanner(
+        cache=ScannedReposCache(tmp_path / "scanned_repos.json")
+    )
+    finished: list[int] = []
+    scanner.scanFinished.connect(finished.append)
+
+    try:
+        started = time.monotonic()
+        scanner.start()  # 不传 roots:盘符枚举必须由池线程完成
+        elapsed = time.monotonic() - started
+        assert elapsed < 0.2, f"start() 在调用线程里阻塞了 {elapsed:.3f}s"
+        assert probe_threads == [], "盘符探测不得在 start() 返回前发生"
+        assert scanner.scanning
+        assert _wait_until(app, lambda: finished == [1])
+        assert probe_threads, "扫描过程必须完成一次盘符枚举"
+        assert probe_threads[0] is not threading.main_thread()
+    finally:
+        scanner.shutdown()
+        scanner.deleteLater()
+        app.processEvents()
