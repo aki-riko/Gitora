@@ -315,6 +315,19 @@ Item {
             }
             Item { Layout.fillWidth: true }
 
+            // 远程:主按钮打开远程管理面板;下拉出刷新全部远程(fetch --all --prune)
+            Fluent.Button {
+                text: "远程"
+                icon: Fluent.Enums.icon.globe
+                feature: Fluent.Enums.button.feature_split
+                menuItems: [
+                    { "text": "刷新全部远程", "icon": Fluent.Enums.icon.arrow_sync }
+                ]
+                onClicked: remoteManageDialog.openPanel()
+                onMenuItemClicked: function(index, text) {
+                    if (index === 0) GitBridge.fetchAll()
+                }
+            }
             // 拉取:主按钮 pull;下拉出变基/抓取/克隆/指定同步/远程覆盖本地
             Fluent.Button {
                 text: "拉取"
@@ -338,19 +351,6 @@ Item {
                     else if (index === 4) syncDialog.openFor("pullRebase")
                     else if (index === 5) syncDialog.openFor("fetch")
                     else if (index === 6) forceResetToUpstreamDanger.start()
-                }
-            }
-            // 远程:主按钮打开远程管理面板;下拉出刷新全部远程(fetch --all --prune)
-            Fluent.Button {
-                text: "远程"
-                icon: Fluent.Enums.icon.globe
-                feature: Fluent.Enums.button.feature_split
-                menuItems: [
-                    { "text": "刷新全部远程", "icon": Fluent.Enums.icon.arrow_sync }
-                ]
-                onClicked: remoteManageDialog.openPanel()
-                onMenuItemClicked: function(index, text) {
-                    if (index === 0) GitBridge.fetchAll()
                 }
             }
             // 推送:主按钮 push;下拉出指定推送和强制推送(破坏性,走危险确认)
