@@ -33,7 +33,7 @@ jobs:
           pip install nuitka imageio
 
       - name: Build .app with Nuitka
-        run: python build_nuitka_mac.py
+        run: python tools/build_nuitka_mac.py
 
       - name: Post-process .app (清脏文件 → 重签 → 打 dmg)
         run: |

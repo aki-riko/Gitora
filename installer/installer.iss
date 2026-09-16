@@ -9,10 +9,10 @@
 #define PrismAppPublisher "aki-riko"
 #define PrismAppExe "Gitora.exe"
 #define PrismAppUserModelID "PrismQML.Gitora"
-#define PrismDistDir "build_dist\main_qml.dist"
-#define PrismChineseMessagesFile "installer\ChineseSimplified.isl"
+#define PrismDistDir "..\build_dist\main_qml.dist"
+#define PrismChineseMessagesFile "ChineseSimplified.isl"
 #define PrismAppURL "https://github.com/aki-riko/Gitora"
-#define PrismSetupIcon "app\resource\images\logo.ico"
+#define PrismSetupIcon "..\app\resource\images\logo.ico"
 
 [Setup]
 ; A stable AppId makes every version upgrade the same installation. 固定 AppId 保证原位升级。
@@ -27,7 +27,7 @@ DefaultDirName={autopf}\{#PrismAppName}
 DefaultGroupName={#PrismAppName}
 UsePreviousAppDir=yes
 DisableProgramGroupPage=yes
-OutputDir=dist_installer
+OutputDir=..\dist_installer
 OutputBaseFilename=Gitora-Setup-1.8.0
 SetupIconFile={#PrismSetupIcon}
 UninstallDisplayIcon={app}\{#PrismAppExe}

@@ -5,10 +5,10 @@ Gitora Nuitka 打包脚本(macOS, .app bundle)。
 ⚠️ 必须在 macOS 上运行(Nuitka 不能从 Windows/Linux 交叉编译 mac 应用)。
    本地无 mac 时由 GitHub Actions 的 macos runner 执行(见 .github/workflows)。
 
-用法:  python build_nuitka_mac.py
+用法:  python tools/build_nuitka_mac.py
 产物:  build_dist/main_qml.app  (双击即可运行的 .app bundle)
 
-与 Windows 版(build_nuitka.py)的差异:
+与 Windows 版(tools/build_nuitka.py)的差异:
 - --macos-create-app-bundle 产 .app(非 .exe)
 - --macos-app-icon 接 PNG(Nuitka 自动转 .icns)
 - QML C++ 插件是 .dylib(非 .dll)
@@ -22,7 +22,8 @@ if sys.platform != "darwin":
     print("[build] 本脚本仅在 macOS 运行(Nuitka 不能交叉编译 mac 应用)")
     sys.exit(1)
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# 本脚本位于 tools/,仓库根是它的上一级。
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
 ENTRY = os.path.join(ROOT, "app_qml", "main_qml.py")
 ICON = os.path.join(ROOT, "app", "resource", "images", "logo.png")  # Nuitka 自动转 .icns

@@ -315,8 +315,8 @@ class AiCommitQmlContractTest(unittest.TestCase):
         self.assertIn("property alias generateBody", source)
 
     def test_builds_include_native_keyring_dependencies_without_alt(self) -> None:
-        windows = (ROOT / "build_nuitka.py").read_text(encoding="utf-8")
-        macos = (ROOT / "build_nuitka_mac.py").read_text(encoding="utf-8")
+        windows = (ROOT / "tools" / "build_nuitka.py").read_text(encoding="utf-8")
+        macos = (ROOT / "tools" / "build_nuitka_mac.py").read_text(encoding="utf-8")
         requirements = (
             ROOT / "app_qml" / "requirements.txt"
         ).read_text(encoding="utf-8")

@@ -24,9 +24,9 @@
 语义化版本 `vX.Y.Z`。bugfix 升 Z,功能升 Y。**版本号必须同步三处,并用同一版本重新生成安装器脚本**:
 
 1. [app/common/setting.py](app/common/setting.py) 的 `VERSION = "vX.Y.Z"`(带 v 前缀)
-2. [build_nuitka.py](build_nuitka.py) 的 `--product-version=X.Y.Z`(不带 v)
-3. [build_nuitka_mac.py](build_nuitka_mac.py) 的 `--product-version=X.Y.Z`(不带 v)
-4. `prismqml-installer.json` 只保存稳定应用身份,不保存版本;用 `X.Y.Z` 生成 [installer.iss](installer.iss),禁止手改生成文件
+2. [tools/build_nuitka.py](tools/build_nuitka.py) 的 `--product-version=X.Y.Z`(不带 v)
+3. [tools/build_nuitka_mac.py](tools/build_nuitka_mac.py) 的 `--product-version=X.Y.Z`(不带 v)
+4. `prismqml-installer.json` 只保存稳定应用身份,不保存版本;用 `X.Y.Z` 生成 [installer/installer.iss](installer/installer.iss),禁止手改生成文件
 
 ## 四、升级 PrismQML 引擎依赖
 
@@ -40,19 +40,19 @@
 ## 五、Windows 打包
 
 1. 确保 venv 已装最新 `prismqml` 与依赖
-2. `.venv/Scripts/python.exe build_nuitka.py`
+2. `.venv/Scripts/python.exe tools/build_nuitka.py`
    - Nuitka standalone/onedir,产物在 `build_dist/main_qml.dist/Gitora.exe`
    - 验证产物能启动(打安装包前先自检):在 `build_dist/main_qml.dist/` 下
      `GITESS_QML_SELFTEST=1 ./Gitora.exe`,看到 `exit=0` + `[SELFTEST] QML 加载成功,rootObjects = 1` 即通过
 3. 先生成并检查脚本(以下 `X.Y.Z` 与 `VERSION` 去掉 `v` 后一致):
-   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer generate --manifest prismqml-installer.json --version X.Y.Z --output installer.iss`
-   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer check --manifest prismqml-installer.json --version X.Y.Z --output installer.iss`
+   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer generate --manifest prismqml-installer.json --version X.Y.Z --output installer/installer.iss`
+   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer check --manifest prismqml-installer.json --version X.Y.Z --output installer/installer.iss`
 4. 出安装包:
-   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer compile --manifest prismqml-installer.json --version X.Y.Z --output installer.iss`
+   `.venv/Scripts/python.exe -m prismqml.python.tools.windows_installer compile --manifest prismqml-installer.json --version X.Y.Z --output installer/installer.iss`
    - 产物在 `dist_installer/Gitora-Setup-X.Y.Z.exe`
    - ISCC 未加入 `PATH` 时,通过环境变量 `PRISMQML_ISCC` 传入实际 `ISCC.exe` 路径,禁止写死开发机路径
    - 仅 `compile` 会调用 ISCC;`doctor`、`generate`、`check`、`compile --dry-run` 均无编译副作用
-   - `installer.iss` 由清单确定性生成,路径保持项目相对路径
+   - `installer/installer.iss` 由清单确定性生成,清单内路径相对清单所在目录,生成脚本内路径相对 `.iss` 所在目录
 
 ## 六、macOS 打包(GitHub Actions)
 

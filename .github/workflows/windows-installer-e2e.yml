@@ -66,13 +66,13 @@ jobs:
           python -m prismqml.python.tools.windows_installer check `
             --manifest prismqml-installer.json `
             --version $env:GITORA_E2E_VERSION `
-            --output installer.iss
+            --output installer/installer.iss
           python -m prismqml.python.tools.windows_installer doctor `
             --manifest prismqml-installer.json
 
       - name: Build Gitora with Nuitka
         shell: pwsh
-        run: python build_nuitka.py
+        run: python tools/build_nuitka.py
 
       - name: Compile installer with ISCC
         shell: pwsh
@@ -80,7 +80,7 @@ jobs:
           python -m prismqml.python.tools.windows_installer compile `
             --manifest prismqml-installer.json `
             --version $env:GITORA_E2E_VERSION `
-            --output installer.iss
+            --output installer/installer.iss
 
       - name: Silently install and verify installed payload
         shell: pwsh

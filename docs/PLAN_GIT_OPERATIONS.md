@@ -50,7 +50,7 @@
 ### Step 0: 文档和计划落盘
 
 - 产物:
-  - `PLAN_GIT_OPERATIONS.md`
+  - `docs/PLAN_GIT_OPERATIONS.md`
   - `docs/git-operations-matrix.md`
 - 验证:
   - `git diff --check`

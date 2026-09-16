@@ -2,7 +2,7 @@
 """
 Gitora Nuitka 打包脚本(Windows, standalone/onedir)。
 
-用法:  .venv\\Scripts\\python.exe build_nuitka.py
+用法:  .venv\\Scripts\\python.exe tools\\build_nuitka.py
 产物:  build_dist/main_qml.dist/  (含 main_qml.exe + 全部依赖)
 
 要点:
@@ -16,7 +16,8 @@ import os
 import sys
 import subprocess
 
-ROOT = os.path.dirname(os.path.abspath(__file__))
+# 本脚本位于 tools/,仓库根是它的上一级。
+ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PY = sys.executable
 ENTRY = os.path.join(ROOT, "app_qml", "main_qml.py")
 ICON = os.path.join(ROOT, "app", "resource", "images", "logo.ico")
@@ -76,7 +77,7 @@ rc = subprocess.call(args, cwd=ROOT)
 if rc == 0:
     exe = os.path.join(OUT, "main_qml.dist", "Gitora.exe")
     print(f"\n[build] 完成!产物: {exe}")
-    print("[build] 真机运行该 exe 验证,然后用 ISCC 编译 installer.iss 出安装包。")
+    print("[build] 真机运行该 exe 验证,然后用 ISCC 编译 installer/installer.iss 出安装包。")
 else:
     print(f"\n[build] 失败,退出码 {rc}")
 sys.exit(rc)

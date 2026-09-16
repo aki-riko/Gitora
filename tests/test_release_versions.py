@@ -16,16 +16,16 @@ class ReleaseVersionTest(unittest.TestCase):
                 root / "app" / "common" / "setting.py",
                 r'^VERSION = "v([0-9]+\.[0-9]+\.[0-9]+)"$',
             ),
-            "build_nuitka.py": self.extract(
-                root / "build_nuitka.py",
+            "tools/build_nuitka.py": self.extract(
+                root / "tools" / "build_nuitka.py",
                 r'"--product-version=([0-9]+\.[0-9]+\.[0-9]+)"',
             ),
-            "build_nuitka_mac.py": self.extract(
-                root / "build_nuitka_mac.py",
+            "tools/build_nuitka_mac.py": self.extract(
+                root / "tools" / "build_nuitka_mac.py",
                 r'"--product-version=([0-9]+\.[0-9]+\.[0-9]+)"',
             ),
-            "installer.iss": self.extract(
-                root / "installer.iss",
+            "installer/installer.iss": self.extract(
+                root / "installer" / "installer.iss",
                 r'^#define PrismAppVersion "([0-9]+\.[0-9]+\.[0-9]+)"$',
             ),
         }
@@ -39,8 +39,8 @@ class ReleaseVersionTest(unittest.TestCase):
             r'^VERSION = "v([0-9]+\.[0-9]+\.[0-9]+)"$',
         )
 
-        result = check_installer(manifest, root / "installer.iss", version)
-        installer_source = (root / "installer.iss").read_text(encoding="utf-8")
+        result = check_installer(manifest, root / "installer" / "installer.iss", version)
+        installer_source = (root / "installer" / "installer.iss").read_text(encoding="utf-8")
 
         self.assertFalse(result.changed)
         self.assertEqual(
@@ -57,7 +57,7 @@ class ReleaseVersionTest(unittest.TestCase):
 
     def test_windows_release_build_bypasses_unstable_clcache(self) -> None:
         root = Path(__file__).resolve().parents[1]
-        build_script = (root / "build_nuitka.py").read_text(encoding="utf-8")
+        build_script = (root / "tools" / "build_nuitka.py").read_text(encoding="utf-8")
         self.assertIn('"--disable-cache=ccache"', build_script)
 
     def test_windows_installer_e2e_is_remote_manual_and_checks_real_install(
@@ -73,7 +73,7 @@ class ReleaseVersionTest(unittest.TestCase):
         self.assertIn("runs-on: windows-latest", workflow)
         self.assertIn('PYTHONUTF8: "1"', workflow)
         self.assertIn('PYTHONIOENCODING: "utf-8"', workflow)
-        self.assertIn("python build_nuitka.py", workflow)
+        self.assertIn("python tools/build_nuitka.py", workflow)
         self.assertIn("windows_installer compile", workflow)
         self.assertIn('"/SILENT"', workflow)
         self.assertNotIn('"/VERYSILENT"', workflow)

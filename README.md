@@ -50,15 +50,15 @@ python app_qml/main_qml.py
 
 ```bash
 # 1. Nuitka 编译为 standalone exe（产物在 build_dist/main_qml.dist/）
-python build_nuitka.py
+python tools/build_nuitka.py
 
 # 2. 从应用清单生成并检查 Inno Setup 脚本
-python -m prismqml.python.tools.windows_installer generate --manifest prismqml-installer.json --version X.Y.Z --output installer.iss
-python -m prismqml.python.tools.windows_installer check --manifest prismqml-installer.json --version X.Y.Z --output installer.iss
+python -m prismqml.python.tools.windows_installer generate --manifest prismqml-installer.json --version X.Y.Z --output installer/installer.iss
+python -m prismqml.python.tools.windows_installer check --manifest prismqml-installer.json --version X.Y.Z --output installer/installer.iss
 
 # 3. 明确执行安装包编译（只有 compile 会调用 ISCC）
 # 若 ISCC 未加入 PATH，先把 PRISMQML_ISCC 设为 ISCC.exe 的实际路径
-python -m prismqml.python.tools.windows_installer compile --manifest prismqml-installer.json --version X.Y.Z --output installer.iss
+python -m prismqml.python.tools.windows_installer compile --manifest prismqml-installer.json --version X.Y.Z --output installer/installer.iss
 ```
 
 ## 功能
