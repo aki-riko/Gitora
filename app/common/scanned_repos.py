@@ -13,6 +13,33 @@ from .setting import CONFIG_FOLDER
 logger = get_logger("ScannedRepos")
 MAX_SCANNED_REPOSITORIES = 5000
 
+# Win32 GetDriveType 返回值:网络驱动器(含 UNC 共享)
+_DRIVE_REMOTE = 4
+
+
+def _is_remote_path(repo_path: str) -> bool:
+    """判断路径是否位于网络位置(映射的网盘或 UNC 共享)。
+
+    ``GetDriveTypeW`` 只读本地挂载表,不访问网络;而 ``Path.exists()`` 会真的去
+    探测远端共享,对方断线时能阻塞数十秒。缓存校验跑在 GUI 主线程上(启动路径
+    与扫描器 ``start()``),因此远端路径一律不做存在性探测。
+    """
+    if os.name != "nt":
+        return False
+    drive, _rest = os.path.splitdrive(repo_path)
+    if not drive:
+        return False
+    if drive.startswith("\\\\"):
+        return True
+    try:
+        import ctypes
+
+        return (
+            ctypes.windll.kernel32.GetDriveTypeW(drive + "\\") == _DRIVE_REMOTE
+        )
+    except (AttributeError, OSError):
+        return False
+
 
 class ScannedReposCache:
     """持久化扫描器发现的仓库，并在读取时清理失效记录。"""
@@ -63,6 +90,10 @@ class ScannedReposCache:
 
     @staticmethod
     def _is_repository(repo_path: str) -> bool:
+        # 远端路径不探测:探测会阻塞主线程(见 _is_remote_path 说明);
+        # 条目保留,真正打开失败时由业务给出反馈。
+        if _is_remote_path(repo_path):
+            return True
         return (Path(repo_path) / ".git").exists()
 
     @classmethod
