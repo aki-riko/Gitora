@@ -90,41 +90,34 @@ class RepoViewPerformanceTest(unittest.TestCase):
         self.assertLess(header_index, separator_index)
         self.assertLess(separator_index, body_index)
 
-    def test_repository_picker_limits_display_width_but_opens_original_path(self) -> None:
-        source = Path(
-            "app_qml/qml/components/RepositoryTabBar.qml"
-        ).read_text(encoding="utf-8")
+    def test_repository_dropdown_limits_display_width_but_opens_original_path(self) -> None:
+        source = Path("app_qml/qml/views/RepoView.qml").read_text(encoding="utf-8")
         menu_source = Path(
             "app_qml/qml/components/RepositorySearchMenu.qml"
         ).read_text(encoding="utf-8")
-        main_source = Path("app_qml/qml/main.qml").read_text(encoding="utf-8")
 
-        # 列表内按宽度省略显示,但选中回传的仍是原始路径。
         self.assertIn("repoPathFontMetrics.elidedText(", source)
         self.assertIn("Text.ElideMiddle", source)
         self.assertIn("pathFormatter: root._displayRepoPath", source)
-        self.assertIn("pathSelected(selectedPath)", menu_source)
         self.assertIn(
-            "onPathSelected: function(path) { root._selectPath(path) }", source
+            "repositorySearchMenu.prepareForOpen(pathList)",
+            source,
         )
-        self.assertIn("if (GitBridge && path !== GitBridge.repoPath)", main_source)
-        self.assertIn("GitBridge.openRepoAsync(path)", main_source)
-
-        # 打开前只读缓存列表(最近仓库与扫描结果去重),不在打开路径上做阻塞校验。
-        self.assertIn("gitBridge.getRecentRepos()", source)
-        self.assertIn("repoScanner.mergeWithOpenedRepos(recent)", source)
-        self.assertIn("function _refreshPickerPaths()", source)
-        prepare_index = source.index(
-            "repositorySearchMenu.prepareForOpen(_pickerPaths)"
-        )
-        open_index = source.index(
-            "repositorySearchMenu.openAtControl(tabBar.addButtonItem)"
-        )
-        self.assertLess(prepare_index, open_index)
-        open_path = source[source.index("function _openRepositoryPicker()"):open_index]
-        self.assertNotIn("rebuildList()", open_path)
+        menu_open_handler = source[source.index("onMenuAboutToOpen: {"):]
+        menu_open_handler = menu_open_handler[:menu_open_handler.index("\n                }")]
+        self.assertNotIn("rebuildList()", menu_open_handler)
+        self.assertIn("feature: Fluent.Enums.button.feature_split", source)
+        self.assertIn("menu: repositorySearchMenu", source)
+        self.assertIn("GitBridge.getRecentRepos()", source)
+        self.assertIn("RepoScanner.mergeWithOpenedRepos(recent)", source)
+        self.assertNotIn("var all = recent.concat(scanned)", source)
         self.assertNotIn("repositoryOpenButtonGroup", source)
-        self.assertNotIn("repositoryOpenButton", source)
+        self.assertNotIn("repositoryOpenMenuButton", source)
+        self.assertIn("GitBridge.openRepoAsync(path)", source)
+        self.assertIn("if (repositorySearchMenu.isOpen)", source)
+        self.assertIn("repositorySearchMenu.setPaths(openButton.pathList)", source)
+        self.assertIn("pathSelected(selectedPath)", menu_source)
+        self.assertNotIn("GitBridge.openRepoAsync(pathList[index])", source)
 
     def test_advanced_view_loads_repository_state_in_background(self) -> None:
         source = Path("app_qml/qml/views/AdvancedView.qml").read_text(encoding="utf-8")

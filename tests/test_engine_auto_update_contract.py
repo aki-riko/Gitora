@@ -91,9 +91,8 @@ class EngineAutoUpdateContractTest(unittest.TestCase):
         self.assertIn("AppInfo.windowHeight", qml_source)
 
     def test_repo_init_guide_window_is_created_lazily(self) -> None:
-        # 仓库入口(含初始化引导)由标签栏“+”菜单承载,惰性创建窗口的约束随之迁移。
         source = (
-            ROOT / "app_qml" / "qml" / "components" / "RepositoryTabBar.qml"
+            ROOT / "app_qml" / "qml" / "views" / "RepoView.qml"
         ).read_text(encoding="utf-8")
 
         self.assertIn("function _ensureInitGuide()", source)

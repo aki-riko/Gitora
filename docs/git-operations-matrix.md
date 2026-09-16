@@ -14,9 +14,9 @@
 
 | 领域 | 操作 | 状态 | 已验证源码入口 | 后续要求 |
 |---|---|---:|---|---|
-| 仓库 | 打开仓库 | 已有 | `RepositoryTabBar` “+”菜单(`repositoryEntryMenu` 的“打开仓库…/最近仓库…”), `GitBridge.openRepoAsync` | 保持最近仓库和扫描结果去重 |
+| 仓库 | 打开仓库 | 已有 | `RepoView.openButton`, `GitBridge.openRepoAsync` | 保持最近仓库和扫描结果去重 |
 | 仓库 | 克隆 | 已有 | `CloneDialog`, `GitBridge.clone`, `GitService.clone` | 增加 clone 后自动打开的失败提示复核 |
-| 仓库 | 初始化 | 已有 | `RepositoryTabBar` “+”菜单的“初始化仓库…”, `InitRepoGuide`, `GitBridge.initRepo` | 保持远程可选配置 |
+| 仓库 | 初始化 | 已有 | `InitRepoGuide`, `GitBridge.initRepo` | 保持远程可选配置 |
 | 仓库 | 最近仓库管理 | 已有 | `recentReposDialog`, `getRecentRepos/removeRecentRepo/clearRecentRepos` | 已支持打开、移除、清空最近仓库记录 |
 | 工作区 | 查看状态 | 已有 | `requestStatus`, `statusReady` | 继续保持异步和过期结果丢弃 |
 | 工作区 | 查看 diff | 已有 | `requestDiff`, `diffReady`, `DiffViewer` | 已支持统一/分栏视图、文件摘要和真实 diff 解析测试 |

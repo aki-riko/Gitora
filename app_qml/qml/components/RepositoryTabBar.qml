@@ -3,7 +3,6 @@
 // 标签视觉由 PrismQML 提供，本组件只负责仓库数据和切换请求。
 pragma ComponentBehavior: Bound
 import QtQuick
-import QtQuick.Dialogs
 import PrismQML as Fluent
 
 Item {
@@ -19,9 +18,6 @@ Item {
     readonly property string activePath: gitBridge ? (gitBridge.repoPath || "") : ""
     readonly property string activePathKey: _pathKey(activePath)
     readonly property int tabCount: _tabs.length
-    // 仓库选择列表按这个宽度省略中间路径,与仓库页保持一致的显示宽度。
-    readonly property real _repoPathMenuTextWidth: Fluent.Enums.controlSize.cardWidth
-        + Fluent.Enums.spacing.xxxl * 3
 
     // ==================== Internal Props 内部属性 ====================
     property var _tabs: []
@@ -30,13 +26,6 @@ Item {
     property string _contextMenuPath: ""
     // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
     property bool _sessionRestored: false
-
-    // 仓库选择列表的路径省略用同一套字体度量,保证与仓库页显示一致。
-    FontMetrics {
-        id: repoPathFontMetrics
-        font.family: Fluent.Enums.fontFamily
-        font.pixelSize: Fluent.Enums.typography.body
-    }
 
     // ==================== Signals 信号 ====================
     signal repositorySelected(string path)
@@ -342,35 +331,6 @@ Item {
         repositorySearchMenu.openAtControl(tabBar.addButtonItem)
     }
 
-    // “+”入口菜单:原仓库页页头的“打开/初始化”两个按钮统一收敛到这里，
-    // 让仓库入口在有/无打开仓库时都只由标签栏承载。
-    function _openRepositoryEntryMenu() {
-        if (!switchingEnabled) return
-        repositorySearchMenu.close()
-        repositoryEntryMenu.show(tabBar.addButtonItem)
-    }
-
-    // 打开仓库:浏览并选择仓库目录(原“打开”按钮的主操作)。
-    function _openRepositoryFolder() {
-        openFolderDialog.open()
-    }
-
-    // 初始化仓库:先选目录,成功后打开仓库并进入初始化引导(原“初始化”按钮)。
-    function _startRepositoryInit() {
-        initFolderDialog.open()
-    }
-
-    // 初始化引导窗口只在用户选好目录后创建,避免首屏生成第二个 HWND。
-    function _ensureInitGuide() {
-        if (!initGuideLoader.active) initGuideLoader.active = true
-        return initGuideLoader.item
-    }
-
-    function _displayRepoPath(path) {
-        return repoPathFontMetrics.elidedText(
-            String(path || ""), Text.ElideMiddle, _repoPathMenuTextWidth)
-    }
-
     // ==================== Size 尺寸 ====================
     implicitHeight: tabHeight
     height: tabHeight
@@ -405,7 +365,7 @@ Item {
             root._closePath(root._tabs[index].path)
         }
 
-        onTabAddClicked: root._openRepositoryEntryMenu()
+        onTabAddClicked: root._openRepositoryPicker()
         onTabContextMenuRequested: function(index, position) {
             root._openTabContextMenu(index, position)
         }
@@ -445,89 +405,10 @@ Item {
         }
     }
 
-    // 仓库入口菜单:承载原仓库页页头的“打开/初始化”入口。
-    Fluent.ContextMenu {
-        id: repositoryEntryMenu
-        objectName: "repositoryEntryMenu"
-        autoBindRightClick: false
-
-        Fluent.Action {
-            objectName: "repositoryEntryOpenAction"
-            actionId: "open_folder"
-            text: "打开仓库…"
-            icon: Fluent.Enums.icon.folder
-            onTriggered: root._openRepositoryFolder()
-        }
-
-        Fluent.Action {
-            objectName: "repositoryEntryRecentAction"
-            actionId: "open_recent"
-            text: "最近仓库…"
-            icon: Fluent.Enums.icon.history
-            onTriggered: root._openRepositoryPicker()
-        }
-
-        Fluent.Action {
-            objectName: "repositoryEntryInitAction"
-            actionId: "init_repo"
-            text: "初始化仓库…"
-            icon: Fluent.Enums.icon.add
-            onTriggered: root._startRepositoryInit()
-        }
-    }
-
     RepositorySearchMenu {
         id: repositorySearchMenu
         targetControl: tabBar.addButtonItem
-        pathFormatter: root._displayRepoPath
         onPathSelected: function(path) { root._selectPath(path) }
-    }
-
-    // 打开仓库:选择已有仓库目录。
-    FolderDialog {
-        id: openFolderDialog
-        title: "选择 Git 仓库目录"
-        onAccepted: {
-            if (!root.gitBridge) return
-            var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
-            if (path !== "") root.gitBridge.openRepoAsync(path)
-        }
-    }
-
-    // 初始化仓库:先选目录,再走引导。
-    FolderDialog {
-        id: initFolderDialog
-        title: "选择要初始化的目录"
-        onAccepted: {
-            if (!root.gitBridge) return
-            var path = selectedFolder.toString().replace(/^file:\/\/\//, "")
-            var task = root.gitBridge.initRepo(path)
-            task.succeeded.connect(function(result) {
-                if (!result || !result[0]) return
-                root.gitBridge.openRepoAsync(path)
-                var guide = root._ensureInitGuide()
-                if (!guide) return
-                guide.repoPath = path
-                guide.currentIndex = 0
-                guide.show()
-            })
-        }
-    }
-
-    // 初始化引导窗口只在用户完成目录选择后创建,避免首屏生成第二个 HWND。
-    Loader {
-        id: initGuideLoader
-        active: false
-        sourceComponent: Component {
-            InitRepoGuide {
-                onCompleted: function(p) {
-                    // 引导里可能写入用户名/邮箱或新增远程:让后端重发当前仓库状态,
-                    // 仓库页按既有 statusChanged/statusReady 链路刷新,不再反向依赖页面。
-                    if (root.gitBridge && root.gitBridge.requestStatus)
-                        root.gitBridge.requestStatus()
-                }
-            }
-        }
     }
 
     Connections {
