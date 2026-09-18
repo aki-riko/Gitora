@@ -6,7 +6,9 @@ QtObject {
     id: root
 
     property var commits: []
-    readonly property var result: _buildResult(commits)
+    // 搜索模式下为每张卡片提供"跳转"动作链接(依赖引擎 Timeline 的 actionText 支持)
+    property bool showJumpAction: false
+    readonly property var result: _buildResult(commits, showJumpAction)
     readonly property var items: result.items
     readonly property int laneCount: result.laneCount
 
@@ -69,13 +71,13 @@ QtObject {
         return {"nodeLane": 0, "nodeColorIndex": 0, "laneCount": 1, "segments": []}
     }
 
-    function _cardFor(commit) {
+    function _cardFor(commit, showJumpAction) {
         var isReverted = !!commit.revertedBy
         var relationText = ""
         if (commit.reverts)
             relationText += " · 撤销 " + commit.reverts.substring(0, 8)
         if (isReverted) relationText += " · 已撤销"
-        return {
+        var card = {
             "text": commit.message,
             "time": _timeText(commit.date),
             "timePeriod": _timePeriod(commit.date),
@@ -87,9 +89,11 @@ QtObject {
             "graph": _graphFor(commit),
             "commit": commit
         }
+        if (showJumpAction) card["actionText"] = "跳转"
+        return card
     }
 
-    function _buildResult(values) {
+    function _buildResult(values, showJumpAction) {
         var groups = []
         var maximumLanes = 1
         for (var index = 0; index < values.length; index++) {
@@ -106,7 +110,7 @@ QtObject {
                 })
                 groupIndex = groups.length - 1
             }
-            var card = _cardFor(commit)
+            var card = _cardFor(commit, showJumpAction)
             maximumLanes = Math.max(maximumLanes, card.graph.laneCount || 1)
             groups[groupIndex].cards.push(card)
         }

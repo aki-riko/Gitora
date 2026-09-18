@@ -11,8 +11,12 @@ Item {
 
     readonly property int pageSize: 30
     readonly property int maxHistoryCommits: 2000
+    // 搜索结果跳转时扩大分页步长,减少深处提交的加载轮次
+    readonly property int jumpLoadStride: 240
     property int loadedCount: 0
     property int totalCommitCount: -1
+    // 最近一次分页请求的条数,_applyLogReady 依据它判断是否还有更多
+    property int lastRequestedCount: 30
     property bool hasMore: true
     property bool loading: false
     property bool searchDeepening: false
@@ -149,19 +153,20 @@ Item {
         GitBridge.requestCurrentBranch()
     }
 
-    function loadMore() {
+    function loadMore(count) {
         if (root.loading || !root.hasMore || root.searchMode) return
         if (!GitBridge || !GitBridge.repoPath) return
         if (root.loadedCount >= root.maxHistoryCommits) {
             root.hasMore = false
             return
         }
+        var requested = Math.min(
+            count > 0 ? count : root.pageSize,
+            root.maxHistoryCommits - root.loadedCount)
         root.loading = true
+        root.lastRequestedCount = requested
         // 后台分页获取,结果经 logReady 回填
-        GitBridge.requestLog(
-            Math.min(root.pageSize, root.maxHistoryCommits - root.loadedCount),
-            root.loadedCount, root.includeAllRefs
-        )
+        GitBridge.requestLog(requested, root.loadedCount, root.includeAllRefs)
     }
 
     // PrismQML 0.4.0.8 的虚拟 ListView 在回收行后会改变 originY，
@@ -381,6 +386,7 @@ Item {
             root.refreshing = false
             if (historyChanged) root._restoreSelection(batch)
             root._schedulePendingDateJump()
+            root._schedulePendingHashJump()
             if (root.timelineTraceEnabled) {
                 root._timelineTrace(
                     "log.apply.refresh_done",
@@ -404,10 +410,11 @@ Item {
         var nextBatch = batch.slice(0, Math.max(0, remaining))
         root.allCommits = root.allCommits.concat(nextBatch)
         root.loadedCount += nextBatch.length
-        root.hasMore = batch.length === root.pageSize
+        root.hasMore = batch.length === root.lastRequestedCount
             && root.loadedCount < root.maxHistoryCommits
         root.finishLoading()
         root._schedulePendingDateJump()
+        root._schedulePendingHashJump()
         if (root.timelineTraceEnabled) {
             root._timelineTrace(
                 "log.apply.append_done",
@@ -832,6 +839,82 @@ Item {
         root._attemptDateJump()
     }
 
+    // ==================== 搜索结果跳转 ====================
+    // 搜索结果卡片上的"跳转":清除搜索回到完整时间线,再定位到目标提交所在行。
+    function jumpToFullTimeline(commit) {
+        var targetHash = (((commit || {}).hash) || "").trim().toLowerCase()
+        if (targetHash === "") return
+        // 先清文本再停防抖:置空会同步 restart() 计时器,必须在其后 stop,
+        // 否则 300ms 后会再次 doSearch("") 把跳转状态清掉。
+        if (searchInput.text !== "") searchInput.text = ""
+        searchDebounce.stop()
+        // 统一走 doSearch("") 清搜索 + resetAndLoad;pendingJumpHash 在其后再赋值,
+        // 因为 resetAndLoad 会清空跳转状态。
+        root.doSearch("")
+        root.pendingJumpHash = targetHash
+        root._attemptHashJump()
+    }
+
+    function _commitForHash(targetHash) {
+        var commits = root.allCommits || []
+        for (var index = 0; index < commits.length; index++) {
+            if (((commits[index].hash || "")).toLowerCase() === targetHash)
+                return commits[index]
+        }
+        return null
+    }
+
+    function _findCardForHash(targetHash) {
+        var groups = root.timelineItems || []
+        for (var groupIndex = 0; groupIndex < groups.length; groupIndex++) {
+            var cards = groups[groupIndex].cards || []
+            for (var cardIndex = 0; cardIndex < cards.length; cardIndex++) {
+                if (((cards[cardIndex].hash || "")).toLowerCase() === targetHash)
+                    return { "groupIndex": groupIndex, "cardIndex": cardIndex }
+            }
+        }
+        return null
+    }
+
+    function _schedulePendingHashJump() {
+        if (root.pendingJumpHash === "") return
+        Qt.callLater(function() {
+            if (root.pendingJumpHash !== "") root._attemptHashJump()
+        })
+    }
+
+    function _attemptHashJump() {
+        var targetHash = root.pendingJumpHash
+        if (targetHash === "" || root.loading || root.searchMode) return
+
+        var match = root._findCardForHash(targetHash)
+        if (match) {
+            var viewport = root._ensureTimelineViewport()
+            var rowIndex = root._groupRowIndex(match.groupIndex)
+                + 1 + match.cardIndex
+            if (!viewport || viewport.count <= rowIndex) {
+                root._schedulePendingHashJump()
+                return
+            }
+            root.pendingJumpHash = ""
+            viewport.positionViewAtIndex(rowIndex, ListView.Beginning)
+            var commit = root._commitForHash(targetHash)
+            if (commit) root.selectedCommit = commit
+            return
+        }
+        if (root.hasMore) {
+            // 目标提交尚未加载:用大步长扩大已加载范围,避免按 30 条逐页慢慢爬。
+            root.loadMore(root.jumpLoadStride)
+            return
+        }
+        // 全部加载完仍未命中:目标不在当前范围内(如未检出分支上的提交)。
+        root.pendingJumpHash = ""
+        var scopeText = root.includeAllRefs
+            ? "目标提交不在任何分支历史中"
+            : "目标提交不在当前分支历史中"
+        Fluent.NotificationManager.desktop.error("无法跳转", scopeText)
+    }
+
     function _selectPendingJump(results) {
         if (root.pendingJumpHash === "") return
         var targetHash = root.pendingJumpHash
@@ -1072,6 +1155,7 @@ Item {
     CommitTimelineModel {
         id: historyTimelineModel
         commits: root.allCommits
+        showJumpAction: root.searchMode
     }
 
     // ==================== 布局 ====================
@@ -1227,6 +1311,10 @@ Item {
                         onCardClickedData: function(groupIndex, cardIndex, cardData) {
                             if (cardData && cardData.commit)
                                 root.selectedCommit = cardData.commit
+                        }
+                        onCardActionClicked: function(groupIndex, cardIndex, cardData) {
+                            if (cardData && cardData.commit)
+                                root.jumpToFullTimeline(cardData.commit)
                         }
                         onReachedEnd: {
                             if (root.timelineTraceEnabled)
