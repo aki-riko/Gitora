@@ -86,7 +86,60 @@ def _list_fixed_drives():
 1. `ScannedReposCache` 仍会在启动路径(主线程)对**本地**缓存路径做 `exists()`
    (本机约 140 条,实测 ~0.1s)。远端路径已跳过;若缓存规模继续增长,应把校验整体
    挪到线程池。
+   (已于 2026-09-19 第二轮修复中解决,连同其暴露出的更严重问题:见下文第六节。)
 2. 引擎侧 `prismqml/python/core/shadow.py` 的 `DwmSyncFilter.nativeEventFilter` 在
    交互式移动/缩放消息(`WM_SIZING`/`WM_MOVING`,以及缩放循环内的 `WM_SIZE`)里
    **同步调用 `DwmFlush()`**。该调用等待合成器完成,理论上可长时间阻塞主线程;
    本仓库不改引擎,若以后出现「拖动/缩放窗口时卡死」,应优先查这条路径并考虑加超时。
+
+## 六、2026-09-19 复发:主线程上残留的仓库路径探测
+
+> 现象与首轮相同:存在失效网络映射盘符时,应用停在启动页无法进入主界面。
+> 本次现场:`gitess_20260919.log` 中 18:42:41、18:42:59 两次启动均止于
+> `Loaded ctypes backend` 之后,`FastSplash 绑定主窗口` 从未出现;18:44:01
+> 第三次启动恢复正常,此时扫描根只剩 `['C:\', 'D:\']`——失效映射已被系统
+> 丢弃,探测才会快速返回。两次失败正卡在「映射还在、连接已死」的最坏窗口。
+
+### 根因
+
+首轮修复只把**盘符枚举**挪进线程池、并对扫描缓存的**远端**路径跳过探测,
+启动窗口内还残留两处主线程探测:
+
+1. `RecentReposManager.get_all()`(`app/common/recent_repos.py`):对每个最近
+   仓库做 `Path.exists()`,**没有任何远端跳过**。QML 在启动加载期就会调它:
+   `RepoView.qml` 最近仓库抽屉的 `Component.onCompleted` → `refresh()` →
+   `GitBridge.getRecentRepos()`(Drawer 随 RepoView 常驻创建,非延迟加载)。
+2. `ScannedReposCache` 构造与 `get_all()`(`app/common/scanned_repos.py`):
+   对全部缓存条目做 `.git` 存在探测(本机 144 条,含多个网络盘路径)。远端靠
+   `GetDriveTypeW` 分类跳过,但「映射已失效」窗口下分类不保证正确,非远端
+   分类的失效路径仍会在主线程阻塞。
+
+扫盘侧:`_list_fixed_drives` 用 `os.path.isdir` 逐盘符探测,失效盘符要等
+重定向器超时(18:17 会话扫 6 个根耗时约 8 分钟),盘符在线的网络共享还会被
+全量 `os.walk`。
+
+### 修复
+
+1. `RecentReposManager.get_all()` 与 `ScannedReposCache` 构造/`get_all()`
+   一律纯内存,不做任何文件系统探测;失效清理独立为 `prune_missing()`,
+   只允许池线程调用——调用点为 `restoreLastRepoAsync` 的快照读取(启动)与
+   扫描任务开头(每次扫描),扫描结束后清理结果同步回 GUI 侧结果列表。
+2. `_list_fixed_drives` 改用 `GetDriveTypeW` 按类型选根(本地介质:可移动 2 /
+   固定 3 / RAM 盘 6),网络盘(4)与光驱(5)不进扫描根,失效盘符不再被探测。
+3. 打开失效路径的行为不变:条目保留,失败由 `openRepoAsync` 的业务反馈提示。
+
+### 验证
+
+- `tests/test_recent_repos.py::test_get_all_never_probes_filesystem`:patch
+  `Path.exists` 为探针,断言构造 + `get_all` 只允许碰配置文件本身、仓库路径
+  零探测;`prune_missing` 才会探测并清理。
+- `tests/test_scanned_repos_cache.py::test_scanned_repo_cache_gui_paths_never_probe_filesystem`:
+  同法,缓存含从未创建的本地路径与指向 TEST-NET 的 UNC 路径时,构造 + `get_all`
+  零探测、条目原样保留。
+- `tests/test_scanned_repos_cache.py::test_scan_task_prunes_stale_cache_entries`:
+  扫描任务在池线程完成失效清理,结果落盘并回传 `getResults()`。
+- `tests/test_prism_task_migration.py::test_list_fixed_drives_filters_by_drive_type`:
+  盘符选根按类型过滤,网络盘/光驱不得进入扫描根。
+- 原「剔除断言」类测试(`test_manager_deduplicates_limits_and_prunes_missing_paths`、
+  `test_scanned_repo_cache_persists_deduplicates_and_prunes`)已改为断言
+  GUI 路径保留条目、`prune_missing` 负责清理。

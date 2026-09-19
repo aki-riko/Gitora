@@ -6,6 +6,7 @@ import os
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 from PySide6.QtCore import QCoreApplication, QEventLoop, QTimer
 
@@ -74,9 +75,49 @@ class RecentReposTest(unittest.TestCase):
         self.assertLessEqual(len(current), manager.MAX_RECENT)
 
         Path(repos[5]).rmdir()
+        # GUI 主线程的 get_all 不做探测:条目原样保留,失效清理由
+        # 后台线程的 prune_missing 负责(网络路径 exists() 会阻塞主线程)。
+        self.assertIn(repos[5], manager.get_all())
+        manager.prune_missing()
         self.assertNotIn(repos[5], manager.get_all())
+        self.assertNotIn(
+            repos[5],
+            json.loads(
+                (self.root / "recent_repos.json").read_text(encoding="utf-8")
+            )["repos"],
+        )
 
         manager.clear()
+        self.assertEqual(manager.get_all(), [])
+
+    def test_get_all_never_probes_filesystem(self) -> None:
+        """get_all 必须零文件系统探测:网络路径 exists() 在远端断开时可阻塞
+        主线程数十秒,曾把应用卡死在启动阶段(2026-09-19 复发记录)。"""
+        real_exists = Path.exists
+        probes: list[str] = []
+
+        def spy_exists(path: Path) -> bool:
+            probes.append(str(path))
+            return real_exists(path)
+
+        with patch.object(Path, "exists", spy_exists):
+            manager = self.make_manager("recent_repos.json")
+            config_path = manager.file_path
+            self.assertEqual(manager.get_all(), [])
+            # 构造+_load 只允许碰配置文件本身,不得探测任何仓库路径
+            self.assertEqual(probes, [str(config_path)])
+
+            manager.add(str(self.root / "ghost-repo"))  # 从未创建的路径
+            self.assertEqual(
+                manager.get_all(),
+                [os.path.normpath(str(self.root / "ghost-repo"))],
+            )
+            # get_all 零探测:列表含失效路径也原样返回
+            self.assertEqual(probes, [str(config_path)])
+
+            manager.prune_missing()
+        # 失效清理由后台线程的 prune_missing 负责,它才会探测仓库路径
+        self.assertIn(str(self.root / "ghost-repo"), probes)
         self.assertEqual(manager.get_all(), [])
 
     def test_git_bridge_recent_repo_slots_use_temp_manager_and_real_repos(self) -> None:

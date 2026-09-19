@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 import ast
+import os
 import threading
 import time
 from pathlib import Path
+
+import pytest
 
 from PySide6.QtCore import QCoreApplication, QThread, QTimer
 
@@ -225,7 +228,9 @@ def test_repo_scanner_resolves_drive_roots_off_the_calling_thread(
         scanner.start()  # 不传 roots:盘符枚举必须由池线程完成
         elapsed = time.monotonic() - started
         assert elapsed < 0.2, f"start() 在调用线程里阻塞了 {elapsed:.3f}s"
-        assert probe_threads == [], "盘符探测不得在 start() 返回前发生"
+        # 不在此处断言 probe_threads 为空:QThreadPool 会复用空闲线程,池任务
+        # 可能在 start() 返回前已被调度。若 start() 同步做了探测,sleep(0.4)
+        # 必然把 elapsed 拖过 0.2s,且下面断言了探测线程不是主线程,意图等价。
         assert scanner.scanning
         assert _wait_until(app, lambda: finished == [1])
         assert probe_threads, "扫描过程必须完成一次盘符枚举"
@@ -234,3 +239,26 @@ def test_repo_scanner_resolves_drive_roots_off_the_calling_thread(
         scanner.shutdown()
         scanner.deleteLater()
         app.processEvents()
+
+
+@pytest.mark.skipif(os.name != "nt", reason="盘符枚举仅存在于 Windows")
+def test_list_fixed_drives_filters_by_drive_type(monkeypatch) -> None:
+    """盘符选根按 GetDriveTypeW 类型过滤,不再用 os.path.isdir 逐个探测盘符。
+
+    isdir 对失效的网络映射盘符要等重定向器网络超时(单次数十秒),盘符在线时
+    还会把网络共享当扫描根全量 os.walk——2026-09-19 复发的扫盘卡顿与启动卡死
+    均源于此。网络盘(4)与光驱(5)必须排除,本地介质(可移动/固定/RAM 盘)保留。
+    """
+    from app_qml.backend import repo_scanner as scanner_module
+
+    drive_types: dict[str, int] = {}
+    monkeypatch.setattr(
+        scanner_module, "_windows_drive_type", lambda root: drive_types.get(root, 4)
+    )
+    # 缺省全部按网络盘处理:一个盘符都不能进入扫描根
+    assert scanner_module._list_fixed_drives() == []
+
+    drive_types.update({"C:\\": 3, "E:\\": 2, "G:\\": 6, "F:\\": 5, "Z:\\": 4})
+    roots = scanner_module._list_fixed_drives()
+    assert "C:\\" in roots and "E:\\" in roots and "G:\\" in roots
+    assert "F:\\" not in roots and "Z:\\" not in roots

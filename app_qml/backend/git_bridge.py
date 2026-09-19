@@ -554,10 +554,13 @@ class GitBridge(QObject):
         def read_snapshot() -> tuple[list, str]:
             """后台读快照：每个路径一次 exists()，不能放主线程。"""
             from app.common.opened_repos import openedReposManager
+            from app.common.recent_repos import recentReposManager
             opened_repos, active_repo = openedReposManager.get_snapshot()
+            # 最近仓库的失效清理同样只在这里(池线程)做;主线程的
+            # getRecentRepos() 是纯内存读取,不得有任何磁盘探测。
+            recentReposManager.prune_missing()
             if not opened_repos:
                 # 旧版本升级上来没有会话快照，退回最近一次打开的仓库。
-                from app.common.recent_repos import recentReposManager
                 opened_repos = recentReposManager.get_all()[:1]
                 active_repo = opened_repos[0] if opened_repos else ""
             if not active_repo and opened_repos:
@@ -758,7 +761,11 @@ class GitBridge(QObject):
 
     @Slot(result="QVariantList")
     def getRecentRepos(self) -> list:
-        """最近打开的仓库 -> [path, ...]"""
+        """最近打开的仓库 -> [path, ...]
+
+        纯内存读取,QML 主线程可安全调用;失效清理由 ``restoreLastRepoAsync``
+        的池线程快照读取完成,列表允许残留失效项,打开失败由业务反馈。
+        """
         from app.common.recent_repos import recentReposManager
         return recentReposManager.get_all()
 

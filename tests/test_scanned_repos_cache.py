@@ -49,8 +49,75 @@ def test_scanned_repo_cache_persists_deduplicates_and_prunes(tmp_path: Path) -> 
     ]
 
     (repo / ".git").rmdir()
+    # GUI 主线程路径(构造/get_all)不做文件系统探测:条目原样保留,
+    # 失效清理由池线程的 prune_missing 负责(网络路径 exists() 会阻塞主线程)。
+    assert reloaded.get_all() == [os.path.normpath(str(repo))]
+    assert json.loads(cache_path.read_text(encoding="utf-8"))["repos"] == [
+        os.path.normpath(str(repo))
+    ]
+
+    reloaded.prune_missing()
     assert reloaded.get_all() == []
     assert json.loads(cache_path.read_text(encoding="utf-8"))["repos"] == []
+
+
+def test_scanned_repo_cache_gui_paths_never_probe_filesystem(
+    tmp_path: Path, monkeypatch
+) -> None:
+    """构造与 get_all 必须零探测:远端断开时 exists() 能阻塞主线程数十秒,
+    曾把应用卡死在启动页(2026-09-19 复发记录)。"""
+    import app.common.scanned_repos as scanned_module
+
+    cache_path = tmp_path / "scanned_repos.json"
+    cache = ScannedReposCache(cache_path)
+    cache.add(str(tmp_path / "ghost-repo"))  # 从未创建的本地路径
+    if os.name == "nt":
+        # UNC 指向 TEST-NET(永不路由),模拟断开的网络共享;条目应原样保留
+        cache.add("\\\\192.0.2.1\\share\\repo")
+    cache.save()
+
+    real_exists = scanned_module.Path.exists
+    probes: list[str] = []
+
+    def spy_exists(path: Path) -> bool:
+        probes.append(str(path))
+        return real_exists(path)
+
+    monkeypatch.setattr(scanned_module.Path, "exists", spy_exists)
+
+    reloaded = ScannedReposCache(cache_path)
+    expected = [os.path.normpath(str(tmp_path / "ghost-repo"))]
+    if os.name == "nt":
+        expected.append(os.path.normpath("\\\\192.0.2.1\\share\\repo"))
+    assert reloaded.get_all() == expected
+    # 只允许碰缓存文件本身(_load 的存在性检查),不得探测任何仓库路径
+    assert probes == [str(cache_path)]
+
+
+def test_scan_task_prunes_stale_cache_entries(tmp_path: Path) -> None:
+    """失效校验随扫描任务在池线程执行,清理结果回传 GUI 侧结果列表。"""
+    app = QCoreApplication.instance() or QCoreApplication([])
+    live = _make_repo(tmp_path / "live")
+    cache_path = tmp_path / "scanned_repos.json"
+    cache = ScannedReposCache(cache_path)
+    cache.add(str(tmp_path / "ghost"))  # 从未存在
+    cache.add(str(live))
+    cache.save()
+    scanner = RepoScanner(cache=ScannedReposCache(cache_path))
+    finished: list[int] = []
+    scanner.scanFinished.connect(finished.append)
+
+    try:
+        scanner.start([str(tmp_path)])
+        assert _wait_until(lambda: finished == [1])
+        assert json.loads(cache_path.read_text(encoding="utf-8"))["repos"] == [
+            os.path.normpath(str(live))
+        ]
+        assert scanner.getResults() == [os.path.normpath(str(live))]
+    finally:
+        scanner.shutdown()
+        scanner.deleteLater()
+        app.processEvents()
 
 
 def test_scanned_repo_cache_ignores_non_object_json_root(tmp_path: Path) -> None:

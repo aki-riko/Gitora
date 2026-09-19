@@ -103,20 +103,34 @@ class RecentReposManager:
             self._save()
     
     def get_all(self) -> list[str]:
-        """获取所有最近仓库"""
-        # 过滤不存在的目录，并清理旧配置中的等价路径
+        """获取所有最近仓库;纯内存,不做任何磁盘探测。
+
+        本方法被 GUI 主线程调用(最近仓库抽屉、仓库选择菜单)。网络路径的
+        ``exists()`` 在远端断开时会等重定向器超时,单次可阻塞数十秒,曾把整个
+        应用卡死在启动阶段(见 ``docs/startup-hang-root-cause.md`` 的 2026-09-19
+        复发记录)。失效清理由后台线程的 ``prune_missing`` 负责;列表允许残留
+        失效项,真正打开失败时由业务反馈。
+        """
+        normalized_repos = self._normalize_repos(self._repos)
+        if normalized_repos != self._repos:
+            self._repos = normalized_repos
+            self._save()
+        return list(self._repos)
+
+    def prune_missing(self) -> None:
+        """剔除磁盘上已不存在的最近仓库并落盘。
+
+        会对每个路径做一次 ``exists()``,**只允许后台线程调用**(启动路径的
+        ``restoreLastRepoAsync`` 快照读取已在线程池里)。
+        """
         valid_repos = [
             repo_path for repo_path in self._normalize_repos(self._repos)
             if Path(repo_path).exists()
         ]
-        
-        # 如果有无效的，更新列表
-        if len(valid_repos) != len(self._repos):
+        if valid_repos != self._repos:
             self._repos = valid_repos
             self._save()
-        
-        return self._repos
-    
+
     def clear(self):
         """清空最近列表"""
         self._repos = []

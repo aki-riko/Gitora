@@ -21,8 +21,9 @@ def _is_remote_path(repo_path: str) -> bool:
     """判断路径是否位于网络位置(映射的网盘或 UNC 共享)。
 
     ``GetDriveTypeW`` 只读本地挂载表,不访问网络;而 ``Path.exists()`` 会真的去
-    探测远端共享,对方断线时能阻塞数十秒。缓存校验跑在 GUI 主线程上(启动路径
-    与扫描器 ``start()``),因此远端路径一律不做存在性探测。
+    探测远端共享,对方断线时能阻塞数十秒。失效校验虽已挪到池线程
+    (``prune_missing``),但远端路径连池线程也不该白等——一律不做存在性探测,
+    条目保留,真正打开失败时由业务反馈。
     """
     if os.name != "nt":
         return False
@@ -49,10 +50,10 @@ class ScannedReposCache:
         loaded_repos = self._load()
         self._repos = self._normalize_repos(loaded_repos)
         self._repo_keys = {self._path_key(path) for path in self._repos}
-        valid_repos = self._valid_repos(self._repos)
-        if valid_repos != loaded_repos:
-            self._replace_repos(valid_repos)
-            self.save()
+        # 启动路径(GUI 主线程)只做纯内存归一化,绝不做文件系统探测:网络路径的
+        # exists() 在远端断开时能阻塞数十秒,曾把应用卡死在启动页(见
+        # docs/startup-hang-root-cause.md 的 2026-09-19 复发记录)。失效校验由
+        # 扫描任务在池线程里调用 prune_missing 完成。
 
     @staticmethod
     def _normalize_path(repo_path: str) -> str:
@@ -90,7 +91,7 @@ class ScannedReposCache:
 
     @staticmethod
     def _is_repository(repo_path: str) -> bool:
-        # 远端路径不探测:探测会阻塞主线程(见 _is_remote_path 说明);
+        # 远端路径不探测:探测会阻塞(见 _is_remote_path 说明);
         # 条目保留,真正打开失败时由业务给出反馈。
         if _is_remote_path(repo_path):
             return True
@@ -131,11 +132,23 @@ class ScannedReposCache:
         return normalized_path, True
 
     def get_all(self) -> list[str]:
-        valid_repos = self._valid_repos(self._normalize_repos(self._repos))
+        """返回缓存条目;纯内存,不做任何磁盘探测(失效清理见 ``prune_missing``)。"""
+        normalized_repos = self._normalize_repos(self._repos)
+        if normalized_repos != self._repos:
+            self._replace_repos(normalized_repos)
+            self.save()
+        return list(self._repos[:MAX_SCANNED_REPOSITORIES])
+
+    def prune_missing(self) -> None:
+        """剔除磁盘上已不存在的缓存条目并落盘;**只允许池线程调用**。
+
+        本地路径做一次 ``.git`` 存在探测;远端路径不做探测、条目保留
+        (见 ``_is_remote_path`` 说明)。
+        """
+        valid_repos = self._valid_repos(self._repos)
         if valid_repos != self._repos:
             self._replace_repos(valid_repos)
             self.save()
-        return list(self._repos[:MAX_SCANNED_REPOSITORIES])
 
     def save(self) -> None:
         try:

@@ -29,37 +29,66 @@ _SKIP_DIRS = {
 _MAX_SCANNED_REPOSITORIES = 5000
 _PROGRESS_EVERY_DIRECTORIES = 100
 
+# Win32 GetDriveTypeW 返回值中的本地介质:可移动(2)/固定磁盘(3)/RAM 盘(6)。
+# 网络盘(4)是启动与扫描卡死的根源(见 docs/startup-hang-root-cause.md),光驱(5)
+# 没有仓库还可能唤醒光驱,均不作为扫描根。
+_LOCAL_DRIVE_TYPES = frozenset({2, 3, 6})
+
+
+def _windows_drive_type(root: str) -> int:
+    """Win32 ``GetDriveTypeW`` 封装;失败返回 0(UNKNOWN,视为不扫描)。
+
+    只读本地挂载表,不触碰盘符背后的介质;失效的网络映射也按挂载类型返回,
+    不会像 ``os.path.isdir`` 那样等重定向器网络超时。
+    """
+    try:
+        import ctypes
+
+        return int(ctypes.windll.kernel32.GetDriveTypeW(root))
+    except (AttributeError, OSError):
+        return 0
+
 
 def _list_fixed_drives() -> List[str]:
-    """枚举所有固定磁盘根(Windows)。
+    """枚举本地磁盘根(Windows)。
 
-    ``os.path.isdir`` 会真的去探测盘符:映射到已断开的网络共享时,重定向器要等
-    网络超时,单次探测可以阻塞数十秒。因此本函数**只允许在线程池里调用**
+    用 ``GetDriveTypeW`` 选根而不用 ``os.path.isdir``:isdir 会真的探测盘符,
+    映射到已断开的网络共享时要等网络超时(单次数十秒),盘符在线时还会把
+    网络共享当扫描根全量 os.walk。本函数**只允许在线程池里调用**
     (见 ``_resolve_scan_roots``),绝不能落在 GUI 主线程上。
+    非 Windows 平台没有盘符概念,维持历史行为返回空列表。
     """
-    drives = []
-    for letter in string.ascii_uppercase:
-        root = f"{letter}:\\"
-        if os.path.isdir(root):
-            drives.append(root)
-    return drives
+    if os.name != "nt":
+        return []
+    return [
+        f"{letter}:\\"
+        for letter in string.ascii_uppercase
+        if _windows_drive_type(f"{letter}:\\") in _LOCAL_DRIVE_TYPES
+    ]
 
 
 def _resolve_scan_roots(roots: Optional[List[str]]) -> List[str]:
-    """确定扫描根目录:显式传入的原样使用,否则枚举固定磁盘根。
+    """确定扫描根目录:显式传入的原样使用,否则按盘符类型枚举本地磁盘根。
 
-    盘符枚举包含磁盘/网络探测,可能长时间阻塞;它必须发生在线程池线程里,
-    调用方 ``RepoScanner.start`` 跑在 GUI 主线程上。
+    盘符枚举虽已用 ``GetDriveTypeW`` 避开介质/网络探测,仍属磁盘相关操作,
+    必须发生在线程池线程里;调用方 ``RepoScanner.start`` 跑在 GUI 主线程上。
     """
     return list(roots) if roots else _list_fixed_drives()
 
 
-def _scan_repositories(roots: Optional[List[str]]) -> int:
+def _scan_repositories(
+    roots: Optional[List[str]],
+    cache: Optional[ScannedReposCache] = None,
+) -> int:
     """在线程池扫描仓库，并通过引擎进度通道发布结果。"""
     task = current_task()
     # 根目录枚举与日志都在池线程内完成:start() 在 GUI 主线程,不能有任何磁盘探测。
     resolved_roots = _resolve_scan_roots(roots)
     logger.info(f"开始扫描 Git 仓库,根目录: {resolved_roots}")
+    if cache is not None:
+        # 缓存失效校验只在池线程做(路径存在性探测可阻塞)。此刻扫描尚未产出
+        # 任何进度事件,GUI 线程不会并发改写缓存(见 RepoScanner._on_repo_found)。
+        cache.prune_missing()
     count = 0
     visited = 0
     for root in resolved_roots:
@@ -140,6 +169,7 @@ class RepoScanner(QObject):
         self._task = submit_to_pool(
             _scan_repositories,
             roots,
+            cache=self._cache,
             on_success=self._on_finished,
             on_failure=self._on_failed,
             on_progress=self._on_progress,
@@ -172,6 +202,8 @@ class RepoScanner(QObject):
     def _on_finished(self, count: object):
         logger.info(f"扫描完成,找到 {count} 个仓库")
         self._cache.save()
+        # 同步扫描任务在池线程里做过的失效清理(prune_missing)结果。
+        self._results = self._cache.get_all()
         self._task = None
         self._scanning = False
         self.scanningChanged.emit(False)
@@ -188,6 +220,8 @@ class RepoScanner(QObject):
     def _finish_without_result(self) -> None:
         self._cache.save()
         count = self._scan_found_count
+        # 与 _on_finished 一致:同步池线程可能已完成的失效清理结果。
+        self._results = self._cache.get_all()
         self._task = None
         self._scanning = False
         self.scanningChanged.emit(False)
