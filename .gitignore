@@ -38,6 +38,7 @@ wheels/
 *.onefile-build/
 build_dist/
 dist_installer/
+dist_macos/
 release_artifacts/
 
 # macOS 构建产物（CI 下载的未签名 dmg，体积约 190MB，不入库）
