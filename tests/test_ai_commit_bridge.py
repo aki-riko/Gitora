@@ -10,7 +10,7 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 
-from PySide6.QtCore import QCoreApplication
+from PySide6.QtGui import QGuiApplication
 
 from app.common.ai_commit_credentials import (
     CredentialStoreError,
@@ -112,7 +112,9 @@ class _UnavailableCredentialStore:
 
 class AiCommitBridgeTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.app = QCoreApplication.instance() or QCoreApplication([])
+        os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+        os.environ.setdefault("QT_QUICK_BACKEND", "software")
+        self.app = QGuiApplication.instance() or QGuiApplication([])
         self.temp_dir = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp_dir.cleanup)
         self.repo = init_repo(Path(self.temp_dir.name) / "repo")
