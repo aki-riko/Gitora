@@ -48,6 +48,14 @@ Item {
         z: Fluent.Enums.zIndex.inputControls
         enabled: !outputText.activeFocus
             && root.scrollPassthroughTarget !== null
+        // 外层 ScrollArea 按此协议主动调度嵌套滚动，未聚焦时代理给页面。
+        readonly property var flickableItem: enabled
+            ? outputScrollArea.flickableItem : null
+
+        function smoothScrollBy(delta) {
+            root.scrollPassthroughTarget.smoothScrollBy(delta)
+        }
+
         acceptedButtons: Qt.NoButton
         onWheel: (wheel) => root._routeUnfocusedWheel(wheel)
     }
