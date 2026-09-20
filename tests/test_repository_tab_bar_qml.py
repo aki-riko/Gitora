@@ -20,6 +20,15 @@ def _pump(milliseconds: int) -> None:
     loop.exec()
 
 
+def _wait_until(predicate, timeout: float = 1.0) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if predicate():
+            return True
+        _pump(10)
+    return bool(predicate())
+
+
 class _DummyGitBridge:
     def __init__(
         self, repo_path: str, tab_poll_interval: int = 10000
@@ -253,8 +262,7 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
         pointer_position.x(), pointer_position.y()
     )
     fluent_bar.tabContextMenuRequested.emit(1, pointer_position)
-    _pump(30)
-    assert context_menu.property("isOpen")
+    assert _wait_until(lambda: bool(context_menu.property("isOpen")))
     assert bar.property("_contextMenuPath") == "D:/Repos/PrismQML"
     popup_windows = [
         item for item in QGuiApplication.topLevelWindows()
@@ -293,7 +301,7 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
         ["D:/Repos/PrismQML", "D:/Repos/Kaleidos", "D:/Repos/Mojin"]
     )
     fluent_bar.tabContextMenuRequested.emit(1, QPointF(40, 20))
-    _pump(30)
+    assert _wait_until(lambda: bool(context_menu.property("isOpen")))
     close_others_action.triggered.emit()
     _pump(30)
     assert bar.property("tabCount") == 1
@@ -312,7 +320,7 @@ def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     context_menu.forceReset()
     bar.setOpenedPaths(["D:/Repos/Gitora", "D:/Repos/Kaleidos"])
     fluent_bar.tabContextMenuRequested.emit(1, QPointF(40, 20))
-    _pump(30)
+    assert _wait_until(lambda: bool(context_menu.property("isOpen")))
     close_action.triggered.emit()
     _pump(30)
     assert bar._indexForPath("D:/Repos/Gitora") == -1
@@ -381,15 +389,13 @@ def test_repository_entry_menu_opens_from_add_button() -> None:
     window.show()
     assert not entry_menu.property("isOpen")
     fluent_bar.tabAddClicked.emit()
-    _pump(30)
-    assert entry_menu.property("isOpen")
+    assert _wait_until(lambda: bool(entry_menu.property("isOpen")))
     assert not search_menu.property("isOpen")
 
     # “最近仓库…”仍走原来的检索列表(带路径省略显示)。
     entry_menu.forceReset()
     recent_action.triggered.emit()
-    _pump(30)
-    assert search_menu.property("isOpen")
+    assert _wait_until(lambda: bool(search_menu.property("isOpen")))
 
     search_menu.forceReset()
     entry_menu.forceReset()
