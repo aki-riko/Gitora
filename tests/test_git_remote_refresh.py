@@ -110,7 +110,7 @@ class GitRemoteRefreshTest(unittest.TestCase):
         self.assertEqual(run_git(origin, "rev-parse", "refs/heads/fresh-origin").returncode, 0)
         self.assertEqual(run_git(upstream, "rev-parse", "refs/heads/fresh-upstream").returncode, 0)
 
-    def test_branch_view_fetch_all_wiring(self) -> None:
+    def test_repo_view_fetch_all_wiring(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()
         bridge._poll_timer.stop()
@@ -125,10 +125,10 @@ class GitRemoteRefreshTest(unittest.TestCase):
                 / "app_qml"
                 / "qml"
                 / "views"
-                / "BranchView.qml"
+                / "RepoView.qml"
             ).read_text(encoding="utf-8")
-            self.assertIn("onClicked: GitBridge.fetchAll()", qml)
-            self.assertNotIn("onClicked: GitBridge.fetch()", qml)
+            self.assertIn('"text": "刷新全部远程"', qml)
+            self.assertIn("if (index === 0) GitBridge.fetchAll()", qml)
         finally:
             bridge.deleteLater()
             app.processEvents()
