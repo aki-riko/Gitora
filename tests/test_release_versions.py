@@ -60,6 +60,13 @@ class ReleaseVersionTest(unittest.TestCase):
         build_script = (root / "tools" / "build_nuitka.py").read_text(encoding="utf-8")
         self.assertIn('"--disable-cache=ccache"', build_script)
 
+    def test_windows_release_build_uses_nuitka_qml_plugin_once(self) -> None:
+        root = Path(__file__).resolve().parents[1]
+        build_script = (root / "tools" / "build_nuitka.py").read_text(encoding="utf-8")
+
+        self.assertIn('"--include-qt-plugins=qml"', build_script)
+        self.assertNotIn('=PySide6/qml/=**/*.dll', build_script)
+
     def test_windows_installer_e2e_is_remote_manual_and_checks_real_install(
         self,
     ) -> None:
