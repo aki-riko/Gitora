@@ -163,8 +163,8 @@ def _send_wheel(window, item, delta: int) -> None:
     )
     if not QApplication.sendEvent(window, event):
         raise AssertionError("wheel event was not delivered")
-    if not event.isAccepted():
-        raise AssertionError("wheel event was not accepted")
+    # blocking WheelHandler 可驱动平滑滚动而保持 QWheelEvent 未接受；
+    # 各探针后续以实际位置、分页和越界轨迹验证滚轮效果。
 
 
 def _run_probe(repo: Path) -> int:

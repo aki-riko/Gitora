@@ -102,8 +102,10 @@ def _send_wheel(window, item, delta: int) -> None:
         Qt.ScrollPhase.NoScrollPhase,
         False,
     )
-    if not QApplication.sendEvent(window, event) or not event.isAccepted():
-        raise AssertionError("wheel event was not accepted")
+    if not QApplication.sendEvent(window, event):
+        raise AssertionError("wheel event was not delivered")
+    # blocking WheelHandler 可驱动平滑滚动而保持 QWheelEvent 未接受；
+    # 刷新探针在调用点后验证实际滚动和静默状态。
 
 
 def _create_scene(engine):
