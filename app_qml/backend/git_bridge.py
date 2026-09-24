@@ -206,6 +206,7 @@ class GitBridge(QObject):
     repoRuleFileReady = Signal(str, str, str)             # (repoPath, name, content)
     reflogReady = Signal(str, "QVariantList")            # (repoPath, reflog 列表)
     advancedStateReady = Signal(str, "QVariantList", "QVariantList")  # (repoPath, worktree, submodule)
+    worktreeStateReady = Signal(str, "QVariantList")  # (repoPath, worktree)
     # 外部变化轮询间隔(ms):覆盖命令行/其他 Git 工具引起的状态变化
     _POLL_INTERVAL_MS = 1000
     # 非活动标签页快照轮询间隔(ms):定时刷新所有已打开标签的徽标(变更数)与分支
@@ -242,6 +243,7 @@ class GitBridge(QObject):
         self._tab_snapshots_busy = False
         self._tags_request_serial = 0
         self._advanced_request_serial = 0
+        self._worktree_request_serial = 0
         self._open_request_serial = 0
         self._timeline_trace_sequence = 0
         # 已打开仓库快照的写盘序号(主线程分配,用于丢弃线程池乱序的旧快照)
@@ -896,6 +898,33 @@ class GitBridge(QObject):
             label="获取高级仓库状态",
             on_success=completed,
             on_failure=lambda _exc: completed(([], [])),
+        )
+
+    @Slot()
+    def requestWorktreeState(self):
+        """后台读取当前仓库的关联工作树，供全局快速切换入口使用。"""
+        repo = self._svc.repo_path or ""
+        self._worktree_request_serial += 1
+        request_serial = self._worktree_request_serial
+
+        def work():
+            return self._svc.list_worktrees_at(repo)
+
+        def completed(result: object) -> None:
+            if request_serial != self._worktree_request_serial:
+                return
+            if repo != (self._svc.repo_path or ""):
+                return
+            worktrees = result if isinstance(result, list) else []
+            self.worktreeStateReady.emit(
+                repo, [_worktree_to_dict(item) for item in worktrees]
+            )
+
+        return self._submit_query(
+            work,
+            label="获取关联工作树",
+            on_success=completed,
+            on_failure=lambda _exc: completed([]),
         )
 
     def getWorktrees(self) -> list:

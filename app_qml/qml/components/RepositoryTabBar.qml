@@ -28,6 +28,10 @@ Item {
     property var _pickerPaths: []
     property string _closingActivePath: ""
     property string _contextMenuPath: ""
+    property var _worktrees: []
+    property string _worktreeStateRepoPath: ""
+    property string _worktreeSubmenuId: ""
+    property var _worktreeSubmenuAction: null
     // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
     property bool _sessionRestored: false
 
@@ -297,9 +301,72 @@ Item {
         return _indexForPath(_contextMenuPath)
     }
 
+    function _worktreeMenuItems(path) {
+        var items = []
+        var currentKey = _pathKey(path)
+        var currentFound = false
+        for (var j = 0; j < _worktrees.length; j++) {
+            if (_pathKey((_worktrees[j] || {}).path) === currentKey) {
+                currentFound = true
+                break
+            }
+        }
+        if (!currentFound) return items
+        for (var i = 0; i < _worktrees.length; i++) {
+            var worktree = _worktrees[i] || {}
+            var worktreePath = String(worktree.path || "")
+            if (worktreePath === "" || _pathKey(worktreePath) === currentKey
+                    || worktree.prunable || worktree.bare) continue
+            var branch = String(worktree.branch || "")
+            var state = branch !== "" ? branch
+                : (worktree.detached ? "游离状态" : "未命名分支")
+            items.push({
+                text: state + " · " + _repoName(worktreePath),
+                icon: Fluent.Enums.icon.folder,
+                actionId: "worktree:" + worktreePath,
+                toolTip: worktreePath
+            })
+        }
+        return items
+    }
+
+    function _rebuildWorktreeSubmenu() {
+        if (_worktreeSubmenuId !== "") {
+            repositoryTabContextMenu.removeAction(_worktreeSubmenuId)
+            _worktreeSubmenuId = ""
+            _worktreeSubmenuAction = null
+        }
+        var items = _worktreeMenuItems(activePath)
+        if (items.length === 0) return
+        var action = repositoryTabContextMenu.addSubmenuActions(
+            "切换关联工作树", Fluent.Enums.icon.branch_fork, items)
+        if (action) {
+            _worktreeSubmenuId = String(action.actionId || "")
+            _worktreeSubmenuAction = action
+        }
+    }
+
+    function _handleContextAction(actionId) {
+        var value = String(actionId || "")
+        if (value.indexOf("worktree:") !== 0) return
+        _selectPath(value.slice("worktree:".length))
+    }
+
+    function _requestWorktreeState() {
+        if (!gitBridge || !gitBridge.requestWorktreeState || activePath === "") {
+            _worktreeStateRepoPath = ""
+            _worktrees = []
+            return
+        }
+        _worktreeStateRepoPath = activePath
+        gitBridge.requestWorktreeState()
+    }
+
     function _openTabContextMenu(index, position) {
         if (index < 0 || index >= _tabs.length) return
         _contextMenuPath = String(_tabs[index].path || "")
+        if (_worktreeSubmenuAction)
+            _worktreeSubmenuAction.enabled = _pathKey(_contextMenuPath) === activePathKey
         var popupPosition = position || Qt.point(0, 0)
         repositoryTabContextMenu.exec(
             popupPosition.x, popupPosition.y, tabBar)
@@ -416,6 +483,9 @@ Item {
         id: repositoryTabContextMenu
         objectName: "repositoryTabContextMenu"
         autoBindRightClick: false
+        onActionTriggered: function(actionId) {
+            root._handleContextAction(actionId)
+        }
 
         Fluent.Action {
             objectName: "repositoryTabCloseAction"
@@ -541,12 +611,16 @@ Item {
         }
 
         function onRepoPathChanged(path) {
+            root._worktrees = []
+            root._worktreeStateRepoPath = String(path || "")
+            root._rebuildWorktreeSubmenu()
             root.ensurePath(path)
             root._setPending(path, false)
             root._closingActivePath = ""
             root._syncCurrentIndex()
             root._persistSession()
             if (root.gitBridge.requestStatus) root.gitBridge.requestStatus()
+            root._requestWorktreeState()
         }
 
         function onRepoOpened(ok, value) {
@@ -584,6 +658,14 @@ Item {
         function onStatusChanged() {
             if (root.activePath !== "" && root.gitBridge.requestStatus)
                 root.gitBridge.requestStatus()
+            root._requestWorktreeState()
+        }
+
+        function onWorktreeStateReady(repoPath, worktrees) {
+            if (!root.gitBridge || repoPath !== root.gitBridge.repoPath
+                    || repoPath !== root._worktreeStateRepoPath) return
+            root._worktrees = worktrees || []
+            root._rebuildWorktreeSubmenu()
         }
     }
 
@@ -642,6 +724,7 @@ Item {
         if (activePath !== "") {
             ensurePath(activePath)
             _syncCurrentIndex()
+            _requestWorktreeState()
         }
     }
 }
