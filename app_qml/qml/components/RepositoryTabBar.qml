@@ -282,11 +282,17 @@ Item {
         }
         var replacing = _newTab(value)
         // 工作区下拉框正显示在同一位置：标题必须留空，否则会与下拉框重叠成
-        // “文字 + 下拉框”同时出现。副标题同步进入“打开中…”，一次赋值到位，
-        // 避免分几次替换数组造成标签内容连续跳变。
+        // “文字 + 下拉框”同时出现。
         if (_workspaceItems.length > 1) replacing.title = ""
+        // 目标 worktree 的分支在下拉框列表里已经知道，直接填上。否则副标题会按
+        // “原分支 -> 打开中… -> 未读取分支 -> 真实分支”连续跳变，看起来就是
+        // 分支信息在闪。分支确实未知时才退回“打开中…”。
+        var itemIndex = _workspaceComboIndex(value)
+        var knownBranch = itemIndex >= 0
+            ? String(_workspaceItems[itemIndex].branch || "") : ""
+        replacing.branch = knownBranch
+        replacing.subtitle = knownBranch !== "" ? knownBranch : "打开中…"
         replacing.pending = true
-        replacing.subtitle = "打开中…"
         var next = _tabs.slice()
         next[index] = replacing
         _tabs = next

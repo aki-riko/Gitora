@@ -454,6 +454,10 @@ def test_repository_tab_bar_workspace_switch_does_not_append_after_open() -> Non
     assert combo.property("visible")
     tabs = bar.property("_tabs").toVariant()
     assert tabs[0]["title"] == ""
+    # 目标 worktree 的分支在列表里已知，副标题要直接落到真实分支，
+    # 不能在“打开中… / 未读取分支 / 真实分支”之间来回跳变。
+    assert tabs[0]["branch"] == "feature/ui"
+    assert tabs[0]["subtitle"] == "feature/ui"
 
     # 后端完成打开：repoPathChanged 走 ensurePath，不能再追加一份。
     bridge.object._repo_path = "D:/Repos/Gitora-feature"
@@ -465,6 +469,15 @@ def test_repository_tab_bar_workspace_switch_does_not_append_after_open() -> Non
     assert _tab_paths(bar) == ["D:/Repos/Gitora-feature", "D:/Repos/Kaleidos"]
     tabs = bar.property("_tabs").toVariant()
     assert tabs[0]["title"] == ""
+    # 打开确认阶段分支同样不能跳变。
+    assert tabs[0]["subtitle"] == "feature/ui"
+
+    # 后端回传的分支与已知值相同：标签数据不因这次回传而变化。
+    bridge.object.branchReady.emit("D:/Repos/Gitora-feature", "feature/ui")
+    app.processEvents()
+    tabs = bar.property("_tabs").toVariant()
+    assert tabs[0]["branch"] == "feature/ui"
+    assert tabs[0]["subtitle"] == "feature/ui"
 
     _destroy_repository_scene(app, engine, component, window)
 def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -> None:
@@ -500,6 +513,10 @@ def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -
     assert "if (!dirty) return" in source
     assert "function _sameWorkspaceItems(left, right)" in source
     assert "if (root._workspaceComboIndex(path) < 0) root._workspaceItems = []" \
+        in source
+    # 副标题防跳：目标 worktree 的分支取自下拉框列表，已知就直接显示。
+    assert "var knownBranch = itemIndex >= 0" in source
+    assert 'replacing.subtitle = knownBranch !== "" ? knownBranch : "打开中…"' \
         in source
 
     # 位置：读标签委托里 detailContent/detailTitleRow/标题 Label 的布局结果，
