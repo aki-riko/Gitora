@@ -827,6 +827,33 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_worktree_state_query_returns_qml_dicts(self) -> None:
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo-a"
+        emitted: list[tuple[str, list[dict]]] = []
+
+        bridge._svc.list_worktrees_at = lambda path: [  # type: ignore[method-assign]
+            WorktreeInfo(path=path, branch="main", head="123456789"),
+            WorktreeInfo(
+                path=f"{path}-feature", branch="feature/ui", head="abcdefghi"
+            ),
+        ]
+        bridge.worktreeStateReady.connect(
+            lambda repo, worktrees: emitted.append((repo, worktrees))
+        )
+
+        try:
+            bridge.requestWorktreeState()
+            self.assertTrue(self._wait_until(app, lambda: len(emitted) == 1))
+            self.assertEqual(emitted[0][0], "repo-a")
+            self.assertEqual(emitted[0][1][1]["branch"], "feature/ui")
+            self.assertEqual(emitted[0][1][1]["shortHead"], "abcdefg")
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_worktree_cleanup_preview_and_remove_capture_repository_snapshot(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

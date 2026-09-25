@@ -43,6 +43,7 @@ class _DummyGitBridge:
             statusChanged = Signal()
             statusReady = Signal(str, int)
             branchReady = Signal(str, str)
+            worktreeStateReady = Signal(str, "QVariantList")
 
             def __init__(self, path: str, interval: int) -> None:
                 super().__init__()
@@ -76,6 +77,10 @@ class _DummyGitBridge:
                 self.tab_snapshot_calls.append(
                     ([str(item) for item in (paths or [])], str(active or ""))
                 )
+
+            @Slot()
+            def requestWorktreeState(self) -> None:
+                return None
 
             repoPath = Property(str, _get_repo_path, notify=repoPathChanged)
             tabPollIntervalMs = Property(
@@ -223,6 +228,42 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     bridge.object.repoOpened.emit(False, "D:/Repos/PrismQML")
     app.processEvents()
     assert bar.property("tabCount") == expected_count
+
+    _destroy_repository_scene(app, engine, component, window)
+
+
+def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
+    from PySide6.QtCore import QObject
+
+    app, engine, component, window, bridge = _create_repository_scene()
+    bar = window.findChild(QObject, "repositoryTabBar")
+    combo = window.findChild(QObject, "workspaceSwitcherComboBox")
+    assert bar is not None
+    assert combo is not None
+    window.show()
+    _pump(30)
+
+    bridge.object.worktreeStateReady.emit(
+        "D:/Repos/Gitora",
+        [
+            {"path": "D:/Repos/Gitora", "branch": "master"},
+            {"path": "D:/Repos/Gitora-feature", "branch": "feature/ui"},
+            {"path": "D:/Repos/Gitora-stale", "prunable": True},
+        ],
+    )
+    app.processEvents()
+    assert combo.property("style") == 2
+    assert combo.property("visible")
+    model = combo.property("model")
+    if hasattr(model, "toVariant"):
+        model = model.toVariant()
+    assert [item["text"] for item in model] == ["Gitora", "Gitora-feature"]
+    assert combo.property("currentIndex") == 0
+
+    selected: list[str] = []
+    bar.repositorySelected.connect(selected.append)
+    combo.activated.emit(1)
+    assert selected == ["D:/Repos/Gitora-feature"]
 
     _destroy_repository_scene(app, engine, component, window)
 

@@ -28,12 +28,20 @@ Item {
     property var _pickerPaths: []
     property string _closingActivePath: ""
     property string _contextMenuPath: ""
+    property var _workspaceItems: []
+    property string _workspaceStateRepoPath: ""
     // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
     property bool _sessionRestored: false
 
     // 仓库选择列表的路径省略用同一套字体度量,保证与仓库页显示一致。
     FontMetrics {
         id: repoPathFontMetrics
+        font.family: Fluent.Enums.fontFamily
+        font.pixelSize: Fluent.Enums.typography.body
+    }
+
+    FontMetrics {
+        id: workspaceTextMetrics
         font.family: Fluent.Enums.fontFamily
         font.pixelSize: Fluent.Enums.typography.body
     }
@@ -297,6 +305,62 @@ Item {
         return _indexForPath(_contextMenuPath)
     }
 
+    function _workspaceItemsFor(worktrees) {
+        var items = []
+        var seen = ({})
+        for (var i = 0; i < (worktrees || []).length; i++) {
+            var worktree = worktrees[i] || {}
+            var path = String(worktree.path || "")
+            var key = _pathKey(path)
+            if (path === "" || seen[key] || worktree.prunable || worktree.bare)
+                continue
+            seen[key] = true
+            items.push({
+                text: _repoName(path),
+                path: path,
+                branch: String(worktree.branch || ""),
+                toolTip: path
+            })
+        }
+        return items
+    }
+
+    function _workspaceComboIndex(path) {
+        var key = _pathKey(path)
+        for (var i = 0; i < _workspaceItems.length; i++) {
+            if (_pathKey(_workspaceItems[i].path) === key) return i
+        }
+        return -1
+    }
+
+    function _workspaceComboWidth() {
+        var maxTextWidth = 0
+        for (var i = 0; i < _workspaceItems.length; i++) {
+            workspaceTextMetrics.text = String(_workspaceItems[i].text || "")
+            maxTextWidth = Math.max(maxTextWidth, workspaceTextMetrics.advanceWidth)
+        }
+        return Math.max(120, Math.min(190,
+            Math.ceil(maxTextWidth) + Fluent.Enums.spacing.xl * 2
+                + Fluent.Enums.comboBoxMetrics.arrowAreaWidth))
+    }
+
+    function _requestWorktreeState() {
+        if (!gitBridge || !gitBridge.requestWorktreeState || activePath === "") {
+            _workspaceStateRepoPath = ""
+            _workspaceItems = []
+            return
+        }
+        _workspaceStateRepoPath = activePath
+        gitBridge.requestWorktreeState()
+    }
+
+    function _applyWorkspaceState(repoPath, worktrees) {
+        if (!gitBridge || repoPath !== gitBridge.repoPath
+                || repoPath !== _workspaceStateRepoPath) return
+        _workspaceItems = _workspaceItemsFor(worktrees)
+        workspaceSwitcher.currentIndex = _workspaceComboIndex(activePath)
+    }
+
     function _openTabContextMenu(index, position) {
         if (index < 0 || index >= _tabs.length) return
         _contextMenuPath = String(_tabs[index].path || "")
@@ -410,6 +474,30 @@ Item {
             root._openTabContextMenu(index, position)
         }
         onTabsReordered: function(from, to) { root._reorderTabs(from, to) }
+    }
+
+    // 活动标签标题上的透明工作区下拉框，直接切换主工作树与关联 worktree。
+    Fluent.ComboBox {
+        id: workspaceSwitcher
+        objectName: "workspaceSwitcherComboBox"
+        parent: root
+        x: tabBar.x + tabBar.currentIndex * tabBar.tabWidth
+            + Fluent.Enums.spacing.xl + Fluent.Enums.iconSize.s
+                + Fluent.Enums.spacing.xs
+        y: tabBar.y + Fluent.Enums.spacing.s
+        width: root._workspaceComboWidth()
+        height: Fluent.Enums.controlSize.inputHeight
+        z: Fluent.Enums.zIndex.controlsAbove
+        visible: root._workspaceItems.length > 1
+            && root.switchingEnabled
+        enabled: visible
+        style: Fluent.Enums.comboBox.style_transparent
+        model: root._workspaceItems
+        currentIndex: root._workspaceComboIndex(root.activePath)
+        onActivated: function(index) {
+            if (index < 0 || index >= root._workspaceItems.length) return
+            root._selectPath(root._workspaceItems[index].path)
+        }
     }
 
     Fluent.ContextMenu {
@@ -541,12 +629,15 @@ Item {
         }
 
         function onRepoPathChanged(path) {
+            root._workspaceItems = []
+            root._workspaceStateRepoPath = String(path || "")
             root.ensurePath(path)
             root._setPending(path, false)
             root._closingActivePath = ""
             root._syncCurrentIndex()
             root._persistSession()
             if (root.gitBridge.requestStatus) root.gitBridge.requestStatus()
+            root._requestWorktreeState()
         }
 
         function onRepoOpened(ok, value) {
@@ -584,6 +675,11 @@ Item {
         function onStatusChanged() {
             if (root.activePath !== "" && root.gitBridge.requestStatus)
                 root.gitBridge.requestStatus()
+            root._requestWorktreeState()
+        }
+
+        function onWorktreeStateReady(repoPath, worktrees) {
+            root._applyWorkspaceState(repoPath, worktrees)
         }
     }
 
@@ -642,6 +738,7 @@ Item {
         if (activePath !== "") {
             ensurePath(activePath)
             _syncCurrentIndex()
+            _requestWorktreeState()
         }
     }
 }
