@@ -359,8 +359,12 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
 
     selected: list[str] = []
     bar.repositorySelected.connect(selected.append)
+    tab_count_before = bar.property("tabCount")
     combo.activated.emit(1)
     assert selected == ["D:/Repos/Gitora-feature"]
+    # 工作区切换必须就地换掉当前标签，而不是在末尾追加新标签。
+    assert bar.property("tabCount") == tab_count_before
+    assert _tab_paths(bar) == ["D:/Repos/Gitora-feature"]
 
     # 超长仓库名按原标签行为省略收尾，下拉框不得溢出活动标签。
     bridge.object.worktreeStateReady.emit(
@@ -382,6 +386,79 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     _destroy_repository_scene(app, engine, component, window)
 
 
+def test_repository_tab_bar_workspace_switch_reuses_existing_tab() -> None:
+    """目标工作区已经独立成标签时直接激活那个标签，同一路径不出现两份。"""
+    from PySide6.QtCore import QObject
+
+    app, engine, component, window, bridge = _create_repository_scene()
+    bar = window.findChild(QObject, "repositoryTabBar")
+    combo = window.findChild(QObject, "workspaceSwitcherComboBox")
+    assert bar is not None and combo is not None
+    window.show()
+    _pump(30)
+
+    bar.setOpenedPaths(["D:/Repos/Gitora", "D:/Repos/PrismQML"])
+    _pump(30)
+    # 活动仓库是 Gitora，它的 worktree 列表里 PrismQML 已经在标签栏中。
+    bridge.object.worktreeStateReady.emit(
+        "D:/Repos/Gitora",
+        [
+            {"path": "D:/Repos/Gitora", "branch": "master"},
+            {"path": "D:/Repos/PrismQML", "branch": "main"},
+        ],
+    )
+    app.processEvents()
+    _pump(30)
+    assert _tab_paths(bar) == ["D:/Repos/Gitora", "D:/Repos/PrismQML"]
+
+    selected: list[str] = []
+    bar.repositorySelected.connect(selected.append)
+    combo.activated.emit(1)
+    assert selected == ["D:/Repos/PrismQML"]
+    # 复用既有标签：路径顺序与数量都不变，也不产生重复项。
+    assert _tab_paths(bar) == ["D:/Repos/Gitora", "D:/Repos/PrismQML"]
+    assert bar.property("tabCount") == 2
+
+    _destroy_repository_scene(app, engine, component, window)
+
+
+def test_repository_tab_bar_workspace_switch_does_not_append_after_open() -> None:
+    """切换工作区后端确认打开后，仍不得在末尾追加新标签。"""
+    from PySide6.QtCore import QObject
+
+    app, engine, component, window, bridge = _create_repository_scene()
+    bar = window.findChild(QObject, "repositoryTabBar")
+    combo = window.findChild(QObject, "workspaceSwitcherComboBox")
+    assert bar is not None and combo is not None
+    window.show()
+    _pump(30)
+
+    bar.setOpenedPaths(["D:/Repos/Gitora", "D:/Repos/Kaleidos"])
+    _pump(30)
+    bridge.object.worktreeStateReady.emit(
+        "D:/Repos/Gitora",
+        [
+            {"path": "D:/Repos/Gitora", "branch": "master"},
+            {"path": "D:/Repos/Gitora-feature", "branch": "feature/ui"},
+        ],
+    )
+    app.processEvents()
+    _pump(30)
+    assert _tab_paths(bar) == ["D:/Repos/Gitora", "D:/Repos/Kaleidos"]
+
+    combo.activated.emit(1)
+    # 就地替换：位置 0 换成目标工作区，另一个标签原样保留。
+    assert _tab_paths(bar) == ["D:/Repos/Gitora-feature", "D:/Repos/Kaleidos"]
+
+    # 后端完成打开：repoPathChanged 走 ensurePath，不能再追加一份。
+    bridge.object._repo_path = "D:/Repos/Gitora-feature"
+    bridge.object.repoPathChanged.emit("D:/Repos/Gitora-feature")
+    app.processEvents()
+    _pump(30)
+    assert bar.property("tabCount") == 2
+    assert _tab_paths(bar) == ["D:/Repos/Gitora-feature", "D:/Repos/Kaleidos"]
+
+    _destroy_repository_scene(app, engine, component, window)
 def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -> None:
     """下拉框尺寸只能来自标题文本度量，位置只能来自标签标题文字的真实锚点。"""
     source = (COMPONENT_DIR / "RepositoryTabBar.qml").read_text(
@@ -404,6 +481,11 @@ def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -
     # 超长仓库名沿用原标签的省略收尾，不溢出到相邻标签。
     assert "elide: Text.ElideRight" in source
     assert "root._workspaceTitleMaxWidth" in source
+
+    # 切换语义：就地换掉当前标签，不在末尾追加新工作区。
+    assert "function _switchActiveTabWorkspace(path)" in source
+    assert "root._switchActiveTabWorkspace(root._workspaceItems[index].path)" \
+        in source
 
     # 位置：读标签委托里 detailContent/detailTitleRow/标题 Label 的布局结果，
     # 而不是按固定偏移猜。

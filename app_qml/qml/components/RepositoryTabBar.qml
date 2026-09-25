@@ -247,11 +247,49 @@ Item {
         repositorySelected(value)
     }
 
+    // 工作区下拉框的切换语义：把当前标签就地换成目标工作区，标签数量与位置都
+    // 不变；只有打开仓库(点击“+”、最近仓库列表)才在末尾追加新标签。
+    function _switchActiveTabWorkspace(path) {
+        var value = String(path || "")
+        if (!switchingEnabled || value === "") return
+        if (_pathKey(value) === activePathKey) {
+            _setPending(value, false)
+            return
+        }
+        // 目标工作区已经独立成标签时直接激活那个标签，避免同一路径出现两份。
+        if (_indexForPath(value) >= 0) {
+            _selectPath(value)
+            return
+        }
+        var index = _indexForPath(activePath)
+        if (index < 0) {
+            // 活动仓库当前没有独立标签(例如会话恢复中)：退化回追加语义，
+            // 否则这次切换没有任何标签可以承载目标工作区。
+            _selectPath(value)
+            return
+        }
+        var next = _tabs.slice()
+        next[index] = _newTab(value)
+        _tabs = next
+        _setPending(value, true)
+        // 就地替换：标签索引不变，因此不调用 _syncCurrentIndex()——它按旧的
+        // activePath 查找会失败，而 currentIndex 本来就指向这个标签。
+        // 标签内容变了(宽度也不同)，等新委托落地后再对齐一次下拉框几何。
+        Qt.callLater(_syncWorkspaceGeometry)
+        repositorySelected(value)
+    }
+
     function _closeTabsMatching(predicate, fallbackPath) {
         if (!switchingEnabled || _tabs.length <= 1) return false
         var kept = []
         var removed = []
         var activeWillClose = false
+        // 活动标签以标签栏当前索引为准。活动仓库此刻可能没有独立标签(就地切换
+        // 尚未完成或打开失败时 activePath 会与标签列表脱节)，只看 activePath
+        // 会把这种情形判成“关掉的不是活动标签”，从而把脱节的 active 落盘。
+        var currentIndex = tabBar ? tabBar.currentIndex : -1
+        var currentPathKey = currentIndex >= 0 && currentIndex < _tabs.length
+            ? _pathKey(String(_tabs[currentIndex].path || "")) : ""
         for (var i = 0; i < _tabs.length; i++) {
             var tab = _tabs[i]
             if (predicate(i, tab)) removed.push(tab)
@@ -259,13 +297,27 @@ Item {
         }
         if (removed.length === 0 || kept.length === 0) return false
         for (var j = 0; j < removed.length; j++) {
-            if (_pathKey(removed[j].path) === activePathKey) activeWillClose = true
+            var removedKey = _pathKey(removed[j].path)
+            if (removedKey === activePathKey
+                    || (currentPathKey !== "" && removedKey === currentPathKey))
+                activeWillClose = true
         }
         _tabs = kept
         for (var k = 0; k < removed.length; k++)
             repositoryClosed(String(removed[k].path || ""))
         if (activeWillClose) {
-            _closingActivePath = activePath
+            // _closingActivePath 用于打开失败后恢复被关闭的标签：就地切换期间
+            // activePath 可能已脱节，此时以当前标签自己的路径为准。
+            var closingPath = activePath
+            if (_pathKey(activePath) !== currentPathKey) {
+                for (var m = 0; m < removed.length; m++) {
+                    if (_pathKey(removed[m].path) === currentPathKey) {
+                        closingPath = String(removed[m].path || "")
+                        break
+                    }
+                }
+            }
+            _closingActivePath = closingPath
             _selectPath(fallbackPath)
             // 关掉的是活动标签：activePath 此刻还是那个正在关闭的仓库，
             // 必须按接管的 fallbackPath 落盘。
@@ -663,7 +715,8 @@ Item {
         currentIndex: root._workspaceComboIndex(root.activePath)
         onActivated: function(index) {
             if (index < 0 || index >= root._workspaceItems.length) return
-            root._selectPath(root._workspaceItems[index].path)
+            // 工作区之间就地切换：当前标签换成目标工作区，不追加新标签。
+            root._switchActiveTabWorkspace(root._workspaceItems[index].path)
         }
 
         Fluent.Label {
