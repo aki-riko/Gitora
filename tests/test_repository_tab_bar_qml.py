@@ -275,6 +275,15 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     _destroy_repository_scene(app, engine, component, window)
 
 
+def test_repository_tab_bar_workspace_width_uses_text_metrics() -> None:
+    source = (COMPONENT_DIR / "RepositoryTabBar.qml").read_text(
+        encoding="utf-8"
+    )
+    assert "TextMetrics {" in source
+    assert "workspaceTextMetrics.text =" in source
+    assert "FontMetrics {\n        id: workspaceTextMetrics" not in source
+
+
 def test_repository_tab_context_menu_closes_requested_ranges() -> None:
     from PySide6.QtCore import QObject, QPointF
     from PySide6.QtGui import QGuiApplication

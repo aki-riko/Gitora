@@ -43,7 +43,7 @@ Item {
         font.pixelSize: Fluent.Enums.typography.body
     }
 
-    FontMetrics {
+    TextMetrics {
         id: workspaceTextMetrics
         font.family: Fluent.Enums.fontFamily
         font.pixelSize: Fluent.Enums.typography.body
