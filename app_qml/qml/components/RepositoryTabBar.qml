@@ -376,7 +376,6 @@ Item {
                 var fallbackTop = tabBar.y
                 var fallbackLeftMargin = Fluent.Enums.spacing.xl
                     + Fluent.Enums.iconSize.s + Fluent.Enums.spacing.xs
-                    + Fluent.Enums.spacing.s + Fluent.Enums.spacing.l
                 var fallbackRightMargin = Fluent.Enums.spacing.xxl
                     + Fluent.Enums.iconSize.xxl
                 _workspaceX = fallbackX + fallbackLeftMargin
@@ -395,7 +394,6 @@ Item {
                 root, tabBar.currentIndex * tabBar.tabWidth, 0)
             var fallbackLeft = Fluent.Enums.spacing.xl
                 + Fluent.Enums.iconSize.s + Fluent.Enums.spacing.xs
-                + Fluent.Enums.spacing.s + Fluent.Enums.spacing.l
             var fallbackRight = Fluent.Enums.spacing.xxl
                 + Fluent.Enums.iconSize.xxl
             _workspaceX = rowOrigin.x + fallbackLeft
@@ -410,8 +408,7 @@ Item {
         }
         var origin = item.mapToItem(root, 0, 0)
         var left = Fluent.Enums.spacing.xl + Fluent.Enums.iconSize.s
-            + Fluent.Enums.spacing.xs + Fluent.Enums.spacing.s
-                + Fluent.Enums.spacing.l
+            + Fluent.Enums.spacing.xs
         var right = Fluent.Enums.spacing.xxl
             + Fluent.Enums.iconSize.xxl
         _workspaceX = origin.x + left
