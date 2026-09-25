@@ -279,13 +279,12 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     _destroy_repository_scene(app, engine, component, window)
 
 
-def test_repository_tab_bar_workspace_width_uses_text_metrics() -> None:
+def test_repository_tab_bar_workspace_width_uses_tab_title_region() -> None:
     source = (COMPONENT_DIR / "RepositoryTabBar.qml").read_text(
         encoding="utf-8"
     )
-    assert "TextMetrics {" in source
-    assert "workspaceTextMetrics.text =" in source
-    assert "FontMetrics {\n        id: workspaceTextMetrics" not in source
+    assert "return Math.max(160, Math.min(180, tabWidth - 132))" in source
+    assert "var left = 36" in source
 
 
 def test_repository_tab_context_menu_closes_requested_ranges() -> None:

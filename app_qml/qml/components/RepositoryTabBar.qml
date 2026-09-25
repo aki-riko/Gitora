@@ -43,12 +43,6 @@ Item {
         font.pixelSize: Fluent.Enums.typography.body
     }
 
-    TextMetrics {
-        id: workspaceTextMetrics
-        font.family: Fluent.Enums.fontFamily
-        font.pixelSize: Fluent.Enums.typography.body
-    }
-
     // ==================== Signals 信号 ====================
     signal repositorySelected(string path)
     signal repositoryClosed(string path)
@@ -338,11 +332,8 @@ Item {
     }
 
     function _workspaceComboWidth() {
-        workspaceTextMetrics.text = _repoName(activePath)
-        var maxTextWidth = workspaceTextMetrics.advanceWidth
-        return Math.max(160, Math.min(180,
-            Math.ceil(maxTextWidth) + Fluent.Enums.spacing.xs * 2
-                + Fluent.Enums.comboBoxMetrics.arrowAreaWidth))
+        var tabWidth = tabBar ? tabBar.tabWidth : 0
+        return Math.max(160, Math.min(180, tabWidth - 132))
     }
 
     function _syncWorkspaceTabTitle() {
@@ -374,15 +365,11 @@ Item {
             if (!row || !row.mapToItem) {
                 var fallbackX = tabBar.x + tabBar.currentIndex * tabBar.tabWidth
                 var fallbackTop = tabBar.y
-                var fallbackLeftMargin = Fluent.Enums.spacing.xl
-                    + Fluent.Enums.iconSize.s + Fluent.Enums.spacing.xs
+                var fallbackLeftMargin = 36
                 var fallbackRightMargin = Fluent.Enums.spacing.xxl
                     + Fluent.Enums.iconSize.xxl
                 _workspaceX = fallbackX + fallbackLeftMargin
-                _workspaceY = fallbackTop + Math.max(
-                    Fluent.Enums.spacing.xs,
-                    (tabBar._tabHeight
-                        - Fluent.Enums.controlSize.inputHeightCompact) / 2)
+                _workspaceY = fallbackTop + 8
                 _workspaceWidth = Math.max(
                     96, Math.min(
                         Math.max(96, tabBar.tabWidth - fallbackLeftMargin
@@ -392,14 +379,11 @@ Item {
             }
             var rowOrigin = row.mapToItem(
                 root, tabBar.currentIndex * tabBar.tabWidth, 0)
-            var fallbackLeft = Fluent.Enums.spacing.xl
-                + Fluent.Enums.iconSize.s + Fluent.Enums.spacing.xs
+            var fallbackLeft = 36
             var fallbackRight = Fluent.Enums.spacing.xxl
                 + Fluent.Enums.iconSize.xxl
             _workspaceX = rowOrigin.x + fallbackLeft
-            _workspaceY = rowOrigin.y + Math.max(
-                Fluent.Enums.spacing.xs,
-                (tabBar._tabHeight - Fluent.Enums.controlSize.inputHeightCompact) / 2)
+            _workspaceY = rowOrigin.y + 8
             _workspaceWidth = Math.max(
                 96, Math.min(
                     Math.max(96, tabBar.tabWidth - fallbackLeft - fallbackRight),
@@ -407,14 +391,11 @@ Item {
             return
         }
         var origin = item.mapToItem(root, 0, 0)
-        var left = Fluent.Enums.spacing.xl + Fluent.Enums.iconSize.s
-            + Fluent.Enums.spacing.xs
+        var left = 36
         var right = Fluent.Enums.spacing.xxl
             + Fluent.Enums.iconSize.xxl
         _workspaceX = origin.x + left
-        _workspaceY = origin.y + Math.max(
-            Fluent.Enums.spacing.xs,
-            (item.height - Fluent.Enums.controlSize.inputHeightCompact) / 2)
+        _workspaceY = origin.y + 8
         _workspaceWidth = Math.max(
             96, Math.min(
                 Math.max(96, item.width - left - right),
