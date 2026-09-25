@@ -181,8 +181,20 @@ Item {
             index = _indexForPath(path)
         }
         if (index < 0) return
+        var current = _tabs[index] || {}
+        var patch = changes || {}
+        var dirty = false
+        for (var key in patch) {
+            if (current[key] !== patch[key]) {
+                dirty = true
+                break
+            }
+        }
+        // 值没变就不要换数组：标签栏按数组身份刷新，轮询回来的同值快照
+        // 每次都换一份数组会带来无谓的重排。
+        if (!dirty) return
         var next = _tabs.slice()
-        next[index] = Object.assign({}, next[index], changes || {})
+        next[index] = Object.assign({}, current, patch)
         _tabs = next
     }
 
@@ -268,10 +280,16 @@ Item {
             _selectPath(value)
             return
         }
+        var replacing = _newTab(value)
+        // 工作区下拉框正显示在同一位置：标题必须留空，否则会与下拉框重叠成
+        // “文字 + 下拉框”同时出现。副标题同步进入“打开中…”，一次赋值到位，
+        // 避免分几次替换数组造成标签内容连续跳变。
+        if (_workspaceItems.length > 1) replacing.title = ""
+        replacing.pending = true
+        replacing.subtitle = "打开中…"
         var next = _tabs.slice()
-        next[index] = _newTab(value)
+        next[index] = replacing
         _tabs = next
-        _setPending(value, true)
         // 就地替换：标签索引不变，因此不调用 _syncCurrentIndex()——它按旧的
         // activePath 查找会失败，而 currentIndex 本来就指向这个标签。
         // 标签内容变了(宽度也不同)，等新委托落地后再对齐一次下拉框几何。
@@ -563,10 +581,26 @@ Item {
         gitBridge.requestWorktreeState()
     }
 
+    // 工作区列表内容比较：列表没变就不换数组，避免下拉框按新 model 重新布局。
+    function _sameWorkspaceItems(left, right) {
+        var a = left || []
+        var b = right || []
+        if (a.length !== b.length) return false
+        for (var i = 0; i < a.length; i++) {
+            if (String(a[i].path || "") !== String(b[i].path || "")
+                    || String(a[i].text || "") !== String(b[i].text || "")
+                    || String(a[i].branch || "") !== String(b[i].branch || ""))
+                return false
+        }
+        return true
+    }
+
     function _applyWorkspaceState(repoPath, worktrees) {
         if (!gitBridge || repoPath !== gitBridge.repoPath
                 || repoPath !== _workspaceStateRepoPath) return
-        _workspaceItems = _workspaceItemsFor(worktrees)
+        var items = _workspaceItemsFor(worktrees)
+        if (!_sameWorkspaceItems(items, _workspaceItems))
+            _workspaceItems = items
         workspaceSwitcher.currentIndex = _workspaceComboIndex(activePath)
         _syncWorkspaceTabTitle()
         _syncWorkspaceGeometry()
@@ -877,7 +911,10 @@ Item {
         }
 
         function onRepoPathChanged(path) {
-            root._workspaceItems = []
+            // 就地切换工作区时目标本来就在当前 worktree 列表里，列表继续有效；
+            // 一旦清空，下拉框会先消失、标题文字闪回，等列表回来再切回下拉框，
+            // 在同一位置来回跳变，看起来就是标签内容疯狂闪烁。
+            if (root._workspaceComboIndex(path) < 0) root._workspaceItems = []
             root._workspaceStateRepoPath = String(path || "")
             root._syncWorkspaceTabTitle()
             root.ensurePath(path)

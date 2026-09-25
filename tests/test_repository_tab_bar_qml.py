@@ -449,14 +449,22 @@ def test_repository_tab_bar_workspace_switch_does_not_append_after_open() -> Non
     combo.activated.emit(1)
     # 就地替换：位置 0 换成目标工作区，另一个标签原样保留。
     assert _tab_paths(bar) == ["D:/Repos/Gitora-feature", "D:/Repos/Kaleidos"]
+    # 切换期间下拉框必须一直可见、标题一直留空：清空 worktree 列表会让下拉框
+    # 先消失、标题文字闪回，等列表回来再切回下拉框，同一位置来回跳变即闪烁。
+    assert combo.property("visible")
+    tabs = bar.property("_tabs").toVariant()
+    assert tabs[0]["title"] == ""
 
     # 后端完成打开：repoPathChanged 走 ensurePath，不能再追加一份。
     bridge.object._repo_path = "D:/Repos/Gitora-feature"
     bridge.object.repoPathChanged.emit("D:/Repos/Gitora-feature")
     app.processEvents()
     _pump(30)
+    assert combo.property("visible")
     assert bar.property("tabCount") == 2
     assert _tab_paths(bar) == ["D:/Repos/Gitora-feature", "D:/Repos/Kaleidos"]
+    tabs = bar.property("_tabs").toVariant()
+    assert tabs[0]["title"] == ""
 
     _destroy_repository_scene(app, engine, component, window)
 def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -> None:
@@ -485,6 +493,13 @@ def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -
     # 切换语义：就地换掉当前标签，不在末尾追加新工作区。
     assert "function _switchActiveTabWorkspace(path)" in source
     assert "root._switchActiveTabWorkspace(root._workspaceItems[index].path)" \
+        in source
+
+    # 防抖：值没变的标签更新不换数组，列表没变的 worktree 状态不换 model，
+    # 切换时也不清空仍然有效的 worktree 列表(否则下拉框会消失再出现)。
+    assert "if (!dirty) return" in source
+    assert "function _sameWorkspaceItems(left, right)" in source
+    assert "if (root._workspaceComboIndex(path) < 0) root._workspaceItems = []" \
         in source
 
     # 位置：读标签委托里 detailContent/detailTitleRow/标题 Label 的布局结果，
