@@ -43,7 +43,6 @@ class _DummyGitBridge:
             statusChanged = Signal()
             statusReady = Signal(str, int)
             branchReady = Signal(str, str)
-            worktreeStateReady = Signal(str, "QVariantList")
 
             def __init__(self, path: str, interval: int) -> None:
                 super().__init__()
@@ -77,10 +76,6 @@ class _DummyGitBridge:
                 self.tab_snapshot_calls.append(
                     ([str(item) for item in (paths or [])], str(active or ""))
                 )
-
-            @Slot()
-            def requestWorktreeState(self) -> None:
-                return None
 
             repoPath = Property(str, _get_repo_path, notify=repoPathChanged)
             tabPollIntervalMs = Property(
@@ -228,52 +223,6 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     bridge.object.repoOpened.emit(False, "D:/Repos/PrismQML")
     app.processEvents()
     assert bar.property("tabCount") == expected_count
-
-    _destroy_repository_scene(app, engine, component, window)
-
-
-def test_repository_tab_bar_builds_worktree_switch_actions() -> None:
-    from PySide6.QtCore import QObject
-
-    app, engine, component, window, bridge = _create_repository_scene()
-    bar = window.findChild(QObject, "repositoryTabBar")
-    assert bar is not None
-
-    bar.setProperty(
-        "_worktrees",
-        [
-            {"path": "D:/Repos/Gitora", "branch": "master"},
-            {"path": "D:/Repos/Gitora-feature", "branch": "feature/ui"},
-            {"path": "D:/Repos/Gitora-old", "branch": "", "detached": True},
-            {"path": "D:/Repos/Gitora-stale", "prunable": True},
-        ],
-    )
-    items = bar._worktreeMenuItems("D:/Repos/Gitora")
-    if hasattr(items, "toVariant"):
-        items = items.toVariant()
-    assert [item["text"] for item in items] == [
-        "feature/ui · Gitora-feature",
-        "游离状态 · Gitora-old",
-    ]
-    assert all(item["actionId"].startswith("worktree:") for item in items)
-
-    bar.setProperty("_contextMenuPath", "D:/Repos/Gitora")
-    bar._rebuildWorktreeSubmenu()
-    context_menu = window.findChild(QObject, "repositoryTabContextMenu")
-    assert context_menu is not None
-    submenu_action = context_menu.getAction("_submenu_切换关联工作树")
-    assert submenu_action is not None
-    assert submenu_action.property("hasSubmenu")
-
-    unrelated = bar._worktreeMenuItems("D:/Repos/Unrelated")
-    if hasattr(unrelated, "toVariant"):
-        unrelated = unrelated.toVariant()
-    assert unrelated == []
-
-    selected: list[str] = []
-    bar.repositorySelected.connect(selected.append)
-    bar._handleContextAction(items[0]["actionId"])
-    assert selected == ["D:/Repos/Gitora-feature"]
 
     _destroy_repository_scene(app, engine, component, window)
 
