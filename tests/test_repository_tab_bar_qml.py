@@ -266,6 +266,9 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     assert combo.property("currentIndex") == 0
     assert combo.property("height") == 28
     assert combo.property("width") <= 190
+    bar._syncWorkspaceGeometry()
+    assert combo.property("x") == bar.property("_workspaceX")
+    assert combo.property("y") == bar.property("_workspaceY")
 
     selected: list[str] = []
     bar.repositorySelected.connect(selected.append)
