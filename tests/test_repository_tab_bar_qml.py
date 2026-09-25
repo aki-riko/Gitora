@@ -132,6 +132,35 @@ Window {{
         tabHeight: Fluent.Enums.controlSize.tableHeaderHeight + Fluent.Enums.spacing.xxxl
         gitBridge: bridge
         repoScanner: scanner
+
+        // 探针：读取下拉框内标题文本自身的度量与下拉框内边距总量。
+        // 返回 [文本宽, 文本高, 内边距总量, 左内边距]。
+        function probeComboMetrics() {{
+            var combo = null
+            for (var i = 0; i < bar.children.length; i++) {{
+                if (bar.children[i].objectName === \"workspaceSwitcherComboBox\")
+                    combo = bar.children[i]
+            }}
+            if (!combo) return [-1, -1, -1, -1]
+            var pad = Fluent.Enums.spacing.l + Fluent.Enums.spacing.m
+                + Fluent.Enums.controlSize.checkIconSize + Fluent.Enums.spacing.l
+            var kids = combo.children
+            for (var j = 0; j < kids.length; j++) {{
+                if (typeof kids[j].text === \"string\" && kids[j].width > 0)
+                    return [kids[j].width, kids[j].implicitHeight,
+                            pad, Fluent.Enums.spacing.l]
+            }}
+            return [-1, -1, pad, Fluent.Enums.spacing.l]
+        }}
+
+        // 探针：标签标题文字在标签栏坐标系里的真实锚点，返回 [左边界, 行中心]。
+        function probeTitleAnchor() {{
+            var item = bar._workspaceTabItem()
+            var anchor = bar._workspaceTitleAnchor(item)
+            if (!item || !anchor) return null
+            var point = item.mapToItem(bar, anchor.left, anchor.centerY)
+            return [point.x, point.y]
+        }}
     }}
 }}
 """.encode("utf-8")
@@ -232,14 +261,21 @@ def test_repository_tab_bar_loads_and_deduplicates() -> None:
     _destroy_repository_scene(app, engine, component, window)
 
 
+def _js_to_python(value):
+    """QML 返回的 JS 数组/对象在 PySide 里是 QJSValue，取值前先转成 Python 容器。"""
+    return value.toVariant() if hasattr(value, "toVariant") else value
+
+
 def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     from PySide6.QtCore import QObject
 
     app, engine, component, window, bridge = _create_repository_scene()
     bar = window.findChild(QObject, "repositoryTabBar")
     combo = window.findChild(QObject, "workspaceSwitcherComboBox")
+    fluent_bar = window.findChild(QObject, "repositoryFluentTabBar")
     assert bar is not None
     assert combo is not None
+    assert fluent_bar is not None
     window.show()
     _pump(30)
 
@@ -264,8 +300,34 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
         model = model.toVariant()
     assert [item["text"] for item in model] == ["Gitora", "Gitora-feature"]
     assert combo.property("currentIndex") == 0
-    assert combo.property("height") == 28
-    assert combo.property("width") <= 190
+
+    # 尺寸契约：整体宽 = 左内边距 + 标题文字 + 文字到箭头间距 + 箭头 + 右内边距，
+    # 高 = 标题文字行高。即“主体和文本一样长、整体只多出右侧箭头空间”。
+    text_width, text_height, padding, left_padding = _js_to_python(
+        bar.probeComboMetrics()
+    )
+    assert text_width > 0
+    assert text_height > 0
+    assert combo.property("width") == pytest.approx(text_width + padding)
+    assert combo.property("height") == pytest.approx(text_height)
+    # 不再使用 28px 的紧凑输入框高度，避免比标题文字高出近一倍。
+    assert combo.property("height") < 28
+
+    # 位置契约：下拉框内部文字左边界与标签标题文字左边界重合，
+    # 且垂直中心与标题文字行中心重合。
+    anchor = _js_to_python(bar.probeTitleAnchor())
+    assert anchor is not None
+    anchor_x, anchor_y = anchor
+    assert combo.property("x") == pytest.approx(anchor_x - left_padding)
+    assert combo.property("y") == pytest.approx(anchor_y - text_height / 2)
+    # 必须完整落在活动标签宽度内，不溢出到相邻标签。
+    assert combo.property("x") >= 0
+    assert combo.property("x") + combo.property("width") == pytest.approx(
+        anchor_x - left_padding + text_width + padding
+    )
+    assert combo.property("x") + combo.property("width") \
+        <= fluent_bar.property("tabWidth")
+
     bar._syncWorkspaceGeometry()
     assert combo.property("x") == bar.property("_workspaceX")
     assert combo.property("y") == bar.property("_workspaceY")
@@ -276,15 +338,59 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     combo.activated.emit(1)
     assert selected == ["D:/Repos/Gitora-feature"]
 
+    # 超长仓库名按原标签行为省略收尾，下拉框不得溢出活动标签。
+    bridge.object.worktreeStateReady.emit(
+        "D:/Repos/Gitora",
+        [
+            {"path": "D:/Repos/Gitora", "branch": "master"},
+            {"path": "D:/Repos/" + "a-very-long-worktree-directory-name",
+             "branch": "feature/long-name"},
+        ],
+    )
+    app.processEvents()
+    _pump(60)
+    combo.setProperty("currentIndex", 1)
+    _pump(60)
+    assert combo.property("x") >= 0
+    assert combo.property("x") + combo.property("width") \
+        <= fluent_bar.property("tabWidth")
+
     _destroy_repository_scene(app, engine, component, window)
 
 
-def test_repository_tab_bar_workspace_width_uses_tab_title_region() -> None:
+def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -> None:
+    """下拉框尺寸只能来自标题文本度量，位置只能来自标签标题文字的真实锚点。"""
     source = (COMPONENT_DIR / "RepositoryTabBar.qml").read_text(
         encoding="utf-8"
     )
-    assert "return Math.max(160, Math.min(180, tabWidth - 132))" in source
-    assert "var left = 36" in source
+
+    # 尺寸：宽 = 左内边距 + 文本 + 文本到箭头间距 + 箭头 + 右内边距；高 = 文本行高。
+    assert "Fluent.Enums.spacing.l + workspaceTitleText.width" in source
+    assert "+ Fluent.Enums.spacing.m + Fluent.Enums.controlSize.checkIconSize" \
+        in source
+    assert "height: workspaceTitleText.implicitHeight" in source
+    # 文本与标签标题同款(caption/加粗/前景色)，覆盖引擎默认的 body 字号主文本色。
+    assert "useDefaultContent: false" in source
+    assert "type: Fluent.Enums.label.type_caption" in source
+    assert "font.bold: true" in source
+    # 超长仓库名沿用原标签的省略收尾，不溢出到相邻标签。
+    assert "elide: Text.ElideRight" in source
+    assert "root._workspaceTitleMaxWidth" in source
+
+    # 位置：读标签委托里 detailContent/detailTitleRow/标题 Label 的布局结果，
+    # 而不是按固定偏移猜。
+    assert 'objectName === "tabItemDetailContent"' in source
+    assert "item.mapToItem(root, anchor.left, anchor.centerY)" in source
+    assert "function _workspaceTitleAnchor(item)" in source
+    # 旧的固定偏移与固定宽度猜测必须彻底移除。
+    assert "_workspaceComboWidth" not in source
+    assert "_workspaceWidth" not in source
+    assert "fallbackLeftMargin" not in source
+    assert "inputHeightCompact" not in source
+
+    # 标签栏横向滚动时几何要跟随，而不是靠高频轮询追赶。
+    assert "target: root._tabFlickable()" in source
+    assert "function onContentXChanged() { root._syncWorkspaceGeometry() }" in source
 
 
 def test_repository_tab_context_menu_closes_requested_ranges() -> None:

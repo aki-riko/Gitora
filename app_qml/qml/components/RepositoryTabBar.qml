@@ -30,9 +30,13 @@ Item {
     property string _contextMenuPath: ""
     property var _workspaceItems: []
     property string _workspaceStateRepoPath: ""
+    // 下拉框相对标签栏的落点；由 _syncWorkspaceGeometry 按标签委托里标题
+    // 文字的真实锚点写入，尺寸则由标题文本自身度量决定(见 workspaceSwitcher)。
     property real _workspaceX: 0
     property real _workspaceY: 0
-    property real _workspaceWidth: 120
+    // 标题文字的可用宽度上限；-1 表示不限制。超长仓库名按原标签行为省略收尾，
+    // 不允许下拉框溢出到相邻标签上。
+    property real _workspaceTitleMaxWidth: -1
     // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
     property bool _sessionRestored: false
 
@@ -331,11 +335,6 @@ Item {
         return -1
     }
 
-    function _workspaceComboWidth() {
-        var tabWidth = tabBar ? tabBar.tabWidth : 0
-        return Math.max(160, Math.min(180, tabWidth - 132))
-    }
-
     function _syncWorkspaceTabTitle() {
         var next = _tabs.slice()
         var changed = false
@@ -349,57 +348,117 @@ Item {
                 changed = true
             }
         }
-        if (changed) _tabs = next
+        if (changed) {
+            _tabs = next
+            // 整表替换会让标签委托重建，等新委托落地后再按真实锚点对齐一次。
+            Qt.callLater(_syncWorkspaceGeometry)
+        }
     }
 
+    // 引擎 TabBar 没有导出内部 Flickable/Row/委托，只能用结构特征逐层定位。
+    // 定位失败时返回 null，调用方走退化路径，绝不长期停留在猜测坐标上。
+
+    // 标签栏里的横向 Flickable(标签滚动容器)。
+    function _tabFlickable() {
+        var kids = tabBar ? tabBar.children : null
+        for (var i = 0; kids && i < kids.length; i++) {
+            var kid = kids[i]
+            if (kid && typeof kid.contentX === "number"
+                    && typeof kid.contentWidth === "number")
+                return kid
+        }
+        return null
+    }
+
+    // 承载标签委托的 Row(标签条目容器)。
+    function _tabRow() {
+        var flick = _tabFlickable()
+        var content = flick ? flick.contentItem : null
+        if (!content) return null
+        var rows = content.children || []
+        for (var i = 0; i < rows.length; i++) {
+            var row = rows[i]
+            if (!row || typeof row.spacing !== "number") continue
+            var items = row.children || []
+            for (var j = 0; j < items.length; j++) {
+                if (items[j] && typeof items[j].index === "number") return row
+            }
+        }
+        return null
+    }
+
+    // 当前活动标签的委托；mapToItem 会连同标签栏滚动偏移一起换算。
     function _workspaceTabItem() {
-        var repeater = tabBar ? tabBar.tabRepeater : null
-        return repeater && repeater.itemAt
-            ? repeater.itemAt(tabBar.currentIndex) : null
+        var index = tabBar ? tabBar.currentIndex : -1
+        if (index < 0) return null
+        var row = _tabRow()
+        var items = row ? (row.children || []) : []
+        for (var i = 0; i < items.length; i++) {
+            if (items[i] && items[i].index === index) return items[i]
+        }
+        return null
+    }
+
+    // 活动标签标题文字的真实锚点(相对标签委托)：文字左边界与文字行垂直中心。
+    // 直接读取引擎委托里 detailContent/detailTitleRow/标题 Label 的布局结果，
+    // 使下拉框主体与标题文字逐像素对齐，而不是靠固定偏移猜测。
+    function _workspaceTitleAnchor(item) {
+        if (!item) return null
+        var kids = item.children || []
+        var detail = null
+        for (var i = 0; i < kids.length; i++) {
+            if (kids[i] && kids[i].objectName === "tabItemDetailContent") {
+                detail = kids[i]
+                break
+            }
+        }
+        if (!detail || !detail.visible) return null
+        var rows = detail.children || []
+        var titleRow = null
+        for (var j = 0; j < rows.length; j++) {
+            var candidate = rows[j]
+            if (candidate && typeof candidate.spacing === "number"
+                    && candidate.height > 0) {
+                titleRow = candidate
+                break
+            }
+        }
+        if (!titleRow) return null
+        var leaves = titleRow.children || []
+        var titleLabel = null
+        for (var k = 0; k < leaves.length; k++) {
+            var leaf = leaves[k]
+            if (leaf && leaf.visible && typeof leaf.text === "string") {
+                titleLabel = leaf
+                break
+            }
+        }
+        if (!titleLabel) return null
+        return {
+            left: detail.x + titleRow.x + titleLabel.x,
+            centerY: detail.y + titleRow.y + titleLabel.y + titleLabel.height / 2,
+            // 标题为空时该 Label 会撑满标题行可用宽度，正好是文本可占的上限。
+            maxTextWidth: titleLabel.width
+        }
     }
 
     function _syncWorkspaceGeometry() {
         var item = _workspaceTabItem()
-        if (!item) {
-            var row = tabBar ? tabBar.tabRow : null
-            if (!row || !row.mapToItem) {
-                var fallbackX = tabBar.x + tabBar.currentIndex * tabBar.tabWidth
-                var fallbackTop = tabBar.y
-                var fallbackLeftMargin = 36
-                var fallbackRightMargin = Fluent.Enums.spacing.xxl
-                    + Fluent.Enums.iconSize.xxl
-                _workspaceX = fallbackX + fallbackLeftMargin
-                _workspaceY = fallbackTop + 8
-                _workspaceWidth = Math.max(
-                    96, Math.min(
-                        Math.max(96, tabBar.tabWidth - fallbackLeftMargin
-                            - fallbackRightMargin),
-                        _workspaceComboWidth()))
-                return
-            }
-            var rowOrigin = row.mapToItem(
-                root, tabBar.currentIndex * tabBar.tabWidth, 0)
-            var fallbackLeft = 36
-            var fallbackRight = Fluent.Enums.spacing.xxl
-                + Fluent.Enums.iconSize.xxl
-            _workspaceX = rowOrigin.x + fallbackLeft
-            _workspaceY = rowOrigin.y + 8
-            _workspaceWidth = Math.max(
-                96, Math.min(
-                    Math.max(96, tabBar.tabWidth - fallbackLeft - fallbackRight),
-                    _workspaceComboWidth()))
+        var anchor = _workspaceTitleAnchor(item)
+        if (!item || !anchor) {
+            // 标签委托尚未建立(首帧或模型重建中)：先落在标签栏内容区左上，
+            // 委托可用后会在同一拍或下一次同步里被真实锚点覆盖。
+            _workspaceX = tabBar.x + Fluent.Enums.spacing.xs + Fluent.Enums.spacing.l
+            _workspaceY = tabBar.y + Math.max(
+                0, (tabHeight - workspaceSwitcher.height) / 2)
+            _workspaceTitleMaxWidth = -1
             return
         }
-        var origin = item.mapToItem(root, 0, 0)
-        var left = 36
-        var right = Fluent.Enums.spacing.xxl
-            + Fluent.Enums.iconSize.xxl
-        _workspaceX = origin.x + left
-        _workspaceY = origin.y + 8
-        _workspaceWidth = Math.max(
-            96, Math.min(
-                Math.max(96, item.width - left - right),
-                _workspaceComboWidth()))
+        _workspaceTitleMaxWidth = anchor.maxTextWidth
+        var origin = item.mapToItem(root, anchor.left, anchor.centerY)
+        // 文字左边界对齐：下拉框内部文本自带 spacing.l 左内边距，向外抵消。
+        _workspaceX = origin.x - Fluent.Enums.spacing.l
+        _workspaceY = origin.y - workspaceSwitcher.height / 2
     }
 
     function _requestWorktreeState() {
@@ -538,24 +597,51 @@ Item {
     }
 
     // 活动标签标题上的透明工作区下拉框，直接切换主工作树与关联 worktree。
-    Fluent.ComboBox {
+    // 尺寸完全由标题文本自身决定：宽 = 标题文字 + 右侧箭头区，高 = 标题文字行高；
+    // 落点由 _syncWorkspaceGeometry 读取标签委托里标题文字的真实锚点得到。
+    // 用 ComboBoxDefault 而不是 ComboBox：ComboBox 是 ComboBoxEntry 的门面，
+    // 不转发 useDefaultContent，无法把引擎默认的 body 字号文本换成标题同款文本。
+    Fluent.ComboBoxDefault {
         id: workspaceSwitcher
         objectName: "workspaceSwitcherComboBox"
         parent: root
         x: root._workspaceX
         y: root._workspaceY
-        width: root._workspaceWidth
-        height: Fluent.Enums.controlSize.inputHeightCompact
+        width: Fluent.Enums.spacing.l + workspaceTitleText.width
+            + Fluent.Enums.spacing.m + Fluent.Enums.controlSize.checkIconSize
+            + Fluent.Enums.spacing.l
+        height: workspaceTitleText.implicitHeight
         z: Fluent.Enums.zIndex.controlsAbove
         visible: root._workspaceItems.length > 1
             && root.switchingEnabled
         enabled: visible
         style: Fluent.Enums.comboBox.style_transparent
+        // 引擎默认内容用 body 字号与主文本色，与标签标题(caption/加粗/前景色)
+        // 不一致，会在同一行里显出字号与颜色差；这里改为自行提供与标题同款的
+        // 文本，只借用下拉框的透明样式与箭头。
+        useDefaultContent: false
         model: root._workspaceItems
         currentIndex: root._workspaceComboIndex(root.activePath)
         onActivated: function(index) {
             if (index < 0 || index >= root._workspaceItems.length) return
             root._selectPath(root._workspaceItems[index].path)
+        }
+
+        Fluent.Label {
+            id: workspaceTitleText
+            anchors.left: parent.left
+            anchors.leftMargin: Fluent.Enums.spacing.l
+            anchors.verticalCenter: parent.verticalCenter
+            width: root._workspaceTitleMaxWidth > 0
+                ? Math.min(implicitWidth, root._workspaceTitleMaxWidth)
+                : implicitWidth
+            type: Fluent.Enums.label.type_caption
+            color: Fluent.Enums.foregroundColor
+            font.bold: true
+            text: workspaceSwitcher.currentText
+            wrapMode: Text.NoWrap
+            // 与原标签标题一致：超长仓库名省略收尾，不溢出到相邻标签。
+            elide: Text.ElideRight
         }
     }
 
@@ -755,15 +841,32 @@ Item {
         }
     }
 
-    // 定时轮询打开页面的徽标与分支；Git 操作忙时切换被禁用，轮询同步暂停。
+    // 标签栏横向滚动时，标题锚点在标签栏坐标系里会整体平移；直接挂在滚动位置
+    // 变化上同步，避免用高频轮询去追赶滚动。
+    Connections {
+        target: root._tabFlickable()
+
+        function onContentXChanged() { root._syncWorkspaceGeometry() }
+    }
+
+    // 切换标签页后，下拉框要跟到新的活动标签上。
+    Connections {
+        target: tabBar
+
+        function onCurrentIndexChanged() { root._syncWorkspaceGeometry() }
+    }
+
+    // 标签委托重建、标签高度变化、窗口缩放等结构性变化后的兜底同步；
+    // 滚动跟随由上面的 contentX 连接负责，不再依赖这个周期。
     Timer {
         id: workspaceLayoutTimer
-        interval: 50
+        interval: 250
         repeat: true
         running: root.switchingEnabled && workspaceSwitcher.visible
         onTriggered: root._syncWorkspaceGeometry()
     }
 
+    // 定时轮询打开页面的徽标与分支；Git 操作忙时切换被禁用，轮询同步暂停。
     Timer {
         id: tabSnapshotPollTimer
         interval: (root.gitBridge && root.gitBridge.tabPollIntervalMs > 0)
