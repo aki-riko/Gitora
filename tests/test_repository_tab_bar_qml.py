@@ -133,24 +133,47 @@ Window {{
         gitBridge: bridge
         repoScanner: scanner
 
-        // 探针：读取下拉框内标题文本自身的度量与下拉框内边距总量。
-        // 返回 [文本宽, 文本高, 内边距总量, 左内边距]。
+        // 探针：读取下拉框内标题文本的度量、箭头区宽度与左右呼吸位。
+        // 返回 [文本宽, 文本高, 箭头区宽, 边缘留白]。
         function probeComboMetrics() {{
             var combo = null
             for (var i = 0; i < bar.children.length; i++) {{
                 if (bar.children[i].objectName === \"workspaceSwitcherComboBox\")
                     combo = bar.children[i]
             }}
-            if (!combo) return [-1, -1, -1, -1]
-            var pad = Fluent.Enums.spacing.l + Fluent.Enums.spacing.m
-                + Fluent.Enums.controlSize.checkIconSize + Fluent.Enums.spacing.l
+            var edge = Fluent.Enums.spacing.xxs
+            if (!combo) return [-1, -1, -1, edge]
+            var arrowArea = Fluent.Enums.spacing.m
+                + Fluent.Enums.controlSize.checkIconSize
             var kids = combo.children
             for (var j = 0; j < kids.length; j++) {{
                 if (typeof kids[j].text === \"string\" && kids[j].width > 0)
                     return [kids[j].width, kids[j].implicitHeight,
-                            pad, Fluent.Enums.spacing.l]
+                            arrowArea, edge]
             }}
-            return [-1, -1, pad, Fluent.Enums.spacing.l]
+            return [-1, -1, arrowArea, edge]
+        }}
+
+        // 探针：引擎自带箭头是否已被隐藏(它固定距右边缘 spacing.l，会撑出内边距)。
+        function probeEngineChevronVisible() {{
+            var combo = null
+            for (var i = 0; i < bar.children.length; i++) {{
+                if (bar.children[i].objectName === \"workspaceSwitcherComboBox\")
+                    combo = bar.children[i]
+            }}
+            if (!combo) return true
+            var kids = combo.children
+            for (var j = 0; j < kids.length; j++) {{
+                if (typeof kids[j].comboControl === \"undefined\") continue
+                var inner = kids[j].children
+                for (var k = 0; k < inner.length; k++) {{
+                    var child = inner[k]
+                    if (typeof child.direction === \"string\"
+                            && typeof child.isOpen === \"boolean\")
+                        return child.visible
+                }}
+            }}
+            return true
         }}
 
         // 探针：标签标题文字在标签栏坐标系里的真实锚点，返回 [左边界, 行中心]。
@@ -301,30 +324,31 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     assert [item["text"] for item in model] == ["Gitora", "Gitora-feature"]
     assert combo.property("currentIndex") == 0
 
-    # 尺寸契约：整体宽 = 左内边距 + 标题文字 + 文字到箭头间距 + 箭头 + 右内边距，
-    # 高 = 标题文字行高。即“主体和文本一样长、整体只多出右侧箭头空间”。
-    text_width, text_height, padding, left_padding = _js_to_python(
+    # 尺寸契约：整体宽 = 左右呼吸位 + 标题文字 + 箭头区(文字到箭头的间距 + 箭头)，
+    # 高 = 标题文字行高。即主体和文本一样长，整体只多出箭头空间与极小的呼吸位。
+    text_width, text_height, arrow_area, edge = _js_to_python(
         bar.probeComboMetrics()
     )
     assert text_width > 0
     assert text_height > 0
-    assert combo.property("width") == pytest.approx(text_width + padding)
+    assert combo.property("width") == pytest.approx(
+        text_width + arrow_area + edge * 2
+    )
     assert combo.property("height") == pytest.approx(text_height)
     # 不再使用 28px 的紧凑输入框高度，避免比标题文字高出近一倍。
     assert combo.property("height") < 28
+    # 引擎自带箭头固定距右边缘 spacing.l，必须隐藏，否则会撑出多余内边距。
+    assert not bar.probeEngineChevronVisible()
 
-    # 位置契约：下拉框内部文字左边界与标签标题文字左边界重合，
-    # 且垂直中心与标题文字行中心重合。
+    # 位置契约：左右各留 edge 呼吸位后，内部文字左边界仍与标签标题文字左边界
+    # 重合；垂直中心与标题文字行中心重合。
     anchor = _js_to_python(bar.probeTitleAnchor())
     assert anchor is not None
     anchor_x, anchor_y = anchor
-    assert combo.property("x") == pytest.approx(anchor_x - left_padding)
+    assert combo.property("x") == pytest.approx(anchor_x - edge)
     assert combo.property("y") == pytest.approx(anchor_y - text_height / 2)
     # 必须完整落在活动标签宽度内，不溢出到相邻标签。
     assert combo.property("x") >= 0
-    assert combo.property("x") + combo.property("width") == pytest.approx(
-        anchor_x - left_padding + text_width + padding
-    )
     assert combo.property("x") + combo.property("width") \
         <= fluent_bar.property("tabWidth")
 
@@ -364,15 +388,19 @@ def test_repository_tab_bar_workspace_combo_geometry_comes_from_title_anchor() -
         encoding="utf-8"
     )
 
-    # 尺寸：宽 = 左内边距 + 文本 + 文本到箭头间距 + 箭头 + 右内边距；高 = 文本行高。
-    assert "Fluent.Enums.spacing.l + workspaceTitleText.width" in source
-    assert "+ Fluent.Enums.spacing.m + Fluent.Enums.controlSize.checkIconSize" \
-        in source
+    # 尺寸：宽 = 左右呼吸位 + 文本 + 箭头区(文本到箭头间距 + 箭头)；高 = 文本行高。
+    assert "root._workspaceEdgePadding() + workspaceTitleText.width" in source
+    assert "+ root._workspaceArrowArea() + root._workspaceEdgePadding()" in source
     assert "height: workspaceTitleText.implicitHeight" in source
     # 文本与标签标题同款(caption/加粗/前景色)，覆盖引擎默认的 body 字号主文本色。
     assert "useDefaultContent: false" in source
     assert "type: Fluent.Enums.label.type_caption" in source
     assert "font.bold: true" in source
+    # 引擎箭头固定距右边缘 spacing.l，必须隐藏并用贴边的自绘箭头替代。
+    assert "function _hideEngineChevron()" in source
+    assert "Fluent.ChevronIcon {" in source
+    assert "anchors.rightMargin: root._workspaceEdgePadding()" in source
+    assert "anchors.leftMargin: root._workspaceEdgePadding()" in source
     # 超长仓库名沿用原标签的省略收尾，不溢出到相邻标签。
     assert "elide: Text.ElideRight" in source
     assert "root._workspaceTitleMaxWidth" in source

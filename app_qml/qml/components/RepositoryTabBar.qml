@@ -37,6 +37,8 @@ Item {
     // 标题文字的可用宽度上限；-1 表示不限制。超长仓库名按原标签行为省略收尾，
     // 不允许下拉框溢出到相邻标签上。
     property real _workspaceTitleMaxWidth: -1
+    // 引擎自带的箭头固定距控件右边缘 spacing.l，会撑出多余内边距，只隐藏一次。
+    property bool _engineChevronHidden: false
     // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
     property bool _sessionRestored: false
 
@@ -437,27 +439,64 @@ Item {
         return {
             left: detail.x + titleRow.x + titleLabel.x,
             centerY: detail.y + titleRow.y + titleLabel.y + titleLabel.height / 2,
-            // 标题为空时该 Label 会撑满标题行可用宽度，正好是文本可占的上限。
-            maxTextWidth: titleLabel.width
+            // 标题为空时该 Label 会撑满标题行可用宽度，正好是标题区可占的上限。
+            availableWidth: titleLabel.width
+        }
+    }
+
+    // 箭头区宽度(文本到箭头的间距 + 箭头本身)。下拉框主体与箭头都贴边排布后，
+    // 这段宽度要从标题可用宽度里扣除，避免挤到 badge 或标签外。
+    function _workspaceArrowArea() {
+        return Fluent.Enums.spacing.m + Fluent.Enums.controlSize.checkIconSize
+    }
+
+    // 控件矩形相对“文本 + 箭头”在左右各留的极小呼吸位，避免文字/箭头紧贴边框。
+    function _workspaceEdgePadding() {
+        return Fluent.Enums.spacing.xxs
+    }
+
+    // 引擎箭头固定在距控件右边缘 spacing.l 处；透明样式的高亮背景会把这段空白
+    // 一起画出来，形成左右各一段多余内边距。隐藏它，改由本组件在控件右边缘
+    // 自绘同款箭头，使背景正好包住“文本 + 箭头”。
+    function _hideEngineChevron() {
+        if (_engineChevronHidden) return
+        var kids = workspaceSwitcher ? workspaceSwitcher.children : null
+        for (var i = 0; kids && i < kids.length; i++) {
+            var content = kids[i]
+            if (!content || typeof content.comboControl === "undefined") continue
+            var inner = content.children || []
+            for (var j = 0; j < inner.length; j++) {
+                var child = inner[j]
+                if (child && typeof child.direction === "string"
+                        && typeof child.isOpen === "boolean") {
+                    child.visible = false
+                    _engineChevronHidden = true
+                    return
+                }
+            }
         }
     }
 
     function _syncWorkspaceGeometry() {
+        _hideEngineChevron()
         var item = _workspaceTabItem()
         var anchor = _workspaceTitleAnchor(item)
         if (!item || !anchor) {
             // 标签委托尚未建立(首帧或模型重建中)：先落在标签栏内容区左上，
             // 委托可用后会在同一拍或下一次同步里被真实锚点覆盖。
-            _workspaceX = tabBar.x + Fluent.Enums.spacing.xs + Fluent.Enums.spacing.l
+            _workspaceX = tabBar.x + Fluent.Enums.spacing.xs
             _workspaceY = tabBar.y + Math.max(
                 0, (tabHeight - workspaceSwitcher.height) / 2)
             _workspaceTitleMaxWidth = -1
             return
         }
-        _workspaceTitleMaxWidth = anchor.maxTextWidth
+        _workspaceTitleMaxWidth = Math.max(
+            0, anchor.availableWidth - _workspaceArrowArea()
+                - _workspaceEdgePadding() * 2)
         var origin = item.mapToItem(root, anchor.left, anchor.centerY)
-        // 文字左边界对齐：下拉框内部文本自带 spacing.l 左内边距，向外抵消。
-        _workspaceX = origin.x - Fluent.Enums.spacing.l
+        // 控件矩形紧贴可见区域：左右各留 _workspaceEdgePadding 呼吸位，
+        // 左边缘外推同样的距离后，内部文字左边界仍与标题文字左边界重合。
+        _workspaceX = origin.x - _workspaceEdgePadding()
         _workspaceY = origin.y - workspaceSwitcher.height / 2
     }
 
@@ -597,8 +636,9 @@ Item {
     }
 
     // 活动标签标题上的透明工作区下拉框，直接切换主工作树与关联 worktree。
-    // 尺寸完全由标题文本自身决定：宽 = 标题文字 + 右侧箭头区，高 = 标题文字行高；
-    // 落点由 _syncWorkspaceGeometry 读取标签委托里标题文字的真实锚点得到。
+    // 控件矩形只比“标题文字 + 箭头”大出左右各 _workspaceEdgePadding 的呼吸位：
+    // 宽 = 呼吸位 + 文字 + 箭头区 + 呼吸位，高 = 文字行高；左边缘外推同一位移，
+    // 保证内部文字左边界与标签标题文字左边界重合。
     // 用 ComboBoxDefault 而不是 ComboBox：ComboBox 是 ComboBoxEntry 的门面，
     // 不转发 useDefaultContent，无法把引擎默认的 body 字号文本换成标题同款文本。
     Fluent.ComboBoxDefault {
@@ -607,9 +647,8 @@ Item {
         parent: root
         x: root._workspaceX
         y: root._workspaceY
-        width: Fluent.Enums.spacing.l + workspaceTitleText.width
-            + Fluent.Enums.spacing.m + Fluent.Enums.controlSize.checkIconSize
-            + Fluent.Enums.spacing.l
+        width: root._workspaceEdgePadding() + workspaceTitleText.width
+            + root._workspaceArrowArea() + root._workspaceEdgePadding()
         height: workspaceTitleText.implicitHeight
         z: Fluent.Enums.zIndex.controlsAbove
         visible: root._workspaceItems.length > 1
@@ -618,7 +657,7 @@ Item {
         style: Fluent.Enums.comboBox.style_transparent
         // 引擎默认内容用 body 字号与主文本色，与标签标题(caption/加粗/前景色)
         // 不一致，会在同一行里显出字号与颜色差；这里改为自行提供与标题同款的
-        // 文本，只借用下拉框的透明样式与箭头。
+        // 文本与箭头，只借用下拉框的透明样式与弹层行为。
         useDefaultContent: false
         model: root._workspaceItems
         currentIndex: root._workspaceComboIndex(root.activePath)
@@ -630,7 +669,7 @@ Item {
         Fluent.Label {
             id: workspaceTitleText
             anchors.left: parent.left
-            anchors.leftMargin: Fluent.Enums.spacing.l
+            anchors.leftMargin: root._workspaceEdgePadding()
             anchors.verticalCenter: parent.verticalCenter
             width: root._workspaceTitleMaxWidth > 0
                 ? Math.min(implicitWidth, root._workspaceTitleMaxWidth)
@@ -642,6 +681,17 @@ Item {
             wrapMode: Text.NoWrap
             // 与原标签标题一致：超长仓库名省略收尾，不溢出到相邻标签。
             elide: Text.ElideRight
+        }
+
+        // 引擎箭头被隐藏，这里在右边缘自绘同款箭头，贴合控件边界。
+        Fluent.ChevronIcon {
+            id: workspaceChevron
+            anchors.right: parent.right
+            anchors.rightMargin: root._workspaceEdgePadding()
+            anchors.verticalCenter: parent.verticalCenter
+            animated: true
+            isOpen: workspaceSwitcher.isOpen
+            color: Fluent.Enums.textColor.secondary
         }
     }
 
