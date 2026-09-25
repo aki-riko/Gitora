@@ -254,11 +254,18 @@ def test_repository_tab_bar_workspace_combo_switches_worktree() -> None:
     app.processEvents()
     assert combo.property("style") == 2
     assert combo.property("visible")
+    tabs = bar.property("_tabs")
+    if hasattr(tabs, "toVariant"):
+        tabs = tabs.toVariant()
+    assert tabs[0]["title"] == ""
+    assert tabs[0]["workspaceTitle"] == "Gitora"
     model = combo.property("model")
     if hasattr(model, "toVariant"):
         model = model.toVariant()
     assert [item["text"] for item in model] == ["Gitora", "Gitora-feature"]
     assert combo.property("currentIndex") == 0
+    assert combo.property("height") == 28
+    assert combo.property("width") <= 190
 
     selected: list[str] = []
     bar.repositorySelected.connect(selected.append)

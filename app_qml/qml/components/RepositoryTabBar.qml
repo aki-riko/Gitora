@@ -30,6 +30,9 @@ Item {
     property string _contextMenuPath: ""
     property var _workspaceItems: []
     property string _workspaceStateRepoPath: ""
+    property real _workspaceX: 0
+    property real _workspaceY: 0
+    property real _workspaceWidth: 120
     // 会话恢复完成前不回写快照，避免用启动中的空标签覆盖上次会话。
     property bool _sessionRestored: false
 
@@ -75,6 +78,7 @@ Item {
         var value = String(path || "")
         return {
             title: _repoName(value),
+            workspaceTitle: _repoName(value),
             icon: Fluent.Enums.icon.folder,
             subtitle: "未读取分支",
             branch: "",
@@ -344,10 +348,58 @@ Item {
                 + Fluent.Enums.comboBoxMetrics.arrowAreaWidth))
     }
 
+    function _syncWorkspaceTabTitle() {
+        var next = _tabs.slice()
+        var changed = false
+        var hideActiveTitle = _workspaceItems.length > 1
+        for (var i = 0; i < next.length; i++) {
+            var tab = next[i] || {}
+            var title = hideActiveTitle && _pathKey(tab.path) === activePathKey
+                ? "" : String(tab.workspaceTitle || tab.title || "")
+            if (String(tab.title || "") !== title) {
+                next[i] = Object.assign({}, tab, {title: title})
+                changed = true
+            }
+        }
+        if (changed) _tabs = next
+    }
+
+    function _workspaceTabItem() {
+        var repeater = tabBar ? tabBar.tabRepeater : null
+        return repeater && repeater.itemAt
+            ? repeater.itemAt(tabBar.currentIndex) : null
+    }
+
+    function _syncWorkspaceGeometry() {
+        var item = _workspaceTabItem()
+        if (!item) {
+            _workspaceX = tabBar.x + tabBar.currentIndex * tabBar.tabWidth
+                + Fluent.Enums.spacing.xl + Fluent.Enums.iconSize.s
+                    + Fluent.Enums.spacing.xs
+            _workspaceY = tabBar.y + Fluent.Enums.spacing.s
+            _workspaceWidth = _workspaceComboWidth()
+            return
+        }
+        var origin = item.mapToItem(root, 0, 0)
+        var left = Fluent.Enums.spacing.xl + Fluent.Enums.iconSize.s
+            + Fluent.Enums.spacing.xs
+        var right = Fluent.Enums.spacing.xxl
+            + Fluent.Enums.iconSize.xxl
+        _workspaceX = origin.x + left
+        _workspaceY = origin.y + Math.max(
+            Fluent.Enums.spacing.xs,
+            (item.height - Fluent.Enums.controlSize.inputHeightCompact) / 2)
+        _workspaceWidth = Math.max(
+            96, Math.min(
+                Math.max(96, item.width - left - right),
+                _workspaceComboWidth()))
+    }
+
     function _requestWorktreeState() {
         if (!gitBridge || !gitBridge.requestWorktreeState || activePath === "") {
             _workspaceStateRepoPath = ""
             _workspaceItems = []
+            _syncWorkspaceTabTitle()
             return
         }
         _workspaceStateRepoPath = activePath
@@ -359,6 +411,8 @@ Item {
                 || repoPath !== _workspaceStateRepoPath) return
         _workspaceItems = _workspaceItemsFor(worktrees)
         workspaceSwitcher.currentIndex = _workspaceComboIndex(activePath)
+        _syncWorkspaceTabTitle()
+        _syncWorkspaceGeometry()
     }
 
     function _openTabContextMenu(index, position) {
@@ -481,12 +535,10 @@ Item {
         id: workspaceSwitcher
         objectName: "workspaceSwitcherComboBox"
         parent: root
-        x: tabBar.x + tabBar.currentIndex * tabBar.tabWidth
-            + Fluent.Enums.spacing.xl + Fluent.Enums.iconSize.s
-                + Fluent.Enums.spacing.xs
-        y: tabBar.y + Fluent.Enums.spacing.s
-        width: root._workspaceComboWidth()
-        height: Fluent.Enums.controlSize.inputHeight
+        x: root._workspaceX
+        y: root._workspaceY
+        width: root._workspaceWidth
+        height: Fluent.Enums.controlSize.inputHeightCompact
         z: Fluent.Enums.zIndex.controlsAbove
         visible: root._workspaceItems.length > 1
             && root.switchingEnabled
@@ -631,6 +683,7 @@ Item {
         function onRepoPathChanged(path) {
             root._workspaceItems = []
             root._workspaceStateRepoPath = String(path || "")
+            root._syncWorkspaceTabTitle()
             root.ensurePath(path)
             root._setPending(path, false)
             root._closingActivePath = ""
@@ -697,6 +750,14 @@ Item {
 
     // 定时轮询打开页面的徽标与分支；Git 操作忙时切换被禁用，轮询同步暂停。
     Timer {
+        id: workspaceLayoutTimer
+        interval: 50
+        repeat: true
+        running: root.switchingEnabled && workspaceSwitcher.visible
+        onTriggered: root._syncWorkspaceGeometry()
+    }
+
+    Timer {
         id: tabSnapshotPollTimer
         interval: (root.gitBridge && root.gitBridge.tabPollIntervalMs > 0)
             ? root.gitBridge.tabPollIntervalMs : 1000
@@ -739,6 +800,7 @@ Item {
             ensurePath(activePath)
             _syncCurrentIndex()
             _requestWorktreeState()
+            _syncWorkspaceGeometry()
         }
     }
 }
