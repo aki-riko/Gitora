@@ -11,7 +11,7 @@ DEBUG = "__compiled__" not in globals()
 
 YEAR = 2026
 AUTHOR = "aki-riko"
-VERSION = "v1.9.3"
+VERSION = "v1.9.4"
 APP_NAME = "Gitora"
 APP_USER_MODEL_ID = "PrismQML.Gitora"
 APP_WINDOW_WIDTH = 1100

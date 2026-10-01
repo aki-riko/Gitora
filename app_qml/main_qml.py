@@ -362,6 +362,9 @@ from app_qml.backend.crash_trace import (  # noqa: E402
     crash_trace_enabled,
     install_crash_trace,
 )
+from app_qml.backend.task_leak_trace import (  # noqa: E402
+    install_task_leak_trace,
+)
 
 # 崩溃取证观测（默认关闭）：观测用环境变量必须早于 QGuiApplication 构造。
 configure_trace_env()
@@ -414,13 +417,19 @@ def main() -> int:
     engine = app.engine
     # 崩溃取证观测（默认关闭）：QML 引擎告警逐条落日志。
     attach_qml_warning_logger(engine)
+    # 任务同步对象泄漏观测（默认关闭）：判定 TaskHandle 与 _TaskControl 谁未回收。
+    install_task_leak_trace()
 
     # 单实例检查(PrismQML SingleInstance:Windows Named Mutex + 本地套接字 IPC);
     # 自检模式跳过。第二实例会通知主实例激活窗口后静默退出,不弹框。
     app._single_instance = None
     if not os.environ.get("GITESS_QML_SELFTEST"):
         from prismqml import SingleInstance
-        instance = SingleInstance("io.github.aki-riko.gitora")
+        # 默认单实例 ID 不变；GITORA_INSTANCE_ID 仅用于起一个可与正式实例并存的
+        # 诊断实例（排查用），不设置时行为与从前完全一致。
+        instance = SingleInstance(
+            os.environ.get("GITORA_INSTANCE_ID") or "io.github.aki-riko.gitora"
+        )
         if not instance.try_lock():
             # 已有实例在运行:try_lock 内部已通知主实例激活窗口,这里直接退出
             return 0
