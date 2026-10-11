@@ -479,9 +479,10 @@ Item {
                                 Layout.fillHeight: true
 
                                 // 空状态:工作区干净
-                                Fluent.EmptyState {
+                                Fluent.StateWidget {
                                     anchors.centerIn: parent
                                     visible: root.changeCount === 0
+                                    stateType: Fluent.Enums.state.type_no_data
                                     icon: Fluent.Enums.icon.checkmark_circle
                                     title: "工作区干净"
                                     description: "没有未提交的变更"
@@ -643,9 +644,10 @@ Item {
                     border.color: Fluent.Enums.stateColor.border
 
                     // 空状态:未选择文件
-                    Fluent.EmptyState {
+                    Fluent.StateWidget {
                         anchors.centerIn: parent
                         visible: root.selectedPath === ""
+                        stateType: Fluent.Enums.state.type_no_data
                         icon: Fluent.Enums.icon.document
                         title: "查看文件差异"
                         description: "从左侧变更列表选择一个文件"

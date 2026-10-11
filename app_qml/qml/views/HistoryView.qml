@@ -1355,9 +1355,10 @@ Item {
                 border.color: Fluent.Enums.stateColor.border
 
                 // 空状态
-                Fluent.EmptyState {
+                Fluent.StateWidget {
                     anchors.centerIn: parent
                     visible: !root.selectedCommit
+                    stateType: Fluent.Enums.state.type_no_data
                     icon: Fluent.Enums.icon.history
                     title: "未选择提交"
                     description: "从左侧时间线选择一个提交查看详情"
