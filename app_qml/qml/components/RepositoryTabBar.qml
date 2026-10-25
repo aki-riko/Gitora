@@ -1013,6 +1013,7 @@ Item {
     }
 
     // 定时轮询打开页面的徽标与分支；Git 操作忙时切换被禁用，轮询同步暂停。
+    // 窗口最小化/隐藏时也停止：用户看不到徽标变化，继续每秒拉 git 只是白烧 CPU。
     Timer {
         id: tabSnapshotPollTimer
         interval: (root.gitBridge && root.gitBridge.tabPollIntervalMs > 0)
@@ -1020,7 +1021,18 @@ Item {
         repeat: true
         running: root.switchingEnabled && !!root.gitBridge
             && root.activePath !== "" && root.tabCount > 0
+            && root.gitBridge.windowActive !== false
         onTriggered: root._pollTabSnapshots()
+    }
+
+    // 窗口回到前台时立即补一轮标签快照，避免停轮询期间徽标过期。
+    Connections {
+        target: root.gitBridge
+        enabled: !!root.gitBridge
+        function onWindowActiveChanged() {
+            if (root.gitBridge.windowActive && root.activePath !== "" && root.tabCount > 0)
+                root._pollTabSnapshots()
+        }
     }
 
     Shortcut {

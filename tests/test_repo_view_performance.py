@@ -131,10 +131,17 @@ class RepoViewPerformanceTest(unittest.TestCase):
 
         self.assertIn("GitBridge.requestAdvancedState()", source)
         self.assertIn("function onAdvancedStateReady", source)
-        self.assertIn("interval: GitBridge.pollIntervalMs", source)
+        # worktree/submodule 变化频率很低,必须用页级独立间隔(5s),
+        # 不能复用 1s 的状态轮询间隔,否则本页每分钟白拉 120 条 git。
+        self.assertIn("readonly property int _advancedPollIntervalMs: 5000", source)
+        self.assertIn("interval: root._advancedPollIntervalMs", source)
+        self.assertNotIn("interval: GitBridge.pollIntervalMs", source)
+        # 窗口最小化/隐藏时必须一并停止。
+        self.assertIn("GitBridge.windowActive !== false", source)
         self.assertIn("running: root.visible && !!GitBridge && !!GitBridge.repoPath", source)
         self.assertIn("if (!root._advancedRequesting) root.reload()", source)
         self.assertIn("onVisibleChanged", source)
+        self.assertIn("function onWindowActiveChanged", source)
         self.assertNotIn("正在后台读取高级仓库信息", source)
         self.assertNotIn("GitBridge.getWorktrees()", source)
         self.assertNotIn("GitBridge.getSubmodules()", source)

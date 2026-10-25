@@ -175,6 +175,7 @@ class GitBridge(QObject):
     quickCommitPushFinished = Signal(bool, str)
     progressUpdated = Signal(int, str)
     operationBusyChanged = Signal()
+    windowActiveChanged = Signal()
     repoPathChanged = Signal(str)
     repoOpened = Signal(bool, str)   # 异步打开完成(成功, 路径/错误消息)
     repoOpenRejected = Signal(str, str)  # (请求路径, 拒绝原因)
@@ -211,6 +212,11 @@ class GitBridge(QObject):
     _POLL_INTERVAL_MS = 1000
     # 非活动标签页快照轮询间隔(ms):定时刷新所有已打开标签的徽标(变更数)与分支
     _TAB_POLL_INTERVAL_MS = 1000
+    # 空闲退避:连续这么多轮指纹不变时,把间隔放大到 _POLL_IDLE_INTERVAL_MS。
+    # 窗口最小化/失焦时干脆停轮询(见 setWindowActive)。窗口不可见时用户看不到
+    # 任何刷新结果,继续每秒拉起 git 只会白烧 CPU。
+    _POLL_IDLE_AFTER_UNCHANGED = 30
+    _POLL_IDLE_INTERVAL_MS = 5000
 
     def __init__(self, parent: Optional[QObject] = None):
         super().__init__(parent)
@@ -226,6 +232,8 @@ class GitBridge(QObject):
         self._poll_busy = False         # 本轮是否在算
         self._poll_repo = ""            # 本轮针对的仓库(防切仓库串读)
         self._poll_generation = 0       # 基线代际(内部变更/切仓库时递增)
+        self._poll_unchanged_rounds = 0  # 连续"指纹未变"轮数(驱动空闲退避)
+        self._window_active = True       # 主窗口是否处于可见且未最小化状态
         # 转发底层信号
         self._svc.statusChanged.connect(self._forward_service_status_changed)
         self._svc.operationStarted.connect(self._forward_service_operation_started)
@@ -375,12 +383,51 @@ class GitBridge(QObject):
         self._poll_generation += 1
         self._poll_fingerprint = ""
         self._poll_repo = self._svc.repo_path or ""
+        self._poll_unchanged_rounds = 0
+        self._apply_poll_interval()
         self._timeline_trace(
             "poll.baseline_reset",
             reason=reason,
             generation=self._poll_generation,
             repo=self._poll_repo,
         )
+
+    def _poll_interval_ms(self) -> int:
+        """按空闲程度决定当前轮询间隔(毫秒)。"""
+        if self._poll_unchanged_rounds >= self._POLL_IDLE_AFTER_UNCHANGED:
+            return self._POLL_IDLE_INTERVAL_MS
+        return self._POLL_INTERVAL_MS
+
+    def _apply_poll_interval(self) -> None:
+        """把计算出的间隔写回定时器(主线程,只做一次整数比较后 setInterval)。"""
+        target = self._poll_interval_ms()
+        if self._poll_timer.interval() != target:
+            self._poll_timer.setInterval(target)
+            self._timeline_trace("poll.interval_changed", interval_ms=target)
+
+    @Slot(bool)
+    def setWindowActive(self, active: bool) -> None:
+        """主窗口可见性变化时调用:不可见(最小化/隐藏)就停轮询,恢复时立即补一轮。
+
+        窗口不可见期间用户看不到任何刷新结果,继续每秒拉起 git 只白烧 CPU;
+        恢复时把基线置空并立刻拉一次,保证回到前台时数据是新的。
+        """
+        active = bool(active)
+        if active == self._window_active:
+            return
+        self._window_active = active
+        if active:
+            self._reset_poll_baseline("window_activated")
+            self._poll_timer.start()
+            self._poll_tick()
+        else:
+            self._poll_timer.stop()
+        self._timeline_trace("poll.window_active_changed", active=active)
+
+    @Property(bool, notify=windowActiveChanged)
+    def windowActive(self) -> bool:
+        """主窗口是否可见且未最小化(供 QML Timer 的 running 复用)。"""
+        return self._window_active
 
     @Slot()
     def _forward_service_status_changed(self):
@@ -397,6 +444,9 @@ class GitBridge(QObject):
         """定时器回调(主线程):把指纹计算交给 PrismQML 线程池。"""
         repo = self._svc.repo_path or ""
         if not repo or self._poll_busy:
+            return
+        # 窗口不可见时 QML 侧已停止驱动;这里再兜一层,避免任何残留触发继续烧 git。
+        if not self._window_active:
             return
         self._poll_busy = True
         self._poll_repo = repo
@@ -452,6 +502,8 @@ class GitBridge(QObject):
         elif fp != self._poll_fingerprint:
             previous = self._poll_fingerprint
             self._poll_fingerprint = fp
+            self._poll_unchanged_rounds = 0
+            self._apply_poll_interval()
             self._timeline_trace(
                 "statusChanged.emit",
                 source="fingerprint_changed",
@@ -461,9 +513,13 @@ class GitBridge(QObject):
             )
             self.statusChanged.emit()
         else:
+            # 连续不变 → 逐轮累计,达到阈值后把间隔放大到空闲间隔。
+            self._poll_unchanged_rounds += 1
+            self._apply_poll_interval()
             self._timeline_trace(
                 "poll.fingerprint_unchanged",
                 fingerprint=fp[:12],
+                unchanged_rounds=self._poll_unchanged_rounds,
             )
         self._poll_busy = False
 

@@ -283,10 +283,22 @@ class GitService(QObject):
         (本地分支/远程分支/tag 的 oid,故 commit 移动/分支增删/tag 增删/fetch 都能感知)、
         stash 列表、以及合并/rebase/cherry-pick/revert 中途态标记文件。
 
+        性能:本函数由 1s 轮询驱动,每多拉起一个 git 进程都是持续的固定开销。
+        因此这里只跑 **2 条** git 命令:
+        - ``status --porcelain=v2 --branch``:工作区/暂存区 + 分支 + ahead/behind;
+        - ``show-ref``:全部 refs,已实测覆盖 ``refs/stash``(存在 stash 时必然出现
+          ``<oid> refs/stash`` 行),故不再单独跑 ``stash list``。
+        原实现还会先跑一次 ``rev-parse --is-inside-work-tree`` 做重复校验,但打开仓库
+        与切换仓库都已校验过路径,轮询里再校验属于纯浪费,已移除(仍保留廉价的
+        ``.git`` 标记存在性检查)。
+
         返回指纹字符串;仓库无效或 status 读取失败时返回空串,
         调用方据此"跳过本轮"而非误触发刷新。
         """
-        if not self._is_git_work_tree_path(repo_path):
+        if not repo_path or not os.path.isdir(repo_path):
+            return ""
+        git_marker = os.path.join(repo_path, '.git')
+        if not (os.path.isdir(git_marker) or os.path.isfile(git_marker)):
             return ""
 
         parts: list[str] = []
@@ -295,16 +307,29 @@ class GitService(QObject):
         if not ok:
             return ""  # 读不到状态:跳过本轮,避免拿不确定数据误判
         parts.append(out)
-        # 所有 refs 的 oid(空仓库时 show-ref 返回非 0,视为空串,不算失败)
+        # 所有 refs 的 oid(空仓库时 show-ref 返回非 0,视为空串,不算失败)。
+        # 该输出已包含 refs/stash,因此 stash 增删/内容变化同样会让指纹变化。
         ok, out, _ = self._run_git_sync_at(repo_path, ['show-ref'], timeout=10)
         parts.append(out if ok else "")
-        # stash 列表
-        ok, out, _ = self._run_git_sync_at(repo_path, ['stash', 'list'], timeout=10)
-        parts.append(out if ok else "")
-        # 中途态标记(status v2 未必完整反映"处于合并/变基中途")
-        git_dir = os.path.join(repo_path, '.git')
-        for marker in ('MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'):
-            parts.append("1" if os.path.exists(os.path.join(git_dir, marker)) else "0")
+        # 中途态标记(status v2 未必完整反映"处于合并/变基中途")。
+        # 普通仓库的 .git 是目录;linked worktree 的 .git 是文本文件,内容形如
+        # "gitdir: /path/to/.git/worktrees/<name>"。这里只读文件解析路径,
+        # 不为此额外拉起 git 进程(轮询路径必须保持低成本)。
+        git_dir = git_marker
+        if not os.path.isdir(git_marker):
+            try:
+                with open(git_marker, 'r', encoding='utf-8', errors='replace') as handle:
+                    first_line = handle.readline().strip()
+                if first_line.lower().startswith('gitdir:'):
+                    resolved = first_line.split(':', 1)[1].strip()
+                    if resolved and not os.path.isabs(resolved):
+                        resolved = os.path.join(repo_path, resolved)
+                    git_dir = os.path.normpath(resolved)
+            except OSError:
+                git_dir = git_marker
+        if os.path.isdir(git_dir):
+            for marker in ('MERGE_HEAD', 'rebase-merge', 'rebase-apply', 'CHERRY_PICK_HEAD', 'REVERT_HEAD'):
+                parts.append("1" if os.path.exists(os.path.join(git_dir, marker)) else "0")
 
         import hashlib
         return hashlib.md5("\x00".join(parts).encode('utf-8', 'replace')).hexdigest()

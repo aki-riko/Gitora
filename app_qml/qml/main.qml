@@ -120,6 +120,18 @@ QtObject {
             lazyLoading: true
             // 绑定 Mica 开关:让窗口 _micaActive/背景透明 跟随配置(否则开了背景不透明=看不到效果)
             micaEnabled: ConfigManager ? ConfigManager.micaEnabled : false
+
+            // 把"窗口是否可见且未最小化"下发给后端,驱动轮询/标签快照/高级页 Timer 停止。
+            // 最小化或隐藏时用户看不到任何刷新结果,继续每秒拉起 git 只是白烧 CPU。
+            // 注意:QML 的 Item.visible 是页面可见性,不随窗口最小化变化,故必须用 Window.visibility。
+            readonly property bool _windowVisibleNotMinimized:
+                visibility !== Window.Minimized && visibility !== Window.Hidden
+
+            function _publishWindowActive() {
+                if (typeof GitBridge === "undefined" || !GitBridge) return
+                GitBridge.setWindowActive(_windowVisibleNotMinimized)
+            }
+            onVisibilityChanged: _publishWindowActive()
             property Item repositoryTabBarHost: Item {
                 parent: appWindow.contentItem
                 anchors.fill: parent
@@ -150,6 +162,8 @@ QtObject {
                 root.toastProgressHostInstance = root.toastProgressHostComponent.createObject(this.contentItem)
                 let currentWindow = this
                 Qt.callLater(function() { root.applyNativeWindowIcon(currentWindow) })
+                // 首帧时 visibility 可能还没就绪，延后一拍再下发一次。
+                Qt.callLater(function() { appWindow._publishWindowActive() })
             }
 
         }

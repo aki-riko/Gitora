@@ -240,6 +240,66 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_window_inactive_stops_polling_and_resume_repolls(self) -> None:
+        """窗口最小化/隐藏时必须停掉轮询；回到前台要立即补一轮并恢复定时器。"""
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        requested: list[str] = []
+        bridge._svc.compute_state_fingerprint = (  # type: ignore[method-assign]
+            lambda repo: requested.append(repo) or "fp"
+        )
+
+        try:
+            self.assertTrue(bridge.windowActive)
+            bridge._poll_timer.start()
+            self.assertTrue(bridge._poll_timer.isActive())
+
+            bridge.setWindowActive(False)
+            self.assertFalse(bridge.windowActive)
+            self.assertFalse(bridge._poll_timer.isActive())
+            # 停用期间即使有残留触发也不能再发 git 请求。
+            requested.clear()
+            bridge._poll_tick()
+            self.assertEqual(requested, [])
+
+            bridge.setWindowActive(True)
+            self.assertTrue(bridge.windowActive)
+            self.assertTrue(bridge._poll_timer.isActive())
+            # 恢复时立刻补一轮(不依赖下一个 1s 周期)。
+            self.assertTrue(self._wait_until(app, lambda: requested == ["repo"]))
+        finally:
+            bridge._poll_timer.stop()
+            bridge.deleteLater()
+            app.processEvents()
+
+    def test_idle_polling_backs_off_after_unchanged_rounds(self) -> None:
+        """连续多轮指纹不变后应放大轮询间隔，出现变化立刻回落。"""
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        bridge._poll_fingerprint = "stable"
+
+        try:
+            bridge._poll_timer.setInterval(bridge._POLL_INTERVAL_MS)
+            for _ in range(bridge._POLL_IDLE_AFTER_UNCHANGED):
+                bridge._poll_busy = True
+                bridge._on_fingerprint_ready("repo", "stable", bridge._poll_generation)
+            self.assertEqual(
+                bridge._poll_timer.interval(), bridge._POLL_IDLE_INTERVAL_MS
+            )
+
+            # 出现变化:轮数清零并立刻切回正常间隔。
+            bridge._poll_busy = True
+            bridge._on_fingerprint_ready("repo", "changed", bridge._poll_generation)
+            self.assertEqual(bridge._poll_timer.interval(), bridge._POLL_INTERVAL_MS)
+            self.assertEqual(bridge._poll_unchanged_rounds, 0)
+        finally:
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_status_result_replaces_backend_model(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

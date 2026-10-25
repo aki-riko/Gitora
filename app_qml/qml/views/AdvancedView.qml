@@ -18,6 +18,9 @@ Item {
     property bool _ruleReloadPending: true
     property string _worktreeSnapshot: ""
     property string _submoduleSnapshot: ""
+    // worktree/submodule 变化频率很低，独立用 5s 探查间隔，
+    // 不复用 1s 的状态轮询间隔，避免本页每分钟白拉 120 条 git。
+    readonly property int _advancedPollIntervalMs: 5000
     ListModel { id: worktreeModel }
     ListModel { id: submoduleModel }
 
@@ -172,9 +175,13 @@ Item {
     }
 
     // worktree/submodule 的外部变化不一定改变 status/refs，需在本页可见时单独探查。
+    // 这类变化本身频率极低(增删工作树/子模块)，因此用页级独立间隔 5s，
+    // 不再复用 1s 的状态轮询间隔——否则本页每分钟白拉 120 条 git。
+    // 窗口最小化/隐藏时一并停止(windowActive 由后端窗口可见性驱动)。
     Timer {
-        interval: GitBridge.pollIntervalMs
+        interval: root._advancedPollIntervalMs
         running: root.visible && !!GitBridge && !!GitBridge.repoPath
+            && (!GitBridge || GitBridge.windowActive !== false)
         repeat: true
         onTriggered: {
             if (!root._advancedRequesting) root.reload()
@@ -185,6 +192,17 @@ Item {
         if (visible) {
             root._reloadPending = true
             Qt.callLater(function() { root.reload() })
+        }
+    }
+    // 窗口从最小化/隐藏恢复到前台时立即补一轮，弥补停轮询期间的空白。
+    Connections {
+        target: (typeof GitBridge !== "undefined") ? GitBridge : null
+        enabled: !!GitBridge
+        function onWindowActiveChanged() {
+            if (GitBridge.windowActive && root.visible) {
+                root._reloadPending = true
+                Qt.callLater(function() { root.reload() })
+            }
         }
     }
     Component.onCompleted: {
