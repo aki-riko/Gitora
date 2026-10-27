@@ -300,6 +300,46 @@ class GitBridgeAsyncTest(unittest.TestCase):
             bridge.deleteLater()
             app.processEvents()
 
+    def test_window_activation_refreshes_after_changes_during_minimize(self) -> None:
+        """窗口不可见期间提交后，恢复可见必须刷新，不能被"首次基线"吞掉。
+
+        真实缺陷：停轮询期间(最小化/隐藏)提交或外部改动，恢复时旧基线已被
+        ``_reset_poll_baseline`` 丢弃，首轮指纹被当作"首次基线"静默吸收，
+        变更列表继续显示提交前的文件。真实 GUI 复现见
+        ``.artifacts/repro/repro_window_activation.py``。
+        """
+        app = QCoreApplication.instance() or QCoreApplication([])
+        bridge = GitBridge()
+        bridge._poll_timer.stop()
+        bridge._svc._repo_path = "repo"
+        fingerprints = ["before"]
+        bridge._svc.compute_state_fingerprint = (  # type: ignore[method-assign]
+            lambda _repo: fingerprints[-1]
+        )
+        emitted: list[str] = []
+        bridge.statusChanged.connect(lambda: emitted.append(bridge._poll_fingerprint))
+
+        try:
+            # 先建立基线,模拟"打开仓库后正常轮询"。
+            bridge._poll_busy = True
+            bridge._on_fingerprint_ready("repo", "before", bridge._poll_generation)
+            self.assertEqual(emitted, [])
+
+            # 窗口不可见:停轮询,期间仓库被提交(指纹变化却没人比较)。
+            bridge.setWindowActive(False)
+            fingerprints[-1] = "after"
+
+            # 恢复可见:首轮建立新基线,必须补发一次刷新。
+            bridge.setWindowActive(True)
+            self.assertTrue(
+                self._wait_until(app, lambda: emitted == ["after"])
+            )
+            self.assertEqual(bridge._poll_fingerprint, "after")
+        finally:
+            bridge._poll_timer.stop()
+            bridge.deleteLater()
+            app.processEvents()
+
     def test_status_result_replaces_backend_model(self) -> None:
         app = QCoreApplication.instance() or QCoreApplication([])
         bridge = GitBridge()

@@ -233,6 +233,9 @@ class GitBridge(QObject):
         self._poll_repo = ""            # 本轮针对的仓库(防切仓库串读)
         self._poll_generation = 0       # 基线代际(内部变更/切仓库时递增)
         self._poll_unchanged_rounds = 0  # 连续"指纹未变"轮数(驱动空闲退避)
+        # 窗口恢复时若没有任何可比基线,建立首轮基线后要主动刷新一次
+        # (见 setWindowActive):否则"重置基线→静默建基线"会吞掉不可见期间的变化。
+        self._poll_refresh_on_baseline = False
         self._window_active = True       # 主窗口是否处于可见且未最小化状态
         # 转发底层信号
         self._svc.statusChanged.connect(self._forward_service_status_changed)
@@ -378,18 +381,29 @@ class GitBridge(QObject):
         self._finish_operation()
         self.operationFinished.emit(ok, message)
 
-    def _reset_poll_baseline(self, reason: str = "unspecified"):
-        """使当前基线失效；下一轮只建新基线，不重复发刷新。"""
+    def _reset_poll_baseline(
+        self, reason: str = "unspecified", refresh_on_baseline: bool = False
+    ):
+        """使当前基线失效；下一轮默认只建新基线，不重复发刷新。
+
+        ``refresh_on_baseline=True`` 用于"变化期间完全无法比较"的场景（典型是
+        窗口不可见期间停掉轮询）：此时旧基线已被丢弃，恢复后的首轮只能建立
+        新基线，若仍按"静默建基线"处理，不可见期间发生的提交/外部改动会被
+        永久吞掉，界面继续显示过期的变更列表。这类调用方需要首轮基线建好后
+        补发一次 ``statusChanged``，让视图重新取状态。
+        """
         self._poll_generation += 1
         self._poll_fingerprint = ""
         self._poll_repo = self._svc.repo_path or ""
         self._poll_unchanged_rounds = 0
+        self._poll_refresh_on_baseline = bool(refresh_on_baseline)
         self._apply_poll_interval()
         self._timeline_trace(
             "poll.baseline_reset",
             reason=reason,
             generation=self._poll_generation,
             repo=self._poll_repo,
+            refresh_on_baseline=self._poll_refresh_on_baseline,
         )
 
     def _poll_interval_ms(self) -> int:
@@ -417,7 +431,9 @@ class GitBridge(QObject):
             return
         self._window_active = active
         if active:
-            self._reset_poll_baseline("window_activated")
+            # 不可见期间轮询是停着的,旧基线不能代表期间发生的变化;恢复后必须
+            # 建新基线并补发一次刷新,否则期间的外部提交会被当成"首次基线"吞掉。
+            self._reset_poll_baseline("window_activated", refresh_on_baseline=True)
             self._poll_timer.start()
             self._poll_tick()
         else:
@@ -493,12 +509,23 @@ class GitBridge(QObject):
             self._poll_busy = False
             return
         if self._poll_fingerprint == "":
-            # 首次:仅建立基线,不触发(打开仓库已各视图各自 reload 过)
+            # 首次:仅建立基线,不触发(打开仓库已各视图各自 reload 过)。
+            # 例外:调用方声明了"恢复后必须补一次刷新"(见 _reset_poll_baseline),
+            # 此时旧基线已丢弃、期间变化无法比较,建完基线立刻补发一次。
             self._poll_fingerprint = fp
             self._timeline_trace(
                 "poll.baseline_established",
                 fingerprint=fp[:12],
             )
+            if self._poll_refresh_on_baseline:
+                self._poll_refresh_on_baseline = False
+                self._timeline_trace(
+                    "statusChanged.emit",
+                    source="baseline_after_activation",
+                    fingerprint=fp[:12],
+                    repo=repo,
+                )
+                self.statusChanged.emit()
         elif fp != self._poll_fingerprint:
             previous = self._poll_fingerprint
             self._poll_fingerprint = fp
