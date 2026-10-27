@@ -511,6 +511,13 @@ def main() -> int:
     app._window_icon_bridge = window_icon_bridge  # keep native icon handles alive
     app._ai_commit_bridge = ai_commit_bridge
     app._ai_commit_plan_bridge = ai_commit_plan_bridge
+    # setContextProperty 不持有 Python 强引用：这里显式保活全部注册给 QML 的对象。
+    # 现状是 main() 的局部变量本就能活到 app.exec() 返回，因此**不是**在修一个已发生
+    # 的回收缺陷；加固的意义是防止以后有人把某次注册挪进局部作用域/函数后，对象被
+    # GC 回收而 QML 侧包装器仍指向已释放内存（实测：del + gc 后 weakref 立刻失效）。
+    app._startup_handoff_bridge = startup_handoff_bridge
+    app._repo_scanner = repo_scanner
+    app._git_bridge = git_bridge
     git_bridge.repoPathChanged.connect(ai_commit_bridge.invalidateRepo)
     git_bridge.statusChanged.connect(ai_commit_bridge.invalidateWorkspace)
     git_bridge.repoPathChanged.connect(ai_commit_plan_bridge.invalidateRepo)

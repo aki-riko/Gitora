@@ -349,6 +349,10 @@ Item {
         function onDiffRowsReady(rawDiff, rowsJson) {
             if (rawDiff !== root.rawDiff)
                 return  // 过期响应,丢弃(与提交详情对话框防过期同策略)
+            // 面包屑：行数据回填是本组件最重的绑定求值路径，崩溃前若停在此处可据此判定。
+            if (typeof GitoraCrashTraceEnabled !== "undefined" && GitoraCrashTraceEnabled
+                    && typeof QmlRenderBridge !== "undefined" && QmlRenderBridge)
+                QmlRenderBridge.logCrashTrace("[CRASH_TRACE] diff.rows.ready")
             var payload
             try {
                 payload = JSON.parse(rowsJson || "{}")

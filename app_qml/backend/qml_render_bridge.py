@@ -37,4 +37,5 @@ class QmlRenderBridge(QObject):
         from app_qml.backend.crash_trace import crash_trace_enabled
 
         if crash_trace_enabled():
-            logger.info("[CRASH_TRACE] %s", message)
+            # 面包屑文本本身已带 [CRASH_TRACE] 前缀，此处不再重复加，避免日志双前缀。
+            logger.info("%s", message)

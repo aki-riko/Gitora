@@ -60,6 +60,21 @@ QtObject {
             ? QmlRenderBridge : null
     }
 
+    // 可选崩溃面包屑观测（GITORA_CRASH_TRACE=1）：默认关闭，关闭时 mark() 直接 return。
+    // 崩溃后看日志里最后几条 [CRASH_TRACE] 即可还原崩溃前正在做哪类操作。
+    property CrashProbe crashProbe: CrashProbe {
+        enabled: typeof GitoraCrashTraceEnabled !== "undefined"
+            && GitoraCrashTraceEnabled
+        renderBridge: typeof QmlRenderBridge !== "undefined"
+            ? QmlRenderBridge : null
+    }
+
+    // 供各视图共享同一条面包屑通道（视图拿不到 main.qml 的 id）。
+    function crashMark(tag, detail) {
+        if (root.crashProbe)
+            root.crashProbe.mark(tag, detail)
+    }
+
     function applyNativeWindowIcon(targetWindow) {
         if (!targetWindow || typeof WindowIconBridge === "undefined") return
         let iconSource = (typeof AppIconFile !== "undefined" && AppIconFile !== "") ? AppIconFile : targetWindow.windowIcon
@@ -128,6 +143,11 @@ QtObject {
                 visibility !== Window.Minimized && visibility !== Window.Hidden
 
             function _publishWindowActive() {
+                // 面包屑：窗口可见性变化是 QML 绑定信号求值链的最外层常见触发点。
+                if (root.crashProbe.enabled) {
+                    root.crashProbe.mark("window.visibility",
+                        "v=" + visibility + " active=" + _windowVisibleNotMinimized)
+                }
                 if (typeof GitBridge === "undefined" || !GitBridge) return
                 GitBridge.setWindowActive(_windowVisibleNotMinimized)
             }
@@ -153,6 +173,8 @@ QtObject {
                         && !!AiCommitPlanBridge && !AiCommitPlanBridge.busy
 
                     onRepositorySelected: function(path) {
+                        // 面包屑：切换仓库会重建页面/模型绑定，是对象生命周期的高危点。
+                        root.crashMark("repo.select", "")
                         if (GitBridge && path !== GitBridge.repoPath)
                             GitBridge.openRepoAsync(path)
                     }
@@ -165,6 +187,9 @@ QtObject {
                 // 首帧时 visibility 可能还没就绪，延后一拍再下发一次。
                 Qt.callLater(function() { appWindow._publishWindowActive() })
             }
+            // 面包屑：页面切换会触发页面栈/懒加载覆盖层重建，是绑定生命周期的高危点。
+            onCurrentIndexChanged: root.crashMark("page.switch",
+                "index=" + currentIndex)
 
         }
     }
