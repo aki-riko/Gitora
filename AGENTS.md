@@ -138,3 +138,16 @@ Gitora 的历史崩溃多为 Qt 侧**原生访问违例**(`0xC0000005`),进程�
   ```
   全内存转储的判据:体积远大于 mini 转储(同一进程 mini 约几十 MB),且 `--module <名字>` 能列出目标模块的完整调用帧。
 - 观测默认关闭,排查结束执行 `Remove-Item Env:GITORA_CRASH_TRACE,Env:GITORA_QML_TRACE -ErrorAction SilentlyContinue` 并完整重启,禁止把观测状态当成修复条件。
+
+## 十三、验证方法的四类陷阱(必读)
+
+排查与验收时最容易踩的四类"看起来通过、实际没验证"的坑,详见
+[docs/verification-pitfalls.md](docs/verification-pitfalls.md):
+
+1. **依赖版本漂移**:`pytest` 未锁上限时,CI 拉到新版本会改变断言语义(pytest 9.2.0 拒绝嵌套 `approx`),出现"本地全绿、CI 门禁失败"。跑 tag 门禁前应把关键依赖装成与 CI 一致的版本复验。
+2. **Qt 线程不在 `threading.enumerate()` 里**:判断 `run_in_thread` 的线程是否退出,只能用 `TaskHandle.finished`;用 Python 线程数会得到确定但错误的结论。
+3. **源码门禁用 AST 而非字符串匹配**:注释里记录历史写法(`threading.Thread(...)`、`while True`)会让文本断言误伤;门禁要盯语义不盯文本。
+4. **测试通过 ≠ 功能正确**:涉及线程/定时器/资源生命周期的改动,必须真实跑一次启停并检查退出期 stderr,否则崩溃发生在进程退出、测试早已结束之后。
+
+配套要求:**先用最小实验确认失败条件,再动手改**。曾因正则统计把"1 处真实失败"误报成"42 处需修改",扫全仓不如三种形态各跑一次最小实验。
+
