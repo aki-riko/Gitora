@@ -364,6 +364,7 @@ from app_qml.backend.crash_trace import (  # noqa: E402
 )
 from app_qml.backend.task_leak_trace import (  # noqa: E402
     install_task_leak_trace,
+    stop_task_leak_trace,
 )
 
 # 崩溃取证观测（默认关闭）：观测用环境变量必须早于 QGuiApplication 构造。
@@ -528,6 +529,8 @@ def main() -> int:
     _QTimer.singleShot(1500, repo_scanner.start)
     # 退出时请求取消扫描；PrismQML App 统一等待并清理任务池。
     app.aboutToQuit.connect(repo_scanner.shutdown)
+    # 退出时唤醒任务泄漏采样线程（默认关闭时是空操作）。
+    app.aboutToQuit.connect(stop_task_leak_trace)
 
     # 应用信息(版本/作者/链接)从 setting.py 读取,避免 QML 内硬编码
     from app.common.setting import (

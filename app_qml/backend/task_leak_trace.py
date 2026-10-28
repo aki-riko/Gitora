@@ -35,10 +35,10 @@ from __future__ import annotations
 
 import os
 import threading
-import time
 import weakref
 
 from app.common.logger import get_logger
+from prismqml import run_in_thread
 
 _ENV_ENABLE = "GITORA_TASK_LEAK_TRACE"
 _ENV_INTERVAL = "GITORA_TASK_LEAK_TRACE_INTERVAL_MS"
@@ -64,6 +64,26 @@ _live_executions: weakref.WeakSet | None = None
 _runner_module = None
 _installed = False
 _reporter_started = False
+# 采样循环的停止信号与受管线程句柄：由 stop_task_leak_trace 唤醒退出。
+_stop_event: threading.Event | None = None
+_reporter_handle = None
+
+
+def stop_task_leak_trace() -> None:
+    """停止采样线程并等待其退出（幂等，未启用时零开销）。
+
+    采样循环是长驻任务，必须在退出期显式唤醒并等待，否则线程会带着
+    对引擎内部对象的引用活到解释器关闭，掩盖真实的泄漏信号。
+    """
+    global _reporter_started, _stop_event, _reporter_handle
+    if not _reporter_started:
+        return
+    _reporter_started = False
+    event = _stop_event
+    _stop_event = None
+    if event is not None:
+        event.set()
+    _reporter_handle = None
 
 
 def _env_flag(name: str) -> bool:
@@ -219,11 +239,25 @@ def _self_test_signal_gc() -> bool:
 
 
 def _start_reporter() -> None:
-    """在后台守护线程内周期采样并写日志（不占用主线程）。"""
-    global _reporter_started
+    """在受管后台线程内周期采样并写日志（不占用主线程）。
+
+    历史实现直接 ``threading.Thread(...daemon=True)``，违反生产代码不得手写
+    线程的契约（见 tests/test_prism_task_migration.py）。这里改用引擎的
+    ``run_in_thread``：线程由 PrismQML 统一创建、观测与退出清理。
+
+    同时引入停止事件：采样循环是 ``while True`` 的长驻任务，塞进全局
+    QThreadPool 会永久占用一个 worker；必须可被 ``stop_task_leak_trace``
+    唤醒退出，并由 ``aboutToQuit`` 调用，避免退出期线程残留。
+    """
+    global _reporter_started, _stop_event, _reporter_handle
     if _reporter_started:
         return
     _reporter_started = True
+    # 循环内必须使用这个**局部**事件对象。stop_task_leak_trace 会把模块级
+    # _stop_event 置 None，若 loop 读模块变量就会在停机瞬间变成 None.wait()
+    # 并异常退出，表现为 "QThread: Destroyed while thread is still running"。
+    stop_event = threading.Event()
+    _stop_event = stop_event
 
     logger = get_logger("Gitora")
 
@@ -243,8 +277,9 @@ def _start_reporter() -> None:
         previous = None
         previous_active = 0
         previous_controls = 0
-        while True:
-            time.sleep(interval)
+        # 用 Event.wait 取代 time.sleep：停机时立即返回，不必等满一个采样周期。
+        # 绑定局部 stop_event，见 _start_reporter 顶部的说明。
+        while not stop_event.wait(interval):
             try:
                 handle_count = wintypes.DWORD(0)
                 kernel32.GetProcessHandleCount(process, ctypes.byref(handle_count))
@@ -352,7 +387,9 @@ def _start_reporter() -> None:
             except Exception as exc:               # noqa: BLE001
                 logger.warning("[TASK_LEAK] 采样失败: %r", exc)
 
-    threading.Thread(target=loop, daemon=True, name="TaskLeakTrace").start()
+    # 受管线程：PrismQML 负责创建、观测与退出清理，不使用手写 threading.Thread。
+    # 保留句柄以便停机时取消，并防止被 GC 回收。
+    _reporter_handle = run_in_thread(loop)
 
 
 def install_task_leak_trace() -> bool:
